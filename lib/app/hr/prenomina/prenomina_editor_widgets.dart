@@ -29,7 +29,8 @@ double _prenominaFiscalDeductions(_HrPrenominaSummaryRow row) =>
     row.fiscalInfonavitAmount +
     row.fiscalFonacotAmount +
     row.fiscalAbsenceAmount +
-    row.fiscalLateDeductionAmount;
+    row.fiscalLateDeductionAmount +
+    HrLoanPayrollPlan.fromSnapshot(row.sourceSnapshot).fiscalCents / 100;
 
 class _PrenominaPanel extends StatelessWidget {
   final String title;

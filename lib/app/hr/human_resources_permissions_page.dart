@@ -27,6 +27,8 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -39,6 +41,8 @@ import 'human_resources_permission_type.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+
+part 'permissions/permission_history_test_support.dart';
 
 const String _kHrPermissionProfilesTable = 'hr_employee_profiles';
 const String _kHrPermissionImportLotsTable = 'hr_attendance_import_lots';
@@ -366,6 +370,20 @@ class _HumanResourcesPermissionsPageState
           return true;
         })
         .toList(growable: false);
+  }
+
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
   }
 
   Future<void> _openDashboard() async {
@@ -1291,6 +1309,8 @@ class _HumanResourcesPermissionsPageState
                 openPermissions: () async {},
                 openPrenomina: _openPrenomina,
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.permissions,
@@ -3462,9 +3482,32 @@ class _HrPermissionEventCard extends StatelessWidget {
                 width: 140,
                 child: _HrPermissionLabeledField(
                   label: 'Horas',
-                  child: _HrPermissionComputedField(
-                    value: _formatPermissionHours(draft.quantityHours),
-                  ),
+                  child: draft.usesReportedHours
+                      ? TextFormField(
+                          key: ValueKey('permission-hours-${draft.localId}'),
+                          initialValue: _trimPermissionNumber(
+                            draft.quantityHours,
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: _hrPermissionFieldDecoration(
+                            hintText: 'Horas',
+                          ),
+                          onChanged: (value) {
+                            final hours = double.tryParse(
+                              value.replaceAll(',', '.'),
+                            );
+                            if (hours == null || !hours.isFinite || hours < 0) {
+                              return;
+                            }
+                            draft.quantityHours = hours;
+                            commitDraftChange();
+                          },
+                        )
+                      : _HrPermissionComputedField(
+                          value: _formatPermissionHours(draft.quantityHours),
+                        ),
                 ),
               ),
             ],
@@ -3999,7 +4042,7 @@ class _HrPermissionEventRecord {
       'source_mode': sourceMode,
       'status': status.name,
       'notes': notes,
-      'source_snapshot': <String, dynamic>{},
+      // An edit does not replace the provenance of an imported event.
     };
   }
 
@@ -4080,6 +4123,13 @@ class _HrPermissionEventDraft {
   String sourceMode;
   _HrPermissionEventStatus status;
   String notes;
+
+  // Historical files can document a duration without clock times.
+  bool get usesReportedHours =>
+      sourceMode == 'importado' &&
+      requestUnit == _HrPermissionUnit.hora &&
+      startTime.trim().isEmpty &&
+      endTime.trim().isEmpty;
 
   _HrPermissionEventDraft({
     this.id = '',
@@ -4616,6 +4666,7 @@ void _recalculatePermissionDraft(_HrPermissionEventDraft draft) {
     return;
   }
   draft.quantityDays = 0.0;
+  if (draft.usesReportedHours) return;
   final start = _parsePermissionTime(draft.startTime);
   final end = _parsePermissionTime(draft.endTime);
   if (start == null || end == null) {

@@ -32,6 +32,8 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_source.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -343,7 +345,9 @@ class _HumanResourcesAttendancePageState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      _showSnack('No se pudo cargar la asistencia. Se conservaron los datos guardados.');
+      _showSnack(
+        'No se pudo cargar la asistencia. Se conservaron los datos guardados.',
+      );
     }
   }
 
@@ -813,6 +817,20 @@ class _HumanResourcesAttendancePageState
         .toList(growable: false);
   }
 
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDashboard() async {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const HumanResourcesDashboardPage(instantOpen: true)),
@@ -982,7 +1000,7 @@ class _HumanResourcesAttendancePageState
     final refreshed = (refreshedResult as List)
         .map((raw) => Map<String, dynamic>.from(raw as Map))
         .where(isHrOperationalAttendanceRow)
-          .map(_HrAttendanceStoredRecord.fromRow)
+        .map(_HrAttendanceStoredRecord.fromRow)
         .toList(growable: false);
 
     _storedRecords.removeWhere(
@@ -1509,6 +1527,8 @@ class _HumanResourcesAttendancePageState
                 openPermissions: _openPermissions,
                 openPrenomina: _openPrenomina,
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.attendance,
@@ -1807,36 +1827,37 @@ class _HrAttendanceDailyGridState extends State<_HrAttendanceDailyGrid> {
                 resolvedSchedule?.schedule)
           : _parseAttendanceSchedule(selectedOption.horario);
       final expectedTimes = _attendanceExpectedTimes(activeSchedule);
-      _drafts[employee.employeeId] = _HrAttendanceDailyDraft(
-        employee: employee,
-        date: date,
-        schedule: activeSchedule,
-        scheduleOptions: scheduleOptions,
-        selectedSchedule: selectedOption?.horario ?? storedSchedule,
-        status: storedDraft?.status ?? _HrAttendanceStatus.pendiente,
-        // The new daily sheet starts from Personal's expected schedule. A
-        // stored RH capture always wins, including intentionally blank cells.
-        entry: storedDraft?.firstPunch ?? expectedTimes[0],
-        lunchExit: storedDraft == null
-            ? expectedTimes[1]
-            : _manualPunchTimelineValue(
-                storedDraft.punchTimeline,
-                'Salida comida',
-              ),
-        lunchEntry: storedDraft == null
-            ? expectedTimes[2]
-            : _manualPunchTimelineValue(
-                storedDraft.punchTimeline,
-                'Entrada comida',
-              ),
-        exit: storedDraft?.lastPunch ?? expectedTimes[3],
-        notes: storedDraft?.notes ?? '',
-        ngtecoTimes: importedTimes
-            .map(_fmtAttendanceTime)
-            .toList(growable: false),
-      )
-        ..lateMinutes = storedDraft?.lateMinutes ?? 0
-        ..overtimeMinutes = storedDraft?.overtimeMinutes ?? 0;
+      _drafts[employee.employeeId] =
+          _HrAttendanceDailyDraft(
+              employee: employee,
+              date: date,
+              schedule: activeSchedule,
+              scheduleOptions: scheduleOptions,
+              selectedSchedule: selectedOption?.horario ?? storedSchedule,
+              status: storedDraft?.status ?? _HrAttendanceStatus.pendiente,
+              // The new daily sheet starts from Personal's expected schedule. A
+              // stored RH capture always wins, including intentionally blank cells.
+              entry: storedDraft?.firstPunch ?? expectedTimes[0],
+              lunchExit: storedDraft == null
+                  ? expectedTimes[1]
+                  : _manualPunchTimelineValue(
+                      storedDraft.punchTimeline,
+                      'Salida comida',
+                    ),
+              lunchEntry: storedDraft == null
+                  ? expectedTimes[2]
+                  : _manualPunchTimelineValue(
+                      storedDraft.punchTimeline,
+                      'Entrada comida',
+                    ),
+              exit: storedDraft?.lastPunch ?? expectedTimes[3],
+              notes: storedDraft?.notes ?? '',
+              ngtecoTimes: importedTimes
+                  .map(_fmtAttendanceTime)
+                  .toList(growable: false),
+            )
+            ..lateMinutes = storedDraft?.lateMinutes ?? 0
+            ..overtimeMinutes = storedDraft?.overtimeMinutes ?? 0;
     }
     _navigation.configure(
       insertColumnCount: 0,
@@ -3701,7 +3722,9 @@ class _HrAttendanceMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allDays = rows.expand((row) => row.days).toList(growable: false);
-    final referenceDays = allDays.where((day) => day.ngtecoReferenceTimeline.isNotEmpty).length;
+    final referenceDays = allDays
+        .where((day) => day.ngtecoReferenceTimeline.isNotEmpty)
+        .length;
     final manualDays = allDays.where(_attendanceDayIsManual).length;
     final adjustedDays = allDays.where(_attendanceDayIsAdjusted).length;
     final justifiedDays = allDays.where(_attendanceDayIsJustified).length;
@@ -4009,7 +4032,10 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   }
 
   void _syncWeeklyAdjustmentInputs() {
-    final lateMinutes = _days.fold<int>(0, (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes));
+    final lateMinutes = _days.fold<int>(
+      0,
+      (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes),
+    );
     final overtimeMinutes = _days.fold<int>(
       0,
       (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),
@@ -4342,7 +4368,9 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
       0,
       (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),
     );
-    final referenceDays = _days.where((day) => day.ngtecoReferenceTimeline.isNotEmpty).length;
+    final referenceDays = _days
+        .where((day) => day.ngtecoReferenceTimeline.isNotEmpty)
+        .length;
     final scheduleDays = _days.where(_attendanceDraftIsScheduleFilled).length;
     final manualDays = _days.where(_attendanceDraftIsManual).length;
     final adjustedDays = _days.where(_attendanceDraftIsAdjusted).length;
@@ -6281,7 +6309,9 @@ class _HrAttendanceStoredRecord {
           .map((item) => item.toString())
           .toList(growable: false),
       lateMinutes: hrEligibleLateMinutes(_asInt(row['late_minutes'])),
-      overtimeMinutes: hrEligibleOvertimeMinutes(_asInt(row['overtime_minutes'])),
+      overtimeMinutes: hrEligibleOvertimeMinutes(
+        _asInt(row['overtime_minutes']),
+      ),
       notes: (row['notes'] ?? '').toString(),
     );
   }
@@ -6512,7 +6542,8 @@ String _attendanceCellValueForColumn(
 
 /// Exercises the actual weekly projection and editor without a live database.
 @visibleForTesting
-({List<Map<String, dynamic>> days, Widget editor}) hrAttendancePreviewForTesting({
+({List<Map<String, dynamic>> days, Widget editor})
+hrAttendancePreviewForTesting({
   required String periodLabel,
   required String employeeId,
   required List<Map<String, dynamic>> storedRows,
@@ -6750,7 +6781,10 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         daysAbsentCount: days
             .where((day) => day.status == _HrAttendanceStatus.falto)
             .length,
-        lateMinutesSum: days.fold<int>(0, (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes)),
+        lateMinutesSum: days.fold<int>(
+          0,
+          (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes),
+        ),
         overtimeMinutesSum: days.fold<int>(
           0,
           (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),

@@ -1,0 +1,33 @@
+{
+  "loans": [],
+  "signatures": {
+    "hr_employee_profiles": {
+      "n": 86,
+      "hash": "f3793f80e60785340f9018e18a2f15ff"
+    },
+    "hr_prenomina_draft_rows": {
+      "n": 84,
+      "hash": "a4bdc21f2d45c93c0b0e69955d04c870"
+    },
+    "hr_payroll_period_closures": {
+      "n": 1,
+      "hash": "43ecb4df8790895cad10594512a54182"
+    },
+    "hr_attendance_operational_periods": {
+      "n": 35,
+      "hash": "9552c0a8b511180c5b6f85cb024ffac9"
+    },
+    "hr_loan_fund": {
+      "n": 1,
+      "hash": "fe7dfbef888b21ceed82b5813936ea30"
+    },
+    "hr_loan_payments": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    },
+    "hr_loan_channel_changes": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    }
+  }
+}

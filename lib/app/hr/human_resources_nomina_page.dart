@@ -21,6 +21,8 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/file_download_save.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -264,6 +266,20 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
     _pageSize = value;
     _currentPage = 0;
     _rebuildVisibleRows();
+  }
+
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
   }
 
   Future<void> _openDashboard() async {
@@ -601,6 +617,8 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
                 openPermissions: _openPermissions,
                 openPrenomina: _openPrenomina,
                 openNomina: () async {},
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.nomina,

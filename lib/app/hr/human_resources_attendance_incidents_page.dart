@@ -23,6 +23,8 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
@@ -233,7 +235,9 @@ class _HumanResourcesAttendanceIncidentsPageState
             .range(from, to),
       );
       final matches = matchingHrImportPeriods(
-        existingPeriodLabels: periods.map((row) => row['period_label'].toString()),
+        existingPeriodLabels: periods.map(
+          (row) => row['period_label'].toString(),
+        ),
         isNgteco: source == _HrAttendanceImportSource.ngteco,
         filePeriodLabel: parsedLot.periodLabel,
         punchDates: parsedLot.entries
@@ -242,7 +246,9 @@ class _HumanResourcesAttendanceIncidentsPageState
       );
       if (!mounted) return;
       if (matches.isEmpty) {
-        _showSnack('Crea primero el periodo correspondiente en Asistencia. El archivo no se importó.');
+        _showSnack(
+          'Crea primero el periodo correspondiente en Asistencia. El archivo no se importó.',
+        );
         return;
       }
       final selected = await HumanResourcesPeriodContext.readSelectedLabel();
@@ -255,8 +261,11 @@ class _HumanResourcesAttendanceIncidentsPageState
           context,
           title: 'Periodo de la importación',
           initialValue: matches.contains(selected) ? selected : null,
-          options: matches.map((label) =>
-              SearchablePickerOption(value: label, label: label)).toList(),
+          options: matches
+              .map(
+                (label) => SearchablePickerOption(value: label, label: label),
+              )
+              .toList(),
         );
       }
       if (periodLabel == null || !mounted) return;
@@ -382,6 +391,20 @@ class _HumanResourcesAttendanceIncidentsPageState
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -503,6 +526,8 @@ class _HumanResourcesAttendanceIncidentsPageState
                 openPermissions: _openPermissions,
                 openPrenomina: _openPrenomina,
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.importConciliation,

@@ -35,7 +35,8 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
   bool _saving = false;
   bool _canReturnToDirection = false;
   bool _onlyAlerts = false;
-  _DirectorySourceFilter _sourceFilter = _DirectorySourceFilter.all;
+  _DirectorySourceFilter _sourceFilter =
+      _DirectorySourceFilter.commercialCreated;
   String _query = '';
   CommercialDirectoryBundle? _bundle;
   String? _selectedId;

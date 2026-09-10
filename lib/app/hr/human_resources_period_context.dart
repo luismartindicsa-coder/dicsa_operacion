@@ -39,9 +39,30 @@ class HumanResourcesPeriodContext {
       final label = rawLabel.trim();
       if (label.isNotEmpty) unique.add(label);
     }
-    final options = unique.toList(growable: false)
-      ..sort((a, b) => b.compareTo(a));
+    final options = unique.toList(growable: false)..sort(_compareNewestFirst);
     return options;
+  }
+
+  static int _compareNewestFirst(String a, String b) {
+    final aRange = HumanResourcesPeriodRange.tryParse(a);
+    final bRange = HumanResourcesPeriodRange.tryParse(b);
+    if (aRange != null && bRange != null) {
+      final byStart = bRange.start.compareTo(aRange.start);
+      if (byStart != 0) return byStart;
+      final byEnd = bRange.end.compareTo(aRange.end);
+      if (byEnd != 0) return byEnd;
+    } else if (aRange != null || bRange != null) {
+      // Labels without a date cannot displace a known operational period.
+      return aRange != null ? -1 : 1;
+    }
+    final numberPattern = RegExp(r'\bperiodo\s+(\d+)\b', caseSensitive: false);
+    final aNumber = int.tryParse(numberPattern.firstMatch(a)?.group(1) ?? '');
+    final bNumber = int.tryParse(numberPattern.firstMatch(b)?.group(1) ?? '');
+    if (aNumber != null && bNumber != null) {
+      final byNumber = bNumber.compareTo(aNumber);
+      if (byNumber != 0) return byNumber;
+    }
+    return b.compareTo(a);
   }
 }
 
@@ -88,14 +109,19 @@ class HumanResourcesPeriodSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sort here as well: detail dialogs can append their saved period to the
+    // supplied options, and an already-open screen may retain an older list.
+    final orderedOptions = HumanResourcesPeriodContext.normalizedOptions(
+      options,
+    );
     final hasSelection = selectedLabel.trim().isNotEmpty;
-    final hasOptions = options.isNotEmpty;
+    final hasOptions = orderedOptions.isNotEmpty;
     return PopupMenuButton<String>(
       enabled: hasOptions,
       tooltip: 'Elegir periodo operativo',
       onSelected: onSelected,
       itemBuilder: (context) => [
-        for (final option in options)
+        for (final option in orderedOptions)
           PopupMenuItem<String>(
             value: option,
             child: ConstrainedBox(

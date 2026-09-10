@@ -28,6 +28,8 @@ enum HumanResourcesAreaScreen {
   permissions,
   prenomina,
   nomina,
+  terminations,
+  loans,
 }
 
 class HumanResourcesAreaNavSection {
@@ -49,6 +51,8 @@ List<HumanResourcesAreaNavSection> buildHumanResourcesAreaSections({
   required Future<void> Function() openPermissions,
   required Future<void> Function() openPrenomina,
   required Future<void> Function() openNomina,
+  required Future<void> Function() openTerminations,
+  required Future<void> Function() openLoans,
 }) {
   HumanResourcesAreaNavEntry buildEntry({
     required HumanResourcesAreaScreen screen,
@@ -122,6 +126,20 @@ List<HumanResourcesAreaNavSection> buildHumanResourcesAreaSections({
           title: 'Prenómina',
           subtitle: 'Corrida borrador semanal por colaborador',
           onTap: openPrenomina,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.loans,
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'Préstamos',
+          subtitle: 'Fondo, plazos y abonos de colaboradores',
+          onTap: openLoans,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.terminations,
+          icon: Icons.calculate_outlined,
+          title: 'Finiquitos',
+          subtitle: 'Finiquito, liquidación e indemnización',
+          onTap: openTerminations,
         ),
         HumanResourcesAreaNavEntry(
           icon: Icons.receipt_long_rounded,

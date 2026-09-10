@@ -34,6 +34,8 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -472,6 +474,20 @@ class _HumanResourcesVacationsPageState
           return true;
         })
         .toList(growable: false);
+  }
+
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
   }
 
   Future<void> _openDashboard() async {
@@ -1576,6 +1592,8 @@ class _HumanResourcesVacationsPageState
                 openPermissions: _openPermissions,
                 openPrenomina: _openPrenomina,
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.vacations,
@@ -3607,7 +3625,9 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
     final pay = HrVacationPay(
       perceivedWeekly: salaryPerceivedWeekly,
       fiscalWeekly: salaryWeekly,
-      vacationDays: _balance.daysPaid,
+      vacationDays: _events
+          .where(_vacationEventHasPayrollFootprint)
+          .fold<double>(0, (sum, event) => sum + event.daysApplied),
       additionalPaidDays: additionalPaidDays,
     );
     final salaryDelta = salaryPerceivedWeekly - salaryWeekly;
@@ -4000,7 +4020,7 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
                                 _HrVacationMetricMiniCard(
                                   label: 'DIAS PAGADOS',
                                   value: _formatVacationDays(_balance.daysPaid),
-                                  helper: 'Ya con huella fiscal o de recibo',
+                                  helper: 'Pagos e historial confirmado',
                                 ),
                                 _HrVacationMetricMiniCard(
                                   label: 'DIAS DISFRUTADOS',
@@ -5083,6 +5103,14 @@ class _HrVacationEventCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+          if (draft.importSource.isNotEmpty) ...[
+            const _HrVacationInlineNote(
+              icon: Icons.history_rounded,
+              message:
+                  'Pago importado de Excel. Los importes se calculan con los datos del expediente, igual que al registrar un pago.',
+            ),
+            const SizedBox(height: 12),
+          ],
           if (draft.isContpaqImported) ...[
             const _HrVacationInlineNote(
               icon: Icons.receipt_long_rounded,
@@ -6074,6 +6102,7 @@ class _HrVacationEventRecord {
   final double? isrOrdinaryMonthlyIncomeOverride;
   final double? isrRetentionOverride;
   final String receiptGroupKey;
+  final Map<String, dynamic> importSource;
   final _HrVacationEventStatus status;
   final String notes;
 
@@ -6098,6 +6127,7 @@ class _HrVacationEventRecord {
     required this.isrOrdinaryMonthlyIncomeOverride,
     required this.isrRetentionOverride,
     required this.receiptGroupKey,
+    this.importSource = const {},
     required this.status,
     required this.notes,
   });
@@ -6132,6 +6162,9 @@ class _HrVacationEventRecord {
       ),
       isrRetentionOverride: _parseVacationNullableNumber(
         row['isr_retention_override'],
+      ),
+      importSource: Map<String, dynamic>.from(
+        row['import_source'] as Map? ?? const {},
       ),
       receiptGroupKey: (row['receipt_group_key'] ?? '').toString(),
       status: _eventStatusFromText((row['status'] ?? '').toString()),
@@ -6234,6 +6267,7 @@ class _HrVacationSummaryRow {
   final String balanceId;
   final DateTime? fechaIngreso;
   final DateTime? fechaAlta;
+  final DateTime? baseManualDate;
   final String salario;
   final String salarioPercibido;
   final _HrVacationBaseDatePolicy baseDatePolicy;
@@ -6257,6 +6291,7 @@ class _HrVacationSummaryRow {
     required this.balanceId,
     required this.fechaIngreso,
     required this.fechaAlta,
+    this.baseManualDate,
     required this.salario,
     required this.salarioPercibido,
     required this.baseDatePolicy,
@@ -6327,7 +6362,7 @@ class _HrVacationBalanceDraft {
       baseDatePolicy: row.baseDatePolicy,
       baseFechaIngreso: row.fechaIngreso,
       baseFechaAlta: row.fechaAlta,
-      baseManualDate: null,
+      baseManualDate: row.baseManualDate,
       antiguedadYears: row.antiguedadYears,
       entitlementRuleKey: '',
       daysEntitled: row.daysEntitled,
@@ -6403,6 +6438,7 @@ class _HrVacationEventDraft {
   String isrOrdinaryMonthlyIncomeOverrideText;
   String isrRetentionOverrideText;
   String receiptGroupKey;
+  final Map<String, dynamic> importSource;
   String notes;
 
   _HrVacationEventDraft({
@@ -6425,6 +6461,7 @@ class _HrVacationEventDraft {
     required this.isrOrdinaryMonthlyIncomeOverrideText,
     required this.isrRetentionOverrideText,
     required this.receiptGroupKey,
+    this.importSource = const {},
     required this.notes,
   });
 
@@ -6452,6 +6489,7 @@ class _HrVacationEventDraft {
       isrRetentionOverrideText: _formatVacationNullableMoney(
         record.isrRetentionOverride,
       ),
+      importSource: record.importSource,
       receiptGroupKey: record.receiptGroupKey,
       notes: record.notes,
     );
@@ -6736,6 +6774,7 @@ _HrVacationSummaryRow _buildVacationSummaryRow({
     balanceId: balance?.id ?? '',
     fechaIngreso: employee.fechaIngreso,
     fechaAlta: employee.fechaAlta,
+    baseManualDate: balance?.baseManualDate,
     salario: employee.salario,
     salarioPercibido: employee.salarioPercibido,
     baseDatePolicy: policy,

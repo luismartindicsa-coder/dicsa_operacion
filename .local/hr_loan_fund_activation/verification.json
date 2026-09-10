@@ -1,0 +1,13 @@
+{
+  "applied": "20260910010000_create_hr_loan_fund.sql",
+  "sha256": "cc24224c8783e123b4d48da103d947f8ac2b4d1b2408eb216ea4fd58f4cb03f8",
+  "initial_capital": 15000.0,
+  "loans": 0,
+  "payments": 0,
+  "existing_data_unchanged": true,
+  "verified_tables": [
+    "hr_prenomina_draft_rows",
+    "hr_payroll_period_closures",
+    "hr_employee_profiles"
+  ]
+}

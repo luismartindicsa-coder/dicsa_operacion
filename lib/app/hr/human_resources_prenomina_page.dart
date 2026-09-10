@@ -6,6 +6,7 @@ import 'human_resources_overtime.dart';
 import 'human_resources_prepaid_vacation.dart';
 import 'human_resources_vacation_pay.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -36,6 +37,10 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/utils/simple_xlsx_builder.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
+import 'human_resources_loans.dart';
+import 'loans/loan_repository.dart';
 import 'human_resources_attendance_source.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
@@ -141,6 +146,8 @@ class _HumanResourcesPrenominaPageState
       const <HrEventPeriodImpactRecord>[];
   List<_HrPrenominaDraftRowRecord> _draftRows =
       const <_HrPrenominaDraftRowRecord>[];
+  HrLoanFundState? _loanFund;
+  String? _loanLoadError;
   List<_HrPrenominaPeriodClosure> _periodClosures =
       const <_HrPrenominaPeriodClosure>[];
   List<_HrPrenominaSummaryRow> _allRows = const <_HrPrenominaSummaryRow>[];
@@ -313,6 +320,15 @@ class _HumanResourcesPrenominaPageState
         );
       } catch (_) {}
 
+      try {
+        _loanFund = await HrLoanRepository(client).load();
+        _loanLoadError = null;
+      } catch (_) {
+        _loanFund = null;
+        _loanLoadError =
+            'No se pudieron consultar los préstamos. Vuelve a abrir Prenómina antes de guardar o cerrar.';
+      }
+
       final employees =
           employeesResult
               .map((raw) => Map<String, dynamic>.from(raw))
@@ -413,6 +429,7 @@ class _HumanResourcesPrenominaPageState
         closures: _periodClosures,
       );
       _rebuildRows();
+      if (_loanLoadError != null) _showSnack(_loanLoadError!);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -455,6 +472,8 @@ class _HumanResourcesPrenominaPageState
     final rows = periodLabel.isEmpty
         ? const <_HrPrenominaSummaryRow>[]
         : _buildPrenominaSummaryRows(
+            loanFund: _loanFund,
+            freezeLoanPlans: _isActivePeriodClosed,
             employees: _employees,
             contpaqLot: contpaqLot,
             attendanceRecords: _attendanceRecords,
@@ -547,6 +566,20 @@ class _HumanResourcesPrenominaPageState
         .toList(growable: false);
   }
 
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDashboard() async {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const HumanResourcesDashboardPage(instantOpen: true)),
@@ -635,6 +668,8 @@ class _HumanResourcesPrenominaPageState
               _activePeriodLabel,
             );
             return _buildPrenominaSummaryRows(
+              loanFund: _loanFund,
+              freezeLoanPlans: _isActivePeriodClosed,
               employees: _employees
                   .where((item) => item.employeeId == row.employeeId)
                   .toList(growable: false),
@@ -692,6 +727,10 @@ class _HumanResourcesPrenominaPageState
     required _HrPrenominaEditResult result,
   }) async {
     if (!_requireActivePeriod()) return;
+    if (_loanLoadError != null) {
+      _showSnack(_loanLoadError!);
+      return;
+    }
     if (_isActivePeriodClosed) {
       _showSnack(
         'El periodo ya está cerrado. Registra cualquier diferencia como ajuste RH.',
@@ -767,6 +806,32 @@ class _HumanResourcesPrenominaPageState
   }
 
   Future<void> _closeActivePeriod() async {
+    if (_loanLoadError != null) {
+      _showSnack(_loanLoadError!);
+      return;
+    }
+    final staleLoans = _periodRows.where((row) {
+      final live = HrLoanPayrollPlan.fromSnapshot(row.sourceSnapshot);
+      final saved = _draftRows
+          .where(
+            (d) =>
+                d.employeeId == row.employeeId &&
+                d.periodLabel == _activePeriodLabel,
+          )
+          .firstOrNull;
+      final previous = HrLoanPayrollPlan.fromSnapshot(
+        saved?.sourceSnapshot ?? const {},
+      );
+      return (live.requestedCents > 0 || previous.recoveredCents > 0) &&
+          jsonEncode(live.toJson()) != jsonEncode(previous.toJson());
+    }).length;
+    if (staleLoans > 0) {
+      _showSnack(
+        'Actualiza y guarda $staleLoans detalle(s) de prenómina: sus préstamos tienen abonos o cuotas nuevos.',
+      );
+      return;
+    }
+
     if (_activePeriodLabel.trim().isEmpty) {
       _showSnack('No hay un periodo activo para cerrar.');
       return;
@@ -1498,6 +1563,8 @@ class _HumanResourcesPrenominaPageState
                 openPermissions: _openPermissions,
                 openPrenomina: () async {},
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.prenomina,
@@ -2537,7 +2604,10 @@ class _HrPrenominaDraftDraft {
       cashFonacotDeductionAmountText: _draftMoneyText(
         row.cashFonacotDeductionAmount,
       ),
-      loanDeductionAmountText: _draftMoneyText(row.loanDeductionAmount),
+      loanDeductionAmountText: _draftMoneyText(
+        row.loanDeductionAmount -
+            HrLoanPayrollPlan.fromSnapshot(row.sourceSnapshot).cents / 100,
+      ),
       checkAmountText: row.checkAmount.toStringAsFixed(2),
       paymentOutsideAmountText: _draftMoneyText(row.paymentOutsideAmount),
       paymentChannel: row.paymentChannel,
@@ -2609,6 +2679,26 @@ class _HrPrenominaDraftDraft {
             0,
             payableFiscal,
           );
+    final manualLoan = _parsePrenominaDraftText(loanDeductionAmountText) ?? 0;
+    final availableForLoan =
+        flow -
+        settlement.flow +
+        (_parsePrenominaDraftText(cashVacationAmountText) ?? 0) +
+        (_parsePrenominaDraftText(transportSupportAmountText) ?? 0) +
+        (_parsePrenominaDraftText(holidayAmountText) ?? 0) +
+        (_parsePrenominaDraftText(overtimeMonetizedAmountText) ?? 0) +
+        (_parsePrenominaDraftText(manualBonusAmountText) ?? 0) +
+        (_parsePrenominaDraftText(manualAdjustmentAmountText) ?? 0) -
+        (_parsePrenominaDraftText(cashIsrAmountText) ?? 0) -
+        (_parsePrenominaDraftText(cashInfonavitDeductionAmountText) ?? 0) -
+        (_parsePrenominaDraftText(cashFonacotDeductionAmountText) ?? 0) -
+        (sourceSnapshot['incidences_informational'] == true
+            ? 0
+            : (_parsePrenominaDraftText(cashAbsenceDeductionAmountText) ?? 0)) -
+        manualLoan;
+    final loanPlan = HrLoanPayrollPlan.fromSnapshot(
+      sourceSnapshot,
+    ).limitedTo(hrLoanCents(availableForLoan));
     return {
       if (existingId.trim().isNotEmpty) 'id': existingId,
       'period_label': periodLabel,
@@ -2656,9 +2746,7 @@ class _HrPrenominaDraftDraft {
       'cash_fonacot_deduction_amount': _parsePrenominaDraftText(
         cashFonacotDeductionAmountText,
       ),
-      'loan_deduction_amount': _parsePrenominaDraftText(
-        loanDeductionAmountText,
-      ),
+      'loan_deduction_amount': manualLoan + loanPlan.cents / 100,
       'check_amount': fiscalInCash,
       'payment_outside_amount': _parsePrenominaDraftText(
         paymentOutsideAmountText,
@@ -2668,6 +2756,7 @@ class _HrPrenominaDraftDraft {
       'notes': notes.trim(),
       'source_snapshot': <String, dynamic>{
         ...sourceSnapshot,
+        if (loanPlan.end != null) 'loan_fund': loanPlan.toJson(),
         if (settlement.days > 0 ||
             sourceSnapshot.containsKey('prepaid_vacation'))
           'prepaid_vacation': settlement.toJson(),
@@ -2828,6 +2917,8 @@ bool _prenominaLotMatchesPeriod(
 }
 
 List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
+  HrLoanFundState? loanFund,
+  bool freezeLoanPlans = false,
   required List<_HrPrenominaEmployeeMaster> employees,
   required _HrPrenominaImportLotLite? contpaqLot,
   required List<_HrPrenominaAttendanceRecord> attendanceRecords,
@@ -3260,7 +3351,42 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
             draft?.cashInfonavitDeductionAmount ?? 0;
         final cashFonacotDeductionAmount =
             draft?.cashFonacotDeductionAmount ?? 0;
-        final loanDeductionAmount = draft?.loanDeductionAmount ?? 0;
+        final savedLoanPlan = HrLoanPayrollPlan.fromSnapshot(
+          draft?.sourceSnapshot ?? const {},
+        );
+        final manualLoan = math.max(
+          0.0,
+          (draft?.loanDeductionAmount ?? 0) - savedLoanPlan.cents / 100,
+        );
+        final loanCapacity =
+            cashSalaryAmount -
+            prepaidVacation.flow +
+            cashVacationAmount +
+            transportSupportAmount +
+            holidayAmount +
+            overtimeMonetizedAmount +
+            manualBonusAmount +
+            (draft?.manualAdjustmentAmount ?? 0) -
+            cashIsrAmount -
+            cashInfonavitDeductionAmount -
+            cashFonacotDeductionAmount -
+            manualLoan -
+            (isPublished &&
+                    draft?.sourceSnapshot['incidences_informational'] != true
+                ? cashAbsenceDeductionAmount
+                : 0);
+        final loanPlan =
+            !freezeLoanPlans && loanFund != null && activeRange != null
+            ? loanFund.payrollPlan(
+                employee.employeeId,
+                activeRange.end,
+                flowAvailableCents: hrLoanCents(loanCapacity),
+                fiscalReady:
+                    officialNet != null ||
+                    draft?.sourceSnapshot['contpaq_official_net'] != null,
+              )
+            : savedLoanPlan;
+        final loanDeductionAmount = manualLoan + loanPlan.cents / 100;
         final fiscalPaymentIsManual = HrFiscalPayment.isManual(
           draft?.sourceSnapshot ?? const {},
           draft?.checkAmount,
@@ -3335,6 +3461,7 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           prepaidVacation: prepaidVacation,
           sourceSnapshot: {
             ...?draft?.sourceSnapshot,
+            if (loanPlan.end != null) 'loan_fund': loanPlan.toJson(),
             if (!isPublished) ...{
               'incidences_informational': true,
               'personal_flow': employee.compensation.flow,

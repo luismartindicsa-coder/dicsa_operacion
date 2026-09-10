@@ -79,6 +79,18 @@ class _PrenominaSummary extends StatelessWidget {
                 label: 'Retardos · referencia',
                 amount: row.fiscalLateDeductionAmount,
               ),
+              if (HrLoanPayrollPlan.fromSnapshot(
+                    row.sourceSnapshot,
+                  ).fiscalCents >
+                  0)
+                _PrenominaAmount(
+                  label: 'Préstamo fiscal · incluido en CONTPAQ',
+                  amount:
+                      HrLoanPayrollPlan.fromSnapshot(
+                        row.sourceSnapshot,
+                      ).fiscalCents /
+                      100,
+                ),
               _PrenominaAmount(
                 label: 'Total descuentos registrados',
                 amount: _prenominaFiscalDeductions(row),

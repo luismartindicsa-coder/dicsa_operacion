@@ -6,13 +6,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_source.dart';
 import 'human_resources_employee_status.dart';
+import 'human_resources_birthdays.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -20,6 +24,10 @@ import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+
+part 'dashboard/dashboard_vacations_test_support.dart';
+part 'dashboard/dashboard_birthdays.dart';
+part 'dashboard/dashboard_birthdays_test_support.dart';
 
 class HumanResourcesDashboardPage extends StatelessWidget {
   final bool instantOpen;
@@ -165,6 +173,20 @@ class HumanResourcesDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openTerminations() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const HumanResourcesTerminationsPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openLoans() async {
+      await Navigator.of(context).push(
+        appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+      );
+    }
+
     Future<void> openNomina() async {
       await Navigator.of(context).push(
         appPageRoute(page: const HumanResourcesNominaPage(instantOpen: true)),
@@ -204,6 +226,8 @@ class HumanResourcesDashboardPage extends StatelessWidget {
                     openPermissions: openPermissions,
                     openPrenomina: openPrenomina,
                     openNomina: openNomina,
+                    openTerminations: openTerminations,
+                    openLoans: openLoans,
                   ),
                   accessItems: buildHumanResourcesAccessItems(
                     activeScreen: HumanResourcesAreaScreen.dashboard,
@@ -703,7 +727,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
         fetchAllSupabaseRows(
           (from, to) => client
               .from('hr_employee_profiles')
-              .select('id,nombre,empresa')
+              .select('id,nombre,empresa,curp')
               .neq('employment_status', kHrEmployeeStatusTerminated)
               .order('id')
               .range(from, to),
@@ -770,7 +794,9 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           selectedPeriodLabel: selectedPeriodLabel,
           profiles: results[0],
           importLots: results[1],
-          attendanceRecords: results[2].where(isHrOperationalAttendanceRow).toList(growable: false),
+          attendanceRecords: results[2]
+              .where(isHrOperationalAttendanceRow)
+              .toList(growable: false),
           vacationEvents: results[3],
           permissionEvents: results[4],
           prenominaDrafts: results[5],
@@ -791,6 +817,16 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
     await HumanResourcesPeriodContext.select(label);
     if (!mounted) return;
     await _loadData();
+  }
+
+  Future<void> _openVacations() async {
+    await widget.onOpenVacations();
+    if (mounted) await _loadData();
+  }
+
+  Future<void> _openPersonnel() async {
+    await widget.onOpenPersonnel();
+    if (mounted) await _loadData();
   }
 
   @override
@@ -894,7 +930,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
         icon: Icons.badge_outlined,
         title: 'Personal',
         detail: '${data.employeeCount} colaboradores',
-        onTap: widget.onOpenPersonnel,
+        onTap: _openPersonnel,
       ),
       _HrDashboardFlowStep(
         icon: Icons.cloud_upload_outlined,
@@ -930,7 +966,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
         icon: Icons.beach_access_rounded,
         title: 'Vacaciones',
         detail: '${data.activeVacationEmployees} activas ahora',
-        onTap: widget.onOpenVacations,
+        onTap: _openVacations,
       ),
     ];
     return LayoutBuilder(
@@ -995,7 +1031,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           chart: _HrDashboardMiniBars(
             values: data.companyCounts.values.toList(),
           ),
-          onTap: widget.onOpenPersonnel,
+          onTap: _openPersonnel,
         ),
         _HrDashboardAttendanceCard(data: data, onTap: widget.onOpenAttendance),
         _HrDashboardMetricCard(
@@ -1017,8 +1053,14 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           title: 'Vacaciones activas',
           value: '${data.activeVacationEmployees}',
           detail: 'Colaboradores en vacaciones hoy',
-          chart: _HrDashboardMiniBars(values: data.activeVacationTrend),
-          onTap: widget.onOpenVacations,
+          chart: Tooltip(
+            message: 'Colaboradores en vacaciones por día · últimos 7 días',
+            child: _HrDashboardMiniBars(
+              values: data.activeVacationTrend,
+              preserveTimeline: true,
+            ),
+          ),
+          onTap: _openVacations,
         ),
         _HrDashboardMetricCard(
           icon: Icons.event_available_outlined,
@@ -1026,8 +1068,14 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           title: 'Vacaciones próximas',
           value: '${data.upcomingVacations.length}',
           detail: 'Inicios registrados en 15 días',
-          chart: _HrDashboardMiniBars(values: data.upcomingVacationTrend),
-          onTap: widget.onOpenVacations,
+          chart: Tooltip(
+            message: 'Inicios de vacaciones por día · próximos 15 días',
+            child: _HrDashboardMiniBars(
+              values: data.upcomingVacationTrend,
+              preserveTimeline: true,
+            ),
+          ),
+          onTap: _openVacations,
         ),
         _HrDashboardMetricCard(
           icon: Icons.warning_amber_rounded,
@@ -1048,7 +1096,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
     return _HrDashboardResponsiveGrid(
       minWideColumns: 4,
       children: [
-        _HrDashboardCompanyCard(data: data, onTap: widget.onOpenPersonnel),
+        _HrDashboardCompanyCard(data: data, onTap: _openPersonnel),
         _HrDashboardRankCard(
           icon: Icons.schedule_rounded,
           title: 'Más retardos del periodo',
@@ -1069,7 +1117,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           valueLabel: (value) => '${value.toInt()} día(s)',
           onTap: widget.onOpenAttendance,
         ),
-        _HrDashboardPermissionCard(data: data, onTap: widget.onOpenPermissions),
+        _HrDashboardBirthdayCard(data: data.birthdays, loading: _loading),
       ],
     );
   }
@@ -1104,14 +1152,14 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           title: 'Vacaciones activas',
           emptyLabel: 'No hay vacaciones activas hoy',
           rows: data.activeVacations,
-          onTap: widget.onOpenVacations,
+          onTap: _openVacations,
         ),
         _HrDashboardVacationListCard(
           icon: Icons.event_available_outlined,
           title: 'Vacaciones próximas',
           emptyLabel: 'No hay inicios registrados en 15 días',
           rows: data.upcomingVacations,
-          onTap: widget.onOpenVacations,
+          onTap: _openVacations,
         ),
       ],
     );
@@ -1912,123 +1960,6 @@ class _HrDashboardRankLine extends StatelessWidget {
   }
 }
 
-class _HrDashboardPermissionCard extends StatelessWidget {
-  final _HrDashboardData data;
-  final Future<void> Function() onTap;
-
-  const _HrDashboardPermissionCard({required this.data, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final items = data.permissionDistribution.entries.toList();
-    const colors = [
-      Color(0xFF1FC6B1),
-      Color(0xFF9056FF),
-      Color(0xFFFFA13D),
-      Color(0xFFEF70B6),
-    ];
-    return _HrDashboardPanel(
-      onTap: onTap,
-      child: SizedBox(
-        height: 204,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.assignment_turned_in_outlined,
-                  size: 19,
-                  color: Color(0xFFC49EFF),
-                ),
-                SizedBox(width: 8),
-                Text(
-                  'Permisos del periodo',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  data.periodValue(data.permissionEventsCount),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  'eventos',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.64),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: items.isEmpty
-                  ? _HrDashboardEmptyLabel(
-                      label: data.hasPeriod
-                          ? 'Sin permisos en el periodo'
-                          : 'Elige un periodo operativo',
-                    )
-                  : Row(
-                      children: [
-                        _HrDashboardDonut(
-                          size: 96,
-                          value: null,
-                          segments: [
-                            for (final item in items) item.value.toDouble(),
-                          ],
-                          colors: [
-                            for (var i = 0; i < items.length; i++)
-                              colors[i % colors.length],
-                          ],
-                          centerLabel: '${data.permissionEventsCount}',
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              for (
-                                var index = 0;
-                                index < items.length && index < 4;
-                                index++
-                              )
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 3,
-                                  ),
-                                  child: _HrDashboardLegendLine(
-                                    color: colors[index % colors.length],
-                                    label: items[index].key,
-                                    value: '${items[index].value}',
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _HrDashboardMoneyCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -2244,10 +2175,12 @@ class _HrDashboardEmptyLabel extends StatelessWidget {
 class _HrDashboardMiniBars extends StatelessWidget {
   final List<num> values;
   final Color color;
+  final bool preserveTimeline;
 
   const _HrDashboardMiniBars({
     required this.values,
     this.color = const Color(0xFF9F6BFF),
+    this.preserveTimeline = false,
   });
 
   @override
@@ -2269,15 +2202,20 @@ class _HrDashboardMiniBars extends StatelessWidget {
       (currentMaximum, value) =>
           value > currentMaximum ? value : currentMaximum,
     );
-    final visible = meaningful.length > 8
+    final visible = preserveTimeline
+        ? values.map((value) => value.toDouble()).toList(growable: false)
+        : meaningful.length > 8
         ? meaningful.sublist(meaningful.length - 8)
         : meaningful;
     return LayoutBuilder(
       builder: (context, constraints) {
+        final spacing = preserveTimeline
+            ? math.min(4.0, constraints.maxWidth / (visible.length * 3))
+            : 4.0;
         final barWidth = math
             .max(
-              4.0,
-              (constraints.maxWidth - (visible.length - 1) * 4) /
+              preserveTimeline ? 0.0 : 4.0,
+              (constraints.maxWidth - (visible.length - 1) * spacing) /
                   visible.length,
             )
             .toDouble();
@@ -2286,11 +2224,14 @@ class _HrDashboardMiniBars extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              for (final value in visible) ...[
+              for (var index = 0; index < visible.length; index++) ...[
                 Container(
                   width: barWidth,
                   height: math
-                      .max(5.0, constraints.maxHeight * value / maximum)
+                      .max(
+                        preserveTimeline && visible[index] <= 0 ? 0.0 : 5.0,
+                        constraints.maxHeight * visible[index] / maximum,
+                      )
                       .toDouble(),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.88),
@@ -2305,7 +2246,7 @@ class _HrDashboardMiniBars extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (value != visible.last) const SizedBox(width: 4),
+                if (index < visible.length - 1) SizedBox(width: spacing),
               ],
             ],
           ),
@@ -2469,6 +2410,7 @@ class _HrDashboardData {
   final int prenominaReadyCount;
   final int prenominaReviewCount;
   final bool payrollClosed;
+  final HrBirthdayMonth? birthdays;
 
   const _HrDashboardData({
     required this.loaded,
@@ -2499,6 +2441,7 @@ class _HrDashboardData {
     required this.prenominaReadyCount,
     required this.prenominaReviewCount,
     required this.payrollClosed,
+    required this.birthdays,
   });
 
   const _HrDashboardData.empty()
@@ -2529,7 +2472,8 @@ class _HrDashboardData {
       payrollTrend = const [],
       prenominaReadyCount = 0,
       prenominaReviewCount = 0,
-      payrollClosed = false;
+      payrollClosed = false,
+      birthdays = null;
 
   bool get hasPeriod => activePeriodLabel.isNotEmpty;
   double? get attendanceRate {
@@ -2576,6 +2520,7 @@ class _HrDashboardData {
     required List<Map<String, dynamic>> permissionEvents,
     required List<Map<String, dynamic>> prenominaDrafts,
     required List<Map<String, dynamic>> periodClosures,
+    DateTime? now,
   }) {
     final peopleById = <String, _HrDashboardPerson>{};
     final companyCounts = <String, int>{};
@@ -2683,7 +2628,7 @@ class _HrDashboardData {
         .where((row) => row['status'] == 'pendiente')
         .length;
 
-    final today = DateTime.now();
+    final today = now ?? DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
     final futureLimit = todayDate.add(const Duration(days: 15));
     final validVacations = vacationEvents
@@ -2822,18 +2767,24 @@ class _HrDashboardData {
       activeVacations: activeVacations,
       upcomingVacations: upcomingVacations,
       activeVacationTrend: _hrDashboardVacationDayTrend(
-        activeVacationRows,
+        validVacations,
         todayDate,
+        firstDayOffset: -6,
+        days: 7,
+        countActiveEmployees: true,
       ),
       upcomingVacationTrend: _hrDashboardVacationDayTrend(
         upcomingVacationRows,
         todayDate,
+        firstDayOffset: 1,
+        days: 15,
       ),
       payroll: payroll,
       payrollTrend: payrollTrend,
       prenominaReadyCount: readyCount,
       prenominaReviewCount: reviewCount,
       payrollClosed: closed,
+      birthdays: HrBirthdayMonth.fromProfiles(profiles, now: todayDate),
     );
   }
 }
@@ -2960,16 +2911,25 @@ List<_HrDashboardRankItem> _hrDashboardBuildRanking({
 
 List<double> _hrDashboardVacationDayTrend(
   List<Map<String, dynamic>> rows,
-  DateTime reference,
-) {
-  final counts = <int, int>{};
-  for (final row in rows) {
-    final start = _hrDashboardParseDate(row['start_date']);
-    if (start == null) continue;
-    final offset = start.difference(reference).inDays;
-    counts[offset] = (counts[offset] ?? 0) + 1;
-  }
-  return [for (var day = 0; day < 7; day++) (counts[day] ?? 0).toDouble()];
+  DateTime reference, {
+  required int firstDayOffset,
+  required int days,
+  bool countActiveEmployees = false,
+}) {
+  return List.generate(days, (index) {
+    final day = reference.add(Duration(days: firstDayOffset + index));
+    final matching = rows.where((row) {
+      final start = _hrDashboardParseDate(row['start_date']);
+      if (start == null) return false;
+      if (!countActiveEmployees) return start == day;
+      final end = _hrDashboardParseDate(row['end_date']) ?? start;
+      return !start.isAfter(day) && !end.isBefore(day);
+    });
+    return (countActiveEmployees
+            ? matching.map((row) => row['employee_id']).toSet().length
+            : matching.length)
+        .toDouble();
+  });
 }
 
 String _hrDashboardDescribeImportPeriod(Map<String, dynamic> row) {

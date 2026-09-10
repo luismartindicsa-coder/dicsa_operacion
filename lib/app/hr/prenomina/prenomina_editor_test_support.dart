@@ -8,6 +8,8 @@ part of '../human_resources_prenomina_page.dart';
   Future<Map<String, dynamic>?> Function(BuildContext) open,
 })
 hrPrenominaEditorForTesting({
+  HrLoanFundState? loanFund,
+  bool freezeLoanPlans = false,
   required String period,
   required Map<String, dynamic> employee,
   Map<String, dynamic>? storedDraft,
@@ -21,6 +23,8 @@ hrPrenominaEditorForTesting({
       .toList();
   _HrPrenominaSummaryRow project(Map<String, dynamic>? draft) =>
       _buildPrenominaSummaryRows(
+        loanFund: loanFund,
+        freezeLoanPlans: freezeLoanPlans,
         employees: [master],
         contpaqLot: null,
         attendanceRecords: attendance,
@@ -77,6 +81,8 @@ hrPrenominaEditorForTesting({
 
 @visibleForTesting
 Map<String, dynamic> hrPrenominaPrepaidProjectionForTesting({
+  HrLoanFundState? loanFund,
+  bool freezeLoanPlans = false,
   required String period,
   required Map<String, dynamic> employee,
   required List<Map<String, dynamic>> vacations,
@@ -87,6 +93,8 @@ Map<String, dynamic> hrPrenominaPrepaidProjectionForTesting({
   Map<String, dynamic>? draft,
 }) {
   return hrPrenominaPeriodProjectionForTesting(
+    loanFund: loanFund,
+    freezeLoanPlans: freezeLoanPlans,
     period: period,
     employees: [employee],
     vacations: vacations,
@@ -100,6 +108,8 @@ Map<String, dynamic> hrPrenominaPrepaidProjectionForTesting({
 
 @visibleForTesting
 List<Map<String, dynamic>> hrPrenominaPeriodProjectionForTesting({
+  HrLoanFundState? loanFund,
+  bool freezeLoanPlans = false,
   required String period,
   required List<Map<String, dynamic>> employees,
   List<Map<String, dynamic>> vacations = const [],
@@ -110,6 +120,8 @@ List<Map<String, dynamic>> hrPrenominaPeriodProjectionForTesting({
   List<Map<String, dynamic>> drafts = const [],
 }) {
   final rows = _buildPrenominaSummaryRows(
+    loanFund: loanFund,
+    freezeLoanPlans: freezeLoanPlans,
     employees: employees.map(_HrPrenominaEmployeeMaster.fromRow).toList(),
     contpaqLot: contpaq.isEmpty
         ? null

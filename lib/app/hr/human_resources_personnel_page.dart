@@ -36,6 +36,8 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_terminations_page.dart';
+import 'human_resources_loans_page.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_employee_status.dart';
 import 'human_resources_compensation.dart';
@@ -928,6 +930,20 @@ class _HumanResourcesPersonnelPageState
 
   Future<void> _logout() => signOutAndRouteToLogin(context);
 
+  Future<void> _openTerminations() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesTerminationsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openLoans() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesLoansPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -1474,6 +1490,8 @@ class _HumanResourcesPersonnelPageState
                 openPermissions: _openPermissions,
                 openPrenomina: _openPrenomina,
                 openNomina: _openNomina,
+                openTerminations: _openTerminations,
+                openLoans: _openLoans,
               ),
               accessItems: buildHumanResourcesAccessItems(
                 activeScreen: HumanResourcesAreaScreen.personnel,

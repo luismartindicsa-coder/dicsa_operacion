@@ -452,7 +452,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
               title: 'Descuentos fiscales · editable por RH',
               children: [
                 const Text(
-                  'IMSS, INFONAVIT, FONACOT y faltas son referencias incluidas en el neto. El retardo se aplica adicionalmente.',
+                  'IMSS, INFONAVIT, FONACOT, faltas y retardos son referencias incluidas en el neto de CONTPAQ.',
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -510,6 +510,59 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
               ],
             ),
             const SizedBox(height: 12),
+            if (HrLoanPayrollPlan.fromSnapshot(
+                  _preview.sourceSnapshot,
+                ).requestedCents >
+                0)
+              _PrenominaPanel(
+                title: 'Préstamos del fondo',
+                children: [
+                  _PrenominaAmount(
+                    label: 'Flujo · descuento aplicado en la app',
+                    amount:
+                        HrLoanPayrollPlan.fromSnapshot(
+                          _preview.sourceSnapshot,
+                        ).cents /
+                        100,
+                    strong: true,
+                  ),
+                  _PrenominaAmount(
+                    label: 'Fiscal · ya incluido en CONTPAQ (informativo)',
+                    amount:
+                        HrLoanPayrollPlan.fromSnapshot(
+                          _preview.sourceSnapshot,
+                        ).fiscalCents /
+                        100,
+                    strong: true,
+                  ),
+                  for (final due in HrLoanPayrollPlan.fromSnapshot(
+                    _preview.sourceSnapshot,
+                  ).dues)
+                    _PrenominaAmount(
+                      label:
+                          'PR-${due.folio} · ${due.channel == 'fiscal' ? 'Fiscal' : 'Flujo'} · cuota y vencido',
+                      amount: due.cents / 100,
+                    ),
+                  if (HrLoanPayrollPlan.fromSnapshot(
+                        _preview.sourceSnapshot,
+                      ).pendingCents >
+                      0)
+                    _PrenominaAmount(
+                      label:
+                          'Pendiente de RH · revisar flujo o importación CONTPAQ',
+                      amount:
+                          HrLoanPayrollPlan.fromSnapshot(
+                            _preview.sourceSnapshot,
+                          ).pendingCents /
+                          100,
+                      strong: true,
+                    ),
+                  const Text(
+                    'El fiscal es informativo: el neto de CONTPAQ ya incluye ese cobro. El cierre de nómina confirma los abonos de ambos canales y los devuelve al fondo una sola vez.',
+                  ),
+                ],
+              ),
+            const SizedBox(height: 12),
             _PrenominaPanel(
               title: 'Descuentos en Flujo · editable por RH',
               children: [
@@ -551,7 +604,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                     ),
                     _money(
                       'loanDeductionAmount',
-                      'Préstamo',
+                      'Préstamo adicional (manual)',
                       _draft.loanDeductionAmountText,
                       (v) {
                         _draft.loanDeductionAmountText = v;

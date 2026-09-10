@@ -1,0 +1,62 @@
+{
+  "mode": "applied",
+  "schema_applied": true,
+  "migration": "20260910110000_support_hr_loan_opening_balances.sql",
+  "migration_sha256": "12e66a262fd00df4c159040da164bd2517c0e2aebd4feaa25a2416b4a1b27189",
+  "inserted": 6,
+  "totals": {
+    "n": 6,
+    "principal": "10700.00",
+    "paid": "2000.00",
+    "outstanding": "8700.00"
+  },
+  "available": 6300,
+  "next_period": "Periodo 37 semanal · 04/09/2026 - 10/09/2026",
+  "next_fiscal": 1500,
+  "next_flow": 250,
+  "next_installments": [
+    {
+      "employee": "CRUZ ANGEL RAMIREZ CAMPOS",
+      "request_date": "2026-09-08",
+      "channel": "fiscal",
+      "next": "500.00"
+    },
+    {
+      "employee": "FERNANDO MUNIZ CARDENAS",
+      "request_date": "2026-09-07",
+      "channel": "fiscal",
+      "next": "200.00"
+    },
+    {
+      "employee": "ILIANA GUADALUPE MARTINEZ GOMEZ",
+      "request_date": "2026-09-03",
+      "channel": "flujo",
+      "next": "250.00"
+    },
+    {
+      "employee": "MIGUEL ANGEL ABUNDIS CORNEJO",
+      "request_date": "2026-08-17",
+      "channel": "fiscal",
+      "next": "300.00"
+    },
+    {
+      "employee": "MIGUEL ANGEL ABUNDIS CORNEJO",
+      "request_date": "2026-09-02",
+      "channel": "fiscal",
+      "next": "200.00"
+    },
+    {
+      "employee": "JUAN ANTONIO MIRANDA CORNEJO",
+      "request_date": "2026-08-07",
+      "channel": "fiscal",
+      "next": "300.00"
+    }
+  ],
+  "existing_personnel_payroll_closures_fund_capital_payments_unchanged": true,
+  "checks": [
+    "import_idempotent",
+    "fund_6300_available_8700_outstanding",
+    "period_35_and_36_unaffected_by_loan_dues",
+    "period_37_first_pending_only"
+  ]
+}

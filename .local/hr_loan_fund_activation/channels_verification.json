@@ -1,0 +1,14 @@
+{
+  "applied": [
+    {
+      "file": "20260910100000_add_hr_loan_payroll_channels.sql",
+      "sha256": "a850e4b24415f45695be16ab5eb6804dbb2da96e02b21e939af088d4f757442e"
+    }
+  ],
+  "existing_financial_data_unchanged": true,
+  "loan_count": 0,
+  "payment_count": 0,
+  "channel_changes": 0,
+  "capital": 15000.0,
+  "available": 15000.0
+}

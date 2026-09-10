@@ -1,0 +1,61 @@
+{
+  "candidates": [
+    {
+      "id": "223",
+      "nombre": "CRUZ ANGEL RAMIREZ CAMPOS",
+      "empresa": "WHIRLPOOL",
+      "employment_status": "activo",
+      "salario": "2205.28",
+      "salario_flujo": "0.00",
+      "salario_real_percibido": "2205.28"
+    },
+    {
+      "id": "104",
+      "nombre": "FERNANDO MUNIZ CARDENAS",
+      "empresa": "MONROE",
+      "employment_status": "activo",
+      "salario": "2205.28",
+      "salario_flujo": "0.00",
+      "salario_real_percibido": "2205.28"
+    },
+    {
+      "id": "197",
+      "nombre": "ILIANA GUADALUPE MARTINEZ GOMEZ",
+      "empresa": "WHIRLPOOL",
+      "employment_status": "activo",
+      "salario": "2205.28",
+      "salario_flujo": "594.72",
+      "salario_real_percibido": "2800.00"
+    },
+    {
+      "id": "114",
+      "nombre": "JUAN ANTONIO MIRANDA CORNEJO",
+      "empresa": "MONROE",
+      "employment_status": "activo",
+      "salario": "2205.28",
+      "salario_flujo": "0.00",
+      "salario_real_percibido": "2205.28"
+    },
+    {
+      "id": "118",
+      "nombre": "MIGUEL ANGEL ABUNDIS CORNEJO",
+      "empresa": "DICSA CELAYA",
+      "employment_status": "activo",
+      "salario": "2205.28",
+      "salario_flujo": "0.00",
+      "salario_real_percibido": "2205.28"
+    }
+  ],
+  "fund": {
+    "capital": "15000.00",
+    "available": "15000.00"
+  },
+  "existing_loans": [],
+  "periods": [
+    {
+      "period_label": "Periodo 37 semanal · 04/09/2026 - 10/09/2026",
+      "start_date": "2026-09-04",
+      "end_date": "2026-09-10"
+    }
+  ]
+}

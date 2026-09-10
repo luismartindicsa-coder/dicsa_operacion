@@ -5,16 +5,21 @@ Widget hrVacationTabsForTesting({
   required List<Map<String, dynamic>> events,
   required List<String> periods,
   required ValueChanged<Map<String, dynamic>> onSave,
+  Map<String, dynamic>? employee,
+  Map<String, dynamic>? balance,
 }) {
   final row = _buildVacationSummaryRow(
-    employee: _HrVacationEmployeeMaster.fromRow({
-      'id': '8',
-      'nombre': 'COLABORADORA DE PRUEBA',
-      'salario': 2100,
-      'salario_real_percibido': 3500,
-      'fecha_ingreso': '2020-01-01',
-    }),
-    balance: null,
+    employee: _HrVacationEmployeeMaster.fromRow(
+      employee ??
+          {
+            'id': '8',
+            'nombre': 'COLABORADORA DE PRUEBA',
+            'salario': 2100,
+            'salario_real_percibido': 3500,
+            'fecha_ingreso': '2020-01-01',
+          },
+    ),
+    balance: balance == null ? null : _HrVacationBalanceRecord.fromRow(balance),
     events: events.map(_HrVacationEventRecord.fromRow).toList(),
     rules: [],
     exerciseYear: 2026,
@@ -39,6 +44,10 @@ Widget hrVacationTabsForTesting({
             'action': result.action.name,
             'paid': result.balance.daysPaid,
             'enjoyed': result.balance.daysEnjoyed,
+            'manual_date': _vacationDbDate(result.balance.baseManualDate),
+            'import_sources': {
+              for (final e in result.events) e.localId: e.importSource,
+            },
             'events': [
               for (final e in result.events)
                 e.toRow(
@@ -71,4 +80,38 @@ Map<String, dynamic> hrVacationReloadForTesting(Map<String, dynamic> event) {
     'enjoyed': totals.daysEnjoyed,
     'payroll_payment': _vacationEventHasPayrollFootprint(draft),
   };
+}
+
+@visibleForTesting
+List<Map<String, dynamic>> hrVacationCalculationsForTesting(
+  Map<String, dynamic> event, {
+  Map<String, dynamic>? employee,
+  Map<String, dynamic>? balance,
+}) {
+  final record = _HrVacationEventRecord.fromRow(event);
+  final row = _buildVacationSummaryRow(
+    employee: _HrVacationEmployeeMaster.fromRow(
+      employee ??
+          {
+            'id': '8',
+            'nombre': 'PRUEBA',
+            'salario': 2100,
+            'salario_real_percibido': 3500,
+            'fecha_ingreso': '2020-01-01',
+          },
+    ),
+    balance: balance == null ? null : _HrVacationBalanceRecord.fromRow(balance),
+    events: [record],
+    rules: [],
+    exerciseYear: 2026,
+  );
+  final draft = _HrVacationEventDraft.fromRecord(record);
+  _normalizeVacationEventDraft(draft);
+  return _buildVacationCalculationPayloads(
+    eventId: record.id,
+    employeeId: record.employeeId,
+    exerciseYear: 2026,
+    event: draft,
+    balance: _HrVacationBalanceDraft.fromSummaryRow(row),
+  );
 }
