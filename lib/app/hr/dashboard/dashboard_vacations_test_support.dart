@@ -31,3 +31,11 @@ Widget hrDashboardVacationChartForTesting(List<double> values) => SizedBox(
   height: 54,
   child: _HrDashboardMiniBars(values: values, preserveTimeline: true),
 );
+
+@visibleForTesting
+Map<String, double> hrDashboardPayrollForTesting(
+  List<Map<String, dynamic>> rows,
+) {
+  final payroll = _HrDashboardPayroll.fromRows(rows);
+  return {'fiscal': payroll.fiscalTotal, 'total': payroll.visibleTotal};
+}

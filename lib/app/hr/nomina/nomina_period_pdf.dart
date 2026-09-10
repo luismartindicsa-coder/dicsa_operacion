@@ -63,6 +63,7 @@ class _HrNominaPeriodPdf {
   // Same display expression as the original report's "Fiscal base" column.
   double fiscalOrigin(_HrNominaSummaryRow r) =>
       r.fiscalAmount +
+      r.fiscalManualDeductionAmount +
       (r.incidencesInformational ? 0 : r.fiscalLateDeductionAmount);
   double bonus(_HrNominaSummaryRow r) =>
       r.overtimeMonetizedAmount + r.manualBonusAmount;
@@ -135,7 +136,7 @@ class _HrNominaPeriodPdf {
           ),
           note(
             allInformational
-                ? 'El neto fiscal conserva los descuentos de su fuente fiscal. Las incidencias de retardo son informativas y no se descuentan nuevamente.'
+                ? 'El neto fiscal conserva los descuentos de su fuente fiscal. Las incidencias de retardo son informativas. El descuento fiscal manual de RH sí reduce el pago.'
                 : 'Las incidencias informativas no se descuentan nuevamente. En los registros sin ese indicador, el efecto del retardo ya está incluido en el neto fiscal mostrado.',
           ),
           fiscalAppendix(),
@@ -760,13 +761,14 @@ class _HrNominaPeriodPdf {
       'EMPRESA',
       'FISCAL DE\nORIGEN',
       allInformational ? 'RETARDO\nINFORMADO' : 'RETARDO\nREGISTRADO',
+      'DESCUENTO\nFISCAL RH',
       'FISCAL\nNETO',
       'DEPÓSITO',
       'CHEQUE',
     ],
-    widths: [.55, 3.3, 1.4, 1.2, 1.1, 1.2, 1.2, 1.2],
+    widths: [.5, 2.8, 1.1, 1.2, 1.1, 1.2, 1.2, 1.2, 1.2],
     textColumns: 3,
-    strongColumn: 5,
+    strongColumn: 6,
     data: [
       for (final r in rows)
         [
@@ -776,6 +778,7 @@ class _HrNominaPeriodPdf {
           ...[
             fiscalOrigin(r),
             r.fiscalLateDeductionAmount,
+            r.fiscalManualDeductionAmount,
             r.fiscalAmount,
             r.fiscalDepositedAmount,
             r.fiscalCashAmount,
@@ -789,6 +792,7 @@ class _HrNominaPeriodPdf {
       ...[
         sum(fiscalOrigin),
         sum((r) => r.fiscalLateDeductionAmount),
+        sum((r) => r.fiscalManualDeductionAmount),
         metrics.fiscal,
         metrics.fiscalDeposited,
         metrics.fiscalCash,

@@ -279,7 +279,14 @@ void main() {
       expect(stored['payment_reference'], 'NUEVA REF');
       expect(stored['payment_channel'], 'mixto');
       expect(stored['draft_status'], 'borrador');
-      expect(stored.keys.toSet(), {...draft().keys, 'source_snapshot'});
+      expect(stored['fiscal_manual_deduction_amount'], 0);
+      expect(stored['fiscal_manual_deduction_reason'], '');
+      expect(stored.keys.toSet(), {
+        ...draft().keys,
+        'source_snapshot',
+        'fiscal_manual_deduction_amount',
+        'fiscal_manual_deduction_reason',
+      });
       await tester.tap(find.text('Abrir empleado'));
       await tester.pumpAndSettle();
       for (final section in fieldSections.entries) {

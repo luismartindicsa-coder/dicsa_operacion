@@ -183,3 +183,23 @@ Future<Uint8List> hrNominaPeriodReportPdfForTesting({
     isPeriodClosed: closed,
   );
 }
+
+@visibleForTesting
+Future<Uint8List> hrNominaManualFiscalReceiptForTesting(
+  Map<String, dynamic> draft,
+) {
+  final period = draft['period_label'] as String;
+  final row = _buildNominaRows(
+    draftRows: [_HrNominaDraftRecord.fromRow(draft)],
+    activePeriodLabel: period,
+  ).single;
+  final snapshot = _HrNominaReceiptSnapshot.fromSummaryRow(
+    row: row,
+    periodLabel: period,
+    issuedAt: DateTime(2026, 9, 10),
+    version: 1,
+  );
+  return _buildHrNominaReceiptPdf(
+    _HrNominaReceiptSnapshot.tryFromJson(snapshot.toJson())!,
+  );
+}

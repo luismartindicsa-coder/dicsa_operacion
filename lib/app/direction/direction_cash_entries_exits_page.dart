@@ -404,7 +404,6 @@ class _DirectionCashEntriesExitsPageState
   @override
   void initState() {
     super.initState();
-    unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_resolveNavigationAccess());
     _loadCatalogOptions();
     _loadVouchers();

@@ -771,7 +771,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
               .from('hr_prenomina_draft_rows')
               .select(
                 'period_label,employee_id,employee_name,empresa,draft_status,'
-                'manual_adjustment_amount,fiscal_net_amount,fiscal_late_deduction_amount,fiscal_vacation_amount,'
+                'manual_adjustment_amount,fiscal_net_amount,fiscal_manual_deduction_amount,source_snapshot,fiscal_late_deduction_amount,fiscal_vacation_amount,'
                 'cash_salary_amount,cash_vacation_amount,cash_isr_amount,transport_support_amount,holiday_amount,'
                 'overtime_monetized_amount,manual_bonus_amount,cash_absence_deduction_amount,'
                 'cash_infonavit_deduction_amount,cash_fonacot_deduction_amount,loan_deduction_amount,'
@@ -2848,9 +2848,20 @@ class _HrDashboardPayroll {
     var visible = 0.0;
     for (final row in rows) {
       final fiscalNet = _hrDashboardNumber(row['fiscal_net_amount']);
-      final late = _hrDashboardNumber(row['fiscal_late_deduction_amount']);
-      final fiscalVacation = _hrDashboardNumber(row['fiscal_vacation_amount']);
-      final fiscalRow = math.max(0.0, fiscalNet - late) + fiscalVacation;
+      final snapshot = row['source_snapshot'] as Map? ?? const {};
+      final informational = snapshot['incidences_informational'] == true;
+      final late = informational
+          ? 0.0
+          : _hrDashboardNumber(row['fiscal_late_deduction_amount']);
+      final fiscalVacation = snapshot['contpaq_official_net'] != null
+          ? 0.0
+          : _hrDashboardNumber(row['fiscal_vacation_amount']);
+      final fiscalRow = math.max(
+        0.0,
+        math.max(0.0, fiscalNet - late) +
+            fiscalVacation -
+            _hrDashboardNumber(row['fiscal_manual_deduction_amount']),
+      );
       final cashIncome =
           _hrDashboardNumber(row['cash_salary_amount']) +
           _hrDashboardNumber(row['cash_vacation_amount']) +
@@ -2860,7 +2871,9 @@ class _HrDashboardPayroll {
           _hrDashboardNumber(row['manual_bonus_amount']);
       final cashDeductions =
           _hrDashboardNumber(row['cash_isr_amount']) +
-          _hrDashboardNumber(row['cash_absence_deduction_amount']) +
+          (informational
+              ? 0.0
+              : _hrDashboardNumber(row['cash_absence_deduction_amount'])) +
           _hrDashboardNumber(row['cash_infonavit_deduction_amount']) +
           _hrDashboardNumber(row['cash_fonacot_deduction_amount']) +
           _hrDashboardNumber(row['loan_deduction_amount']);

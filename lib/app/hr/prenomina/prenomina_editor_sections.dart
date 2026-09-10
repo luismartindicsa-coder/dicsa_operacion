@@ -103,6 +103,19 @@ class _PrenominaSummary extends StatelessWidget {
                   label: 'Vacaciones ya pagadas · descuento fiscal',
                   amount: row.prepaidVacation.fiscal,
                 ),
+              if (row.fiscalManualDeductionAmount > 0) ...[
+                _PrenominaAmount(
+                  label: 'Descuento fiscal manual',
+                  amount: row.fiscalManualDeductionAmount,
+                ),
+                Text(
+                  row.fiscalManualDeductionReason,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: humanResourcesAreaTokens.badgeText,
+                  ),
+                ),
+              ],
               _PrenominaAmount(
                 label: 'Total a pagar en Fiscal',
                 amount: row.fiscalTotalAmount,

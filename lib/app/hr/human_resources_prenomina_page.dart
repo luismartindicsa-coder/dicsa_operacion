@@ -2108,6 +2108,8 @@ class _HrPrenominaDraftRowRecord {
   final _HrPrenominaDraftStatus draftStatus;
   final double manualAdjustmentAmount;
   final double? fiscalNetAmount;
+  final double fiscalManualDeductionAmount;
+  final String fiscalManualDeductionReason;
   final double? fiscalImssAmount;
   final double? fiscalInfonavitAmount;
   final double? fiscalFonacotAmount;
@@ -2142,6 +2144,8 @@ class _HrPrenominaDraftRowRecord {
     required this.draftStatus,
     required this.manualAdjustmentAmount,
     required this.fiscalNetAmount,
+    this.fiscalManualDeductionAmount = 0,
+    this.fiscalManualDeductionReason = '',
     required this.fiscalImssAmount,
     required this.fiscalInfonavitAmount,
     required this.fiscalFonacotAmount,
@@ -2183,6 +2187,11 @@ class _HrPrenominaDraftRowRecord {
       manualAdjustmentAmount: _parsePrenominaNumber(
         row['manual_adjustment_amount'],
       ),
+      fiscalManualDeductionAmount: _parsePrenominaNumber(
+        row['fiscal_manual_deduction_amount'],
+      ),
+      fiscalManualDeductionReason: (row['fiscal_manual_deduction_reason'] ?? '')
+          .toString(),
       fiscalNetAmount: row['fiscal_net_amount'] == null
           ? null
           : _parsePrenominaNumber(row['fiscal_net_amount']) + prepaid.fiscal,
@@ -2308,6 +2317,8 @@ class _HrPrenominaSummaryRow {
   final double contpaqInfonavitAmount;
   final double contpaqFonacotAmount;
   final double fiscalNetAmount;
+  final double fiscalManualDeductionAmount;
+  final String fiscalManualDeductionReason;
   final double fiscalImssAmount;
   final double fiscalInfonavitAmount;
   final double fiscalFonacotAmount;
@@ -2370,6 +2381,8 @@ class _HrPrenominaSummaryRow {
     required this.contpaqInfonavitAmount,
     required this.contpaqFonacotAmount,
     required this.fiscalNetAmount,
+    this.fiscalManualDeductionAmount = 0,
+    this.fiscalManualDeductionReason = '',
     required this.fiscalImssAmount,
     required this.fiscalInfonavitAmount,
     required this.fiscalFonacotAmount,
@@ -2476,11 +2489,15 @@ class _HrPrenominaSummaryRow {
     return amount < 0 ? 0 : amount;
   }
 
-  double get fiscalTotalAmount =>
+  double get fiscalBeforeManualDeductionAmount =>
       fiscalNetAfterLateDeductionAmount +
       (sourceSnapshot['contpaq_official_net'] != null
           ? 0
           : fiscalVacationAmount);
+  double get fiscalTotalAmount =>
+      (fiscalBeforeManualDeductionAmount - fiscalManualDeductionAmount)
+          .clamp(0, double.infinity)
+          .toDouble();
   double get fiscalCashAmount => checkAmount.clamp(0, fiscalTotalAmount);
   double get fiscalDepositedAmount {
     final amount = fiscalTotalAmount - fiscalCashAmount;
@@ -2511,6 +2528,8 @@ class _HrPrenominaDraftDraft {
   _HrPrenominaDraftStatus draftStatus;
   String manualAdjustmentAmountText;
   String fiscalNetAmountText;
+  String fiscalManualDeductionAmountText;
+  String fiscalManualDeductionReason;
   String fiscalImssAmountText;
   String fiscalInfonavitAmountText;
   String fiscalFonacotAmountText;
@@ -2543,6 +2562,8 @@ class _HrPrenominaDraftDraft {
     required this.draftStatus,
     required this.manualAdjustmentAmountText,
     required this.fiscalNetAmountText,
+    this.fiscalManualDeductionAmountText = '',
+    this.fiscalManualDeductionReason = '',
     required this.fiscalImssAmountText,
     required this.fiscalInfonavitAmountText,
     required this.fiscalFonacotAmountText,
@@ -2579,6 +2600,10 @@ class _HrPrenominaDraftDraft {
           ? ''
           : row.manualAdjustmentAmount.toStringAsFixed(2),
       fiscalNetAmountText: _draftMoneyText(row.fiscalNetAmount),
+      fiscalManualDeductionAmountText: _draftMoneyText(
+        row.fiscalManualDeductionAmount,
+      ),
+      fiscalManualDeductionReason: row.fiscalManualDeductionReason,
       fiscalImssAmountText: _draftMoneyText(row.fiscalImssAmount),
       fiscalInfonavitAmountText: _draftMoneyText(row.fiscalInfonavitAmount),
       fiscalFonacotAmountText: _draftMoneyText(row.fiscalFonacotAmount),
@@ -2617,8 +2642,17 @@ class _HrPrenominaDraftDraft {
   }
 
   String? get firstInvalidMoneyFieldLabel {
+    if (fiscalManualDeductionAmountText.trim().isNotEmpty) {
+      final amount = _parsePrenominaDraftText(fiscalManualDeductionAmountText);
+      if (amount == null ||
+          !amount.isFinite ||
+          ((amount * 100).roundToDouble() - amount * 100).abs() > .000001) {
+        return 'Descuento fiscal manual';
+      }
+    }
     final fields = <(String, String)>[
       ('Neto fiscal', fiscalNetAmountText),
+      ('Descuento fiscal manual', fiscalManualDeductionAmountText),
       ('IMSS fiscal', fiscalImssAmountText),
       ('INFONAVIT fiscal', fiscalInfonavitAmountText),
       ('FONACOT fiscal', fiscalFonacotAmountText),
@@ -2666,11 +2700,17 @@ class _HrPrenominaDraftDraft {
     // Prepaid vacation settles salary already paid, independently of the
     // informational attendance deductions included in CONTPAQ's net.
     final settlement = calculatedSettlement;
-    final payableFiscal =
+    final fiscalManual =
+        _parsePrenominaDraftText(fiscalManualDeductionAmountText) ?? 0;
+    final fiscalBeforeManual =
         ((fiscal ?? 0) - settlement.fiscal).clamp(0, double.infinity) +
         (sourceSnapshot['contpaq_official_net'] != null
             ? 0
             : (_parsePrenominaDraftText(fiscalVacationAmountText) ?? 0));
+    final payableFiscal = (fiscalBeforeManual - fiscalManual).clamp(
+      0,
+      double.infinity,
+    );
     final fiscalInCash = sourceSnapshot['fiscal_payment_is_manual'] == false
         ? (sourceSnapshot['personal_fiscal_payment_mode'] == 'cheque'
               ? payableFiscal
@@ -2709,6 +2749,8 @@ class _HrPrenominaDraftDraft {
       'manual_adjustment_amount':
           _parsePrenominaDraftText(manualAdjustmentAmountText) ?? 0.0,
       'fiscal_net_amount': fiscal == null ? null : fiscal - settlement.fiscal,
+      'fiscal_manual_deduction_amount': fiscalManual,
+      'fiscal_manual_deduction_reason': fiscalManualDeductionReason.trim(),
       'fiscal_imss_amount': _parsePrenominaDraftText(fiscalImssAmountText),
       'fiscal_infonavit_amount': _parsePrenominaDraftText(
         fiscalInfonavitAmountText,
@@ -3391,13 +3433,17 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           draft?.sourceSnapshot ?? const {},
           draft?.checkAmount,
         );
-        final payableFiscal =
+        final fiscalManualDeductionAmount =
+            draft?.fiscalManualDeductionAmount ?? 0;
+        final fiscalBeforeManual =
             (fiscalNetAmount - (isPublished ? 0 : prepaidVacation.fiscal))
                 .clamp(0, double.infinity) +
             (officialNet != null ||
                     draft?.sourceSnapshot['contpaq_official_net'] != null
                 ? 0
                 : fiscalVacationAmount);
+        final payableFiscal = (fiscalBeforeManual - fiscalManualDeductionAmount)
+            .clamp(0, double.infinity);
         final checkAmount = HrFiscalPayment.resolve(
           total: payableFiscal.toDouble(),
           storedCheque: draft?.checkAmount,
@@ -3504,6 +3550,8 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           contpaqInfonavitAmount: contpaqInfonavitAmount,
           contpaqFonacotAmount: contpaqFonacotAmount,
           fiscalNetAmount: fiscalNetAmount,
+          fiscalManualDeductionAmount: fiscalManualDeductionAmount,
+          fiscalManualDeductionReason: draft?.fiscalManualDeductionReason ?? '',
           fiscalImssAmount: fiscalImssAmount,
           fiscalInfonavitAmount: fiscalInfonavitAmount,
           fiscalFonacotAmount: fiscalFonacotAmount,

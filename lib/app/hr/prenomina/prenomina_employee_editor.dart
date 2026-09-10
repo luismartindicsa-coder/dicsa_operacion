@@ -90,6 +90,23 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
       });
       return;
     }
+    final manual =
+        _parsePrenominaDraftText(_draft.fiscalManualDeductionAmountText) ?? 0;
+    if (manual < 0 ||
+        manual > _preview.fiscalBeforeManualDeductionAmount + .001) {
+      setState(
+        () => _moneyValidationMessage =
+            'El descuento fiscal manual debe estar entre cero y el fiscal disponible (${_formatPrenominaMoneyZero(_preview.fiscalBeforeManualDeductionAmount)}).',
+      );
+      return;
+    }
+    if (manual > 0 && _draft.fiscalManualDeductionReason.trim().isEmpty) {
+      setState(
+        () => _moneyValidationMessage =
+            'Indica el motivo del descuento fiscal manual.',
+      );
+      return;
+    }
     Navigator.of(
       context,
     ).pop(_HrPrenominaEditResult(action: action, draft: _draft));
@@ -448,6 +465,45 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _PrenominaPanel(
+              title: 'Descuento fiscal manual',
+              children: [
+                const Text(
+                  'Este importe sí se resta del fiscal a pagar. Úsalo para descuentos adicionales al neto importado de CONTPAQ.',
+                ),
+                const SizedBox(height: 12),
+                _money(
+                  'fiscalManualDeductionAmount',
+                  'Importe del descuento fiscal',
+                  _draft.fiscalManualDeductionAmountText,
+                  (v) => _draft.fiscalManualDeductionAmountText = v,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const ValueKey('fiscalManualDeductionReason'),
+                  initialValue: _draft.fiscalManualDeductionReason,
+                  decoration: _prenominaInputDecoration(
+                    'Motivo del descuento fiscal',
+                  ),
+                  maxLines: 2,
+                  onChanged: (v) {
+                    _draft.fiscalManualDeductionReason = v;
+                    _changed();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _PrenominaAmount(
+                  label: 'Fiscal antes del descuento manual',
+                  amount: _preview.fiscalBeforeManualDeductionAmount,
+                ),
+                _PrenominaAmount(
+                  label: 'Fiscal a pagar',
+                  amount: _preview.fiscalTotalAmount,
+                  strong: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             _PrenominaPanel(
               title: 'Descuentos fiscales · editable por RH',
               children: [

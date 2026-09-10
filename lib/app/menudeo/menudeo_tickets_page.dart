@@ -210,7 +210,6 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   void initState() {
     super.initState();
     _pendingInitialTicketId = widget.initialTicketId;
-    unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_loadCatalogPrices());
     unawaited(_loadTickets());
     for (final controller in <TextEditingController>[

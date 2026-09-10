@@ -286,13 +286,23 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
       title: 'Fiscal',
       rows: [
         if (widget.draft != null)
-          _amount('Fiscal antes de retardo', widget.draft!.fiscalNetAmount),
+          _amount(
+            'Fiscal antes de descuentos manuales',
+            widget.draft!.fiscalNetAmount,
+          ),
         _amount(
           r.incidencesInformational
               ? 'Retardos · informativo'
               : 'Retardos fiscales',
           r.fiscalLateDeductionAmount,
         ),
+        if (r.fiscalManualDeductionAmount > 0) ...[
+          _amount('Descuento fiscal manual', r.fiscalManualDeductionAmount),
+          _HrNominaDetailLine(
+            label: 'Motivo',
+            value: r.fiscalManualDeductionReason,
+          ),
+        ],
         _amount('Fiscal total', r.fiscalAmount, strong: true),
         _amount('Fiscal depositado', r.fiscalDepositedAmount),
         _amount('Fiscal sin depósito', r.fiscalCashAmount),
@@ -352,6 +362,16 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
           _HrNominaDetailBlock(
             title: 'Deducciones fiscales disponibles',
             rows: [
+              if (r.fiscalManualDeductionAmount > 0) ...[
+                _amount(
+                  'Descuento fiscal manual',
+                  r.fiscalManualDeductionAmount,
+                ),
+                _HrNominaDetailLine(
+                  label: 'Motivo',
+                  value: r.fiscalManualDeductionReason,
+                ),
+              ],
               _amount(
                 r.incidencesInformational
                     ? 'Retardos · informativo'

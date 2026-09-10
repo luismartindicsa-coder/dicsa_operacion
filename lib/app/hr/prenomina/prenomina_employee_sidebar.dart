@@ -38,7 +38,7 @@ class _PrenominaEmployeeSidebar extends StatelessWidget {
     _PrenominaSection.percepciones =>
       'Fiscal ${_formatPrenominaMoneyZero(row.fiscalNetAmount + row.fiscalVacationAmount)}\nFlujo ${_formatPrenominaMoneyZero(row.operationalCashSubtotalAmount + row.paymentOutsideAmount + row.manualAdjustmentAmount)}',
     _PrenominaSection.descuentos =>
-      'Fiscal ${_formatPrenominaMoneyZero(_prenominaFiscalDeductions(row))}\nFlujo ${_formatPrenominaMoneyZero(row.operationalCashDeductionsTotalAmount)}',
+      'Fiscal ${_formatPrenominaMoneyZero(_prenominaFiscalDeductions(row) + row.fiscalManualDeductionAmount)}\nFlujo ${_formatPrenominaMoneyZero(row.operationalCashDeductionsTotalAmount)}',
     _PrenominaSection.notas => notes.trim().isEmpty ? 'Sin notas' : '1 nota RH',
   };
 

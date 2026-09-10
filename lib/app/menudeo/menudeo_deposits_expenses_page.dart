@@ -645,7 +645,6 @@ class _MenudeoDepositsExpensesPageState
   void initState() {
     super.initState();
     _pendingInitialVoucherId = widget.initialVoucherId;
-    unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_resolveNavigationAccess());
     unawaited(_syncVoucherSequences());
     unawaited(_loadVouchers());

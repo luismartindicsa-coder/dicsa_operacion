@@ -117,7 +117,7 @@ const String _kHrWeeklyVacationFields =
 
 const String _kHrWeeklyPrenominaFields =
     'period_label,employee_id,employee_name,empresa,draft_status,'
-    'manual_adjustment_amount,fiscal_net_amount,fiscal_late_deduction_amount,'
+    'manual_adjustment_amount,fiscal_net_amount,fiscal_manual_deduction_amount,source_snapshot,fiscal_late_deduction_amount,'
     'fiscal_vacation_amount,cash_salary_amount,cash_vacation_amount,'
     'cash_isr_amount,transport_support_amount,holiday_amount,'
     'overtime_monetized_amount,manual_bonus_amount,cash_absence_deduction_amount,'
@@ -13021,13 +13021,22 @@ class _HrWeeklyPayroll {
     var cashOperationalTotal = 0.0;
     var adjustmentsAndOutsideTotal = 0.0;
     for (final row in rows) {
-      final fiscal =
-          math.max(
-            0.0,
-            _number(row['fiscal_net_amount']) -
-                _number(row['fiscal_late_deduction_amount']),
-          ) +
-          _number(row['fiscal_vacation_amount']);
+      final snapshot = row['source_snapshot'] as Map? ?? const {};
+      final informational = snapshot['incidences_informational'] == true;
+      final fiscal = math.max(
+        0.0,
+        math.max(
+              0.0,
+              _number(row['fiscal_net_amount']) -
+                  (informational
+                      ? 0.0
+                      : _number(row['fiscal_late_deduction_amount'])),
+            ) +
+            (snapshot['contpaq_official_net'] != null
+                ? 0.0
+                : _number(row['fiscal_vacation_amount'])) -
+            _number(row['fiscal_manual_deduction_amount']),
+      );
       final cashIncome =
           _number(row['cash_salary_amount']) +
           _number(row['cash_vacation_amount']) +
@@ -13037,7 +13046,9 @@ class _HrWeeklyPayroll {
           _number(row['manual_bonus_amount']);
       final cashDeductions =
           _number(row['cash_isr_amount']) +
-          _number(row['cash_absence_deduction_amount']) +
+          (informational
+              ? 0.0
+              : _number(row['cash_absence_deduction_amount'])) +
           _number(row['cash_infonavit_deduction_amount']) +
           _number(row['cash_fonacot_deduction_amount']) +
           _number(row['loan_deduction_amount']);

@@ -134,7 +134,7 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
             .from(_kHrNominaDraftRowsTable)
             .select(
               'id,created_at,period_label,employee_id,employee_name,empresa,draft_status,'
-              'manual_adjustment_amount,fiscal_net_amount,cash_salary_amount,cash_vacation_amount,'
+              'manual_adjustment_amount,fiscal_net_amount,fiscal_manual_deduction_amount,fiscal_manual_deduction_reason,cash_salary_amount,cash_vacation_amount,'
               'fiscal_late_deduction_amount,'
               'cash_isr_amount,transport_support_amount,holiday_amount,overtime_monetized_amount,'
               'manual_bonus_amount,cash_absence_deduction_amount,cash_infonavit_deduction_amount,'
@@ -966,6 +966,8 @@ class _HrNominaDraftRecord {
   final double manualAdjustmentAmount;
   final double fiscalNetAmount;
   final double fiscalLateDeductionAmount;
+  final double fiscalManualDeductionAmount;
+  final String fiscalManualDeductionReason;
   final double cashSalaryAmount;
   final double cashVacationAmount;
   final double cashIsrAmount;
@@ -995,6 +997,8 @@ class _HrNominaDraftRecord {
     required this.manualAdjustmentAmount,
     required this.fiscalNetAmount,
     required this.fiscalLateDeductionAmount,
+    this.fiscalManualDeductionAmount = 0,
+    this.fiscalManualDeductionReason = '',
     required this.cashSalaryAmount,
     required this.cashVacationAmount,
     required this.cashIsrAmount,
@@ -1027,6 +1031,11 @@ class _HrNominaDraftRecord {
         row['manual_adjustment_amount'],
       ),
       fiscalNetAmount: _parseHrNominaNumber(row['fiscal_net_amount']),
+      fiscalManualDeductionAmount: _parseHrNominaNumber(
+        row['fiscal_manual_deduction_amount'],
+      ),
+      fiscalManualDeductionReason: (row['fiscal_manual_deduction_reason'] ?? '')
+          .toString(),
       fiscalLateDeductionAmount: _parseHrNominaNumber(
         row['fiscal_late_deduction_amount'],
       ),
@@ -1076,6 +1085,8 @@ class _HrNominaSummaryRow {
   final String notes;
   final double fiscalAmount;
   final double fiscalLateDeductionAmount;
+  final double fiscalManualDeductionAmount;
+  final String fiscalManualDeductionReason;
   final double complementsAmount;
   final double deductionsAmount;
   final double totalAmount;
@@ -1107,6 +1118,8 @@ class _HrNominaSummaryRow {
     required this.notes,
     required this.fiscalAmount,
     required this.fiscalLateDeductionAmount,
+    this.fiscalManualDeductionAmount = 0,
+    this.fiscalManualDeductionReason = '',
     required this.complementsAmount,
     required this.deductionsAmount,
     required this.totalAmount,
@@ -1244,6 +1257,7 @@ List<_HrNominaSummaryRow> _buildNominaRows({
             draft.loanDeductionAmount;
         final fiscalAmount =
             (draft.fiscalNetAmount -
+                    draft.fiscalManualDeductionAmount -
                     (draft.sourceSnapshot['incidences_informational'] == true
                         ? 0
                         : draft.fiscalLateDeductionAmount))
@@ -1301,6 +1315,8 @@ List<_HrNominaSummaryRow> _buildNominaRows({
           notes: draft.notes,
           fiscalAmount: fiscalAmount,
           fiscalLateDeductionAmount: draft.fiscalLateDeductionAmount,
+          fiscalManualDeductionAmount: draft.fiscalManualDeductionAmount,
+          fiscalManualDeductionReason: draft.fiscalManualDeductionReason,
           complementsAmount: complements,
           deductionsAmount: deductions,
           totalAmount: total,
@@ -1437,6 +1453,8 @@ class _HrNominaReceiptSnapshot {
   final String notes;
   final double fiscalAmount;
   final double fiscalLateDeductionAmount;
+  final double fiscalManualDeductionAmount;
+  final String fiscalManualDeductionReason;
   final double fiscalDepositedAmount;
   final double fiscalCashAmount;
   final double cashSalaryAmount;
@@ -1467,6 +1485,8 @@ class _HrNominaReceiptSnapshot {
     required this.notes,
     required this.fiscalAmount,
     required this.fiscalLateDeductionAmount,
+    this.fiscalManualDeductionAmount = 0,
+    this.fiscalManualDeductionReason = '',
     required this.fiscalDepositedAmount,
     required this.fiscalCashAmount,
     required this.cashSalaryAmount,
@@ -1504,6 +1524,8 @@ class _HrNominaReceiptSnapshot {
       fiscalAmount: row.fiscalAmount,
       incidencesInformational: row.incidencesInformational,
       fiscalLateDeductionAmount: row.fiscalLateDeductionAmount,
+      fiscalManualDeductionAmount: row.fiscalManualDeductionAmount,
+      fiscalManualDeductionReason: row.fiscalManualDeductionReason,
       fiscalDepositedAmount: row.fiscalDepositedAmount,
       fiscalCashAmount: row.fiscalCashAmount,
       cashSalaryAmount: row.cashSalaryAmount,
@@ -1541,6 +1563,11 @@ class _HrNominaReceiptSnapshot {
       paymentReference: (value['payment_reference'] ?? '').toString(),
       notes: (value['notes'] ?? '').toString(),
       fiscalAmount: _parseHrNominaNumber(value['fiscal_amount']),
+      fiscalManualDeductionAmount: _parseHrNominaNumber(
+        value['fiscal_manual_deduction_amount'],
+      ),
+      fiscalManualDeductionReason:
+          (value['fiscal_manual_deduction_reason'] ?? '').toString(),
       incidencesInformational: value['incidences_informational'] == true,
       fiscalLateDeductionAmount: _parseHrNominaNumber(
         value['fiscal_late_deduction_amount'],
@@ -1591,6 +1618,8 @@ class _HrNominaReceiptSnapshot {
     'fiscal_amount': fiscalAmount,
     'incidences_informational': incidencesInformational,
     'fiscal_late_deduction_amount': fiscalLateDeductionAmount,
+    'fiscal_manual_deduction_amount': fiscalManualDeductionAmount,
+    'fiscal_manual_deduction_reason': fiscalManualDeductionReason,
     'fiscal_deposited_amount': fiscalDepositedAmount,
     'fiscal_cash_amount': fiscalCashAmount,
     'cash_salary_amount': cashSalaryAmount,
@@ -1726,6 +1755,11 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                 _hrNominaPdfData('Canal de pago', snapshot.paymentChannel),
                 if (snapshot.paymentReference.isNotEmpty)
                   _hrNominaPdfData('Referencia', snapshot.paymentReference),
+                if (snapshot.fiscalManualDeductionAmount > 0)
+                  _hrNominaPdfData(
+                    'Motivo del descuento fiscal',
+                    snapshot.fiscalManualDeductionReason,
+                  ),
               ],
             ),
           ),
@@ -1744,6 +1778,7 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                             ? 'Neto fiscal oficial'
                             : 'Fiscal antes de retardo',
                         snapshot.fiscalAmount +
+                            snapshot.fiscalManualDeductionAmount +
                             (snapshot.incidencesInformational
                                 ? 0
                                 : snapshot.fiscalLateDeductionAmount),
@@ -1763,6 +1798,7 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                     totalLabel: 'TOTAL PERCEPCIONES',
                     total:
                         snapshot.fiscalAmount +
+                        snapshot.fiscalManualDeductionAmount +
                         (snapshot.incidencesInformational
                             ? 0
                             : snapshot.fiscalLateDeductionAmount) +
@@ -1784,6 +1820,11 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                             : 'Retardos fiscales',
                         snapshot.fiscalLateDeductionAmount,
                       ),
+                      if (snapshot.fiscalManualDeductionAmount > 0)
+                        (
+                          'Descuento fiscal manual',
+                          snapshot.fiscalManualDeductionAmount,
+                        ),
                       ('ISR operativo', snapshot.cashIsrAmount),
                       (
                         snapshot.incidencesInformational
@@ -1800,7 +1841,8 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                         (snapshot.incidencesInformational
                             ? 0
                             : snapshot.fiscalLateDeductionAmount) +
-                        snapshot.deductions,
+                        snapshot.deductions +
+                        snapshot.fiscalManualDeductionAmount,
                     negativeRows: true,
                   ),
                 ),

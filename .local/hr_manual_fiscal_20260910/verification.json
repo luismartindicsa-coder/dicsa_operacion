@@ -1,0 +1,73 @@
+{
+  "mode": "applied",
+  "migration": "20260910120000_add_prenomina_manual_fiscal_deduction.sql",
+  "sha256": "2000f5fcd0cdb927b34ec5ccfdca7d8b3c655cd2305b1e8bfa27bf5d318a5269",
+  "checks": [],
+  "existing_payroll_loans_people_receipts_unchanged": true,
+  "manual_discounts_applied_to_employees": 0,
+  "before": {
+    "hr_prenomina_draft_rows": {
+      "n": 90,
+      "hash": "3be9c2016109f0694f5ebf97203bc33a"
+    },
+    "hr_payroll_period_closures": {
+      "n": 1,
+      "hash": "43ecb4df8790895cad10594512a54182"
+    },
+    "hr_payroll_receipt_documents": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    },
+    "hr_employee_profiles": {
+      "n": 86,
+      "hash": "ded0f0fb935e1cdf3a3909bcd24d44b4"
+    },
+    "hr_loan_fund": {
+      "n": 1,
+      "hash": "fe7dfbef888b21ceed82b5813936ea30"
+    },
+    "hr_employee_loans": {
+      "n": 6,
+      "hash": "aa0876b4dc99834d3eb509fd8e4a7411"
+    },
+    "hr_loan_payments": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    }
+  },
+  "after": {
+    "hr_prenomina_draft_rows": {
+      "n": 90,
+      "hash": "3be9c2016109f0694f5ebf97203bc33a"
+    },
+    "hr_payroll_period_closures": {
+      "n": 1,
+      "hash": "43ecb4df8790895cad10594512a54182"
+    },
+    "hr_payroll_receipt_documents": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    },
+    "hr_employee_profiles": {
+      "n": 86,
+      "hash": "ded0f0fb935e1cdf3a3909bcd24d44b4"
+    },
+    "hr_loan_fund": {
+      "n": 1,
+      "hash": "fe7dfbef888b21ceed82b5813936ea30"
+    },
+    "hr_employee_loans": {
+      "n": 6,
+      "hash": "aa0876b4dc99834d3eb509fd8e4a7411"
+    },
+    "hr_loan_payments": {
+      "n": 0,
+      "hash": "d751713988987e9331980363e24189ce"
+    }
+  },
+  "flutter_tests_passed": 65,
+  "sql_rollback_checks_passed": 6,
+  "visual_qa": "Production widget and generated synthetic period/receipt PDFs inspected",
+  "hot_reload": "USR1 sent to flutter run process 15215",
+  "live_ui_limitation": "CUA native pipe startup failed twice"
+}

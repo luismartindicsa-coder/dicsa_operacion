@@ -1081,6 +1081,7 @@ class DirectionGridPager extends StatelessWidget {
             child: DropdownButtonFormField<int>(
               initialValue: pageSize,
               isDense: true,
+              isExpanded: true,
               dropdownColor: kDirectionOliveDeep,
               iconEnabledColor: kDirectionSurfaceText,
               style: const TextStyle(
