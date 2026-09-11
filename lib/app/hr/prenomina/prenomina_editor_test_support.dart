@@ -151,6 +151,7 @@ List<Map<String, dynamic>> hrPrenominaPeriodProjectionForTesting({
           'name': row.displayName,
           'fiscal_cash': row.fiscalCashAmount,
           'fiscal_deposit': row.fiscalDepositedAmount,
+          'flow_delivery': row.flowDeliveryAmount,
           'envelope': row.cashEnvelopeAmount,
           'channel': row.paymentChannel.name,
           'extra_minutes': row.overtimeMinutesSum,

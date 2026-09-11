@@ -36,7 +36,7 @@ class _PrenominaEmployeeSidebar extends StatelessWidget {
     _PrenominaSection.vacaciones =>
       '${_prenominaCount(row.vacationTotalDays)} d vacaciones · ${_prenominaCount(row.permissionWithPayDays + row.permissionWithoutPayDays)} d permisos\n${_prenominaCount(row.permissionWithPayHours + row.permissionWithoutPayHours)} h permisos · ${_prenominaCount(row.disabilityDays)} d / ${_prenominaCount(row.disabilityHours)} h incap.',
     _PrenominaSection.percepciones =>
-      'Fiscal ${_formatPrenominaMoneyZero(row.fiscalNetAmount + row.fiscalVacationAmount)}\nFlujo ${_formatPrenominaMoneyZero(row.operationalCashSubtotalAmount + row.paymentOutsideAmount + row.manualAdjustmentAmount)}',
+      'Origen fiscal ${_formatPrenominaMoneyZero(row.fiscalNetAmount + row.fiscalVacationAmount)}\nComplementos ${_formatPrenominaMoneyZero(row.operationalCashSubtotalAmount + row.paymentOutsideAmount + row.manualAdjustmentAmount)}',
     _PrenominaSection.descuentos =>
       'Fiscal ${_formatPrenominaMoneyZero(_prenominaFiscalDeductions(row) + row.fiscalManualDeductionAmount)}\nFlujo ${_formatPrenominaMoneyZero(row.operationalCashDeductionsTotalAmount)}',
     _PrenominaSection.notas => notes.trim().isEmpty ? 'Sin notas' : '1 nota RH',

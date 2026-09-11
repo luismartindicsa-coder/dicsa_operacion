@@ -44,7 +44,7 @@ class _PrenominaSummary extends StatelessWidget {
       LayoutBuilder(
         builder: (context, constraints) {
           final fiscal = _PrenominaPanel(
-            title: 'PAGO EN FISCAL',
+            title: 'FISCAL · ORIGEN DEL PAGO',
             children: [
               _PrenominaAmount(
                 label: 'Neto fiscal oficial',
@@ -117,7 +117,7 @@ class _PrenominaSummary extends StatelessWidget {
                 ),
               ],
               _PrenominaAmount(
-                label: 'Total a pagar en Fiscal',
+                label: 'Total fiscal',
                 amount: row.fiscalTotalAmount,
                 strong: true,
               ),
@@ -127,13 +127,13 @@ class _PrenominaSummary extends StatelessWidget {
                 amount: row.fiscalDepositedAmount,
               ),
               _PrenominaAmount(
-                label: 'Cheque · fiscal en efectivo',
+                label: 'Cheque · incluido en Flujo a entregar',
                 amount: row.fiscalCashAmount,
               ),
             ],
           );
           final flow = _PrenominaPanel(
-            title: 'PAGO EN FLUJO',
+            title: 'FLUJO A ENTREGAR',
             children: [
               _PrenominaAmount(
                 label: 'Complemento',
@@ -195,9 +195,14 @@ class _PrenominaSummary extends StatelessWidget {
                 label: 'Ajuste RH',
                 amount: row.manualAdjustmentAmount,
               ),
+              if (row.fiscalCashAmount > 0)
+                _PrenominaAmount(
+                  label: 'Cheque · pago de origen fiscal',
+                  amount: row.fiscalCashAmount,
+                ),
               _PrenominaAmount(
-                label: 'Total a pagar en Flujo',
-                amount: row.weeklyPaymentVisibleAmount - row.fiscalTotalAmount,
+                label: 'Total Flujo a entregar',
+                amount: row.flowDeliveryAmount,
                 strong: true,
               ),
             ],
@@ -220,7 +225,7 @@ class _PrenominaSummary extends StatelessWidget {
         title: 'TOTAL A PAGAR AL COLABORADOR',
         children: [
           _PrenominaAmount(
-            label: 'Fiscal + Flujo',
+            label: 'Depósito fiscal + Flujo a entregar',
             amount: row.weeklyPaymentVisibleAmount,
             strong: true,
           ),

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_fiscal_payment.dart';
 
-/// Fiscal remains a dominant total; deposit and cheque explain its delivery.
+/// Deposit is the payment to send through the bank. Fiscal total remains
+/// visible as origin; its cheque portion is included in flow delivery.
 /// Fits the existing KPI row so small windows keep their working table area.
 class HrFiscalPaymentCard extends StatelessWidget {
   final HrFiscalPayment payment;
@@ -16,8 +17,66 @@ class HrFiscalPaymentCard extends StatelessWidget {
   });
 
   @override
+  Widget build(BuildContext context) => _HrPaymentBreakdownCard(
+    cardId: 'fiscal-payment-card',
+    title: 'Depósito fiscal',
+    amount: payment.deposit,
+    amountId: 'fiscal-deposit-total',
+    details: [
+      ('Total fiscal', payment.total, 'fiscal-combined-total'),
+      ('Cheque', payment.cheque, 'fiscal-cheque-total'),
+    ],
+    formatMoney: formatMoney,
+  );
+}
+
+/// Delivery total with its operational flow and fiscal cheque components.
+class HrFlowPaymentCard extends StatelessWidget {
+  final double deliveryAmount;
+  final double chequeAmount;
+  final String Function(double) formatMoney;
+
+  const HrFlowPaymentCard({
+    super.key,
+    required this.deliveryAmount,
+    required this.chequeAmount,
+    required this.formatMoney,
+  });
+
+  @override
+  Widget build(BuildContext context) => _HrPaymentBreakdownCard(
+    cardId: 'flow-payment-card',
+    title: 'Flujo a entregar',
+    amount: deliveryAmount,
+    amountId: 'flow-delivery-total',
+    details: [
+      ('Flujo', deliveryAmount - chequeAmount, 'flow-operational-total'),
+      ('Cheque', chequeAmount, 'flow-cheque-total'),
+    ],
+    formatMoney: formatMoney,
+  );
+}
+
+class _HrPaymentBreakdownCard extends StatelessWidget {
+  final String cardId;
+  final String title;
+  final double amount;
+  final String amountId;
+  final List<(String, double, String)> details;
+  final String Function(double) formatMoney;
+
+  const _HrPaymentBreakdownCard({
+    required this.cardId,
+    required this.title,
+    required this.amount,
+    required this.amountId,
+    required this.details,
+    required this.formatMoney,
+  });
+
+  @override
   Widget build(BuildContext context) => Container(
-    key: const ValueKey('fiscal-payment-card'),
+    key: ValueKey(cardId),
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
       color: humanResourcesAreaTokens.primarySoft,
@@ -30,7 +89,7 @@ class HrFiscalPaymentCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Total fiscal',
+          title,
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 11,
@@ -42,8 +101,8 @@ class HrFiscalPaymentCard extends StatelessWidget {
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            formatMoney(payment.total),
-            key: const ValueKey('fiscal-combined-total'),
+            formatMoney(amount),
+            key: ValueKey(amountId),
             style: TextStyle(
               color: humanResourcesAreaTokens.primaryStrong,
               fontSize: 21,
@@ -53,18 +112,19 @@ class HrFiscalPaymentCard extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        for (final item in [
-          ('Depósito', payment.deposit, 'fiscal-deposit-total'),
-          ('Cheque', payment.cheque, 'fiscal-cheque-total'),
-        ])
+        for (final item in details)
           Row(
             children: [
-              Text(
-                item.$1,
-                style: TextStyle(
-                  fontSize: 10,
-                  height: 1.15,
-                  color: humanResourcesAreaTokens.surfaceTint,
+              Expanded(
+                child: Text(
+                  item.$1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1.15,
+                    color: humanResourcesAreaTokens.surfaceTint,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),

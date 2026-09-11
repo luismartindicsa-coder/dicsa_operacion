@@ -112,13 +112,14 @@ void main() {
       expect(snapshot['count'], 45);
       expect(snapshot['visible'], 40);
       expect(snapshot['fiscal'], 98100);
-      expect(snapshot['flow'], 22050);
+      expect(snapshot['deposit'], 93600);
+      expect(snapshot['flow'], 26550); // Incluye los 4,500 de cheque fiscal.
       expect(snapshot['total'], 120150);
       final rows = snapshot['rows'] as List;
       expect(rows.first, {
         'id': '1',
         'fiscal': 2180.0,
-        'flow': 490.0,
+        'flow': 590.0,
         'deductions': 150.0,
         'total': 2670.0,
         'status': 'Publicado',

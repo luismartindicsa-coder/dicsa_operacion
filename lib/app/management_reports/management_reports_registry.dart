@@ -343,6 +343,15 @@ managementAreaCatalog = <ManagementAreaDefinition>[
             'Qué se compró realmente, cómo cambió la mezcla y dónde hubo oportunidad.',
       ),
       ManagementReportDefinition(
+        key: 'retail_weighted_price_analysis',
+        title: 'Precios ponderados y compra conveniente por proveedor',
+        frequency: ManagementReportFrequency.weeklyFriday,
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Tickets menudeo + ventas mayoreo + precios vigentes',
+        followUpPrompt:
+            'A cuanto comprar y vender para conservar al menos \$1 por kilo, y que proveedor necesita ajuste.',
+      ),
+      ManagementReportDefinition(
         key: 'retail_price_adjustments',
         title: 'Precios ajustados',
         frequency: ManagementReportFrequency.weeklyFriday,

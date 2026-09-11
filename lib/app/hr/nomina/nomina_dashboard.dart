@@ -114,6 +114,7 @@ class _HrNominaWorkspace extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _NominaCards(
+              flowDeliveryAmount: metrics.total - metrics.fiscalDeposited,
               fiscalPayment: HrFiscalPayment(
                 total: metrics.fiscal,
                 cheque: metrics.fiscalCash,
@@ -133,13 +134,13 @@ class _HrNominaWorkspace extends StatelessWidget {
                 ),
                 (
                   'Flujo',
-                  _fmtHrNominaMoney(metrics.total - metrics.fiscal),
-                  'Deducciones ya aplicadas',
+                  _fmtHrNominaMoney(metrics.total - metrics.fiscalDeposited),
+                  'A entregar · incluye cheque',
                 ),
                 (
                   'Total a pagar',
                   _fmtHrNominaMoney(metrics.total),
-                  'Fiscal + Flujo',
+                  'Depósito + Flujo',
                 ),
               ],
             ),
@@ -462,17 +463,20 @@ class _NominaFinancialRow extends StatelessWidget {
               ),
               cell('NOMBRE', r?.employeeName, 25, subtitle: r?.empresa),
               cell(
-                'FISCAL',
-                r == null ? null : _fmtHrNominaMoney(r.fiscalAmount),
+                'DEPÓSITO FISCAL',
+                r == null ? null : _fmtHrNominaMoney(r.fiscalDepositedAmount),
                 13,
                 money: true,
                 subtitle: r?.fiscalDeliveryLabel,
               ),
               cell(
-                'FLUJO',
+                'FLUJO A ENTREGAR',
                 r == null ? null : _fmtHrNominaMoney(_nominaFlow(r)),
                 13,
                 money: true,
+                subtitle: r != null && r.fiscalCashAmount > 0
+                    ? 'Cheque ${_fmtHrNominaMoney(r.fiscalCashAmount)}'
+                    : null,
               ),
               cell(
                 'DEDUCCIONES',

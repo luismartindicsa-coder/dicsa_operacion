@@ -283,7 +283,7 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
   Widget _fiscal() {
     final r = widget.row;
     return _HrNominaDetailBlock(
-      title: 'Fiscal',
+      title: 'Fiscal · origen del pago',
       rows: [
         if (widget.draft != null)
           _amount(
@@ -305,7 +305,7 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
         ],
         _amount('Fiscal total', r.fiscalAmount, strong: true),
         _amount('Fiscal depositado', r.fiscalDepositedAmount),
-        _amount('Fiscal sin depósito', r.fiscalCashAmount),
+        _amount('Cheque · incluido en Flujo a entregar', r.fiscalCashAmount),
       ],
     );
   }
@@ -325,7 +325,9 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
         _amount('Complementos antes de deducciones', r.complementsAmount),
         _amount('Pago por fuera', r.paymentOutsideAmount),
         _amount('Deducciones de flujo', r.deductionsAmount),
-        _amount('Flujo final', _nominaFlow(r), strong: true),
+        if (r.fiscalCashAmount > 0)
+          _amount('Cheque · pago de origen fiscal', r.fiscalCashAmount),
+        _amount('Flujo a entregar', _nominaFlow(r), strong: true),
       ],
     );
   }
@@ -419,8 +421,8 @@ class _HrNominaDetailDialogState extends State<_HrNominaDetailDialog> {
                     : r.paymentReference,
               ),
               _amount('Fiscal depositado', r.fiscalDepositedAmount),
-              _amount('Fiscal sin depósito', r.fiscalCashAmount),
-              _amount('Flujo', _nominaFlow(r)),
+              _amount('Flujo a entregar', _nominaFlow(r)),
+              _amount('Del Flujo: cheque fiscal', r.fiscalCashAmount),
               _amount('Total', r.totalAmount, strong: true),
               _HrNominaDetailLine(label: 'Estado', value: r.statusLabel),
             ],

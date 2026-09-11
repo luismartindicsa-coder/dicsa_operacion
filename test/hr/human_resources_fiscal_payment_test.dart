@@ -126,6 +126,7 @@ void main() {
         final expected = i < 11 ? 2200.0 : 0.0;
         expect(result['fiscal_cash'], expected);
         expect(result['fiscal_deposit'], i < 11 ? 0 : 1500);
+        expect(result['flow_delivery'], i < 11 ? 2500 : 0);
         final payload = Map<String, dynamic>.from(result['payload'] as Map);
         expect(payload['check_amount'], expected);
         payloads.add({...payload, 'draft_status': 'publicado'});
@@ -141,6 +142,7 @@ void main() {
       expect(linked['deposit'], 1500);
       expect(linked['fiscal'], 25700);
       expect(linked['total'], 29000);
+      expect(linked['flow_delivery'], 27500);
       final preliminary = hrNominaFiscalTotalsForTesting(
         drafts: drafts,
         period: period,
@@ -253,11 +255,15 @@ void main() {
         await tester.pumpAndSettle();
         expect(snapshot['cheque'], 24200);
         expect(snapshot['deposit'], 1500);
+        expect(snapshot['flow'], 27500);
         String value(String key) =>
             tester.widget<Text>(find.byKey(ValueKey(key))).data!;
         expect(value('fiscal-cheque-total'), r'$24,200.00');
         expect(value('fiscal-deposit-total'), r'$1,500.00');
         expect(value('fiscal-combined-total'), r'$25,700.00');
+        expect(value('flow-delivery-total'), r'$27,500.00');
+        expect(value('flow-operational-total'), r'$3,300.00');
+        expect(value('flow-cheque-total'), value('fiscal-cheque-total'));
         expect(tester.takeException(), isNull);
         final outputDir = Platform.environment['FISCAL_REPORT_PREVIEW_DIR'];
         if (outputDir != null) {
@@ -282,6 +288,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(value('fiscal-cheque-total'), r'$24,200.00');
         expect(value('fiscal-deposit-total'), r'$1,500.00');
+        expect(value('flow-delivery-total'), r'$27,500.00');
+        expect(value('flow-operational-total'), r'$3,300.00');
+        expect(value('flow-cheque-total'), r'$24,200.00');
         expect(tester.takeException(), isNull);
       },
     );

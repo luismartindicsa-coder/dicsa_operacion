@@ -18,6 +18,7 @@ import '../mayoreo/mayoreo_financial_status.dart';
 import '../hr/human_resources_period_context.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'management_reports_registry.dart';
+import 'menudeo_weighted_price_analysis.dart';
 
 const String _kOperationsDailyOtFields =
     'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,'
@@ -38,7 +39,8 @@ const String _kSalesCollectionAccountFields =
 const String _kMenudeoWeeklyTicketFields =
     'id,ticket_date,ticket_number,counterparty_name_snapshot,price_id,'
     'material_label_snapshot,price_at_entry,payable_weight,amount_total,'
-    'status,comment,direction,exit_order_number,created_at';
+    'status,comment,direction,exit_order_number,created_at,counterparty_id,'
+    'general_material_id,commercial_material_id,material_alias_id';
 
 const String _kMenudeoWeeklyVoucherFields =
     'id,voucher_date,folio,voucher_type,person_label,rubric,comment,'
@@ -3538,6 +3540,8 @@ Future<Uint8List> buildMenudeoWeeklySupervisionPdfBytes({
             ),
           ),
           pw.SizedBox(height: 14),
+          ...buildMenudeoWeightedPriceSections(source.priceAnalysis, accent),
+          pw.SizedBox(height: 14),
           _pdfSection(
             title: 'Contrapartes con mayor movimiento',
             accent: accent,
@@ -3732,6 +3736,151 @@ Future<Uint8List> buildMenudeoWeeklySupervisionPdfBytes({
   return pdf.save();
 }
 
+List<pw.Widget> buildMenudeoWeightedPriceSections(
+  MenudeoWeightedPriceAnalysis analysis,
+  PdfColor accent,
+) {
+  String price(double? value) =>
+      value == null ? 'Sin datos' : _formatCurrency(value);
+  String ceiling(double? value) =>
+      value != null && value < 0 ? 'No viable' : price(value);
+  String current(MenudeoSupplierPriceAnalysis row) =>
+      row.currentMin == row.currentMax
+      ? price(row.currentMin)
+      : '${price(row.currentMin)} a ${price(row.currentMax)}';
+  final sections = <pw.Widget>[
+    ..._pdfChunkedTableSections(
+      title: 'Analisis ponderado por material - compra y venta recomendadas',
+      accent: accent,
+      headers: const [
+        'Material',
+        'KG compra',
+        'Compra pond.',
+        'Venta men.',
+        'Venta may.',
+        'Venta comb.',
+        'Compra max.',
+        'Venta min.',
+        'Diferencia/kg',
+      ],
+      rows: analysis.materials
+          .map(
+            (row) => [
+              _sanitizePdfText(row.label),
+              _formatQuantity(row.purchases.kg),
+              price(row.purchases.price),
+              price(row.retailSales.price),
+              price(row.wholesaleSales.price),
+              price(row.sales.price),
+              ceiling(row.purchaseCeiling),
+              price(row.saleFloor),
+              price(row.spread),
+            ],
+          )
+          .toList(),
+      emptyLabel: 'Sin materiales con datos suficientes en el corte.',
+      headerColor: accent,
+      compact: true,
+      maxRowsPerSection: 9,
+      startOnNewPage: true,
+      introNote:
+          'Precios en pesos/KG. Ponderado = importe total / KG pagables; '
+          'venta combinada = importes de ambos canales / KG de ambos canales. '
+          'Compra maxima = venta combinada - \$1/KG; venta minima = compra ponderada + \$1/KG. '
+          'Limites redondeados a centavos: compra hacia abajo y venta hacia arriba. '
+          'Diferencia bruta antes de flete, merma y gastos; no es utilidad neta. '
+          'Sin venta comparable no se recomienda compra. No viable indica que ni comprar a cero deja \$1/KG.',
+    ),
+    ..._pdfChunkedTableSections(
+      title: 'Venta por canal - base de la ponderacion',
+      accent: accent,
+      headers: const [
+        'Material',
+        'KG menudeo',
+        'Importe menudeo',
+        'KG mayoreo',
+        'Importe mayoreo',
+        'KG combinados',
+      ],
+      rows: analysis.materials
+          .map(
+            (row) => [
+              _sanitizePdfText(row.label),
+              _formatQuantity(row.retailSales.kg),
+              _formatCurrency(row.retailSales.amount),
+              _formatQuantity(row.wholesaleSales.kg),
+              _formatCurrency(row.wholesaleSales.amount),
+              _formatQuantity(row.sales.kg),
+            ],
+          )
+          .toList(),
+      emptyLabel: 'Sin ventas comparables en el corte.',
+      headerColor: accent,
+      compact: true,
+      maxRowsPerSection: 10,
+      introNote:
+          'Mayoreo usa peso e importe aprobados del mismo corte. '
+          'Cruce por nombre exacto normalizado y unico entre catalogos; no se mezclan calidades por similitud. '
+          'Se consideran ventas de mayoreo del mismo material; el reporte de mayoreo no identifica origen menudeo. '
+          'Excluidos: ${analysis.excludedTickets} tickets de menudeo sin material, peso/importe positivo o estado valido; '
+          '${analysis.excludedWholesaleSales} ventas de mayoreo sin correspondencia unica o sin peso/importe aprobado positivo.',
+    ),
+    ..._pdfChunkedTableSections(
+      title: 'Por proveedor - precio vigente vs compra conveniente',
+      accent: accent,
+      headers: const [
+        'Proveedor',
+        'Material',
+        'KG compra',
+        'Pagado pond.',
+        'Vigente/kg',
+        'Compra max./kg',
+        'Reducir/kg',
+        'Lectura',
+      ],
+      rows: analysis.suppliers.map((row) {
+        final limit = row.material.purchaseCeiling;
+        final reduction = row.requiredReduction;
+        return [
+          _sanitizePdfText(row.supplier),
+          _sanitizePdfText(row.material.label),
+          _formatQuantity(row.purchases.kg),
+          price(row.purchases.price),
+          current(row),
+          ceiling(limit),
+          limit != null && limit < 0 ? 'No viable' : price(reduction),
+          limit == null
+              ? 'Sin venta comparable'
+              : limit < 0
+              ? 'No comprar a este nivel de venta'
+              : row.currentMax == null
+              ? 'Sin precio vigente'
+              : reduction! > 0
+              ? 'Renegociar'
+              : 'Cumple minimo',
+        ];
+      }).toList(),
+      emptyLabel: 'Sin proveedores con compras o precios activos.',
+      headerColor: accent,
+      compact: true,
+      maxRowsPerSection: 10,
+      introNote:
+          'Vigente corresponde al catalogo activo al generar el reporte; pagado ponderado corresponde a la semana. '
+          'Si hay varias tarifas activas se muestra el rango; la reduccion se calcula desde la mayor. '
+          'La compra maxima es un limite, no una instruccion de subir precios menores. '
+          'Incluye proveedores con tarifa activa aunque no hayan entregado esta semana.',
+    ),
+  ];
+  // Keep each small table with its title and method note on the same page.
+  return sections
+      .map(
+        (widget) => widget is pw.NewPage || widget is pw.SizedBox
+            ? widget
+            : pw.Inseparable(child: widget),
+      )
+      .toList();
+}
+
 _MenudeoWeeklyCut _resolveMenudeoWeeklyCut(DateTime generatedAt) {
   final friday = _nextOrSameFriday(generatedAt);
   final weekStart = friday.subtract(const Duration(days: 4));
@@ -3813,6 +3962,27 @@ Future<_MenudeoWeeklySourceBundle> _loadMenudeoWeeklySourceBundle(
           .order('created_at', ascending: false)
           .range(from, to),
     ),
+    fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from('vw_men_effective_prices')
+          .select(
+            'price_id,counterparty_id,counterparty_name,direction,'
+            'general_material_id,commercial_material_id,material_alias_id,'
+            'material_label_snapshot,final_price',
+          )
+          .order('price_id')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from('mayoreo_sales_reports')
+          .select('id,material_name_snapshot,approved_weight,approved_amount')
+          .gte('sale_date', cut.weekStart.toIso8601String())
+          .lte('sale_date', cut.cutoffAt.toIso8601String())
+          .order('sale_date')
+          .order('id')
+          .range(from, to),
+    ),
   ]);
 
   List<Map<String, dynamic>> jsonList(dynamic raw) {
@@ -3822,6 +3992,11 @@ Future<_MenudeoWeeklySourceBundle> _loadMenudeoWeeklySourceBundle(
   }
 
   return _MenudeoWeeklySourceBundle(
+    priceAnalysis: MenudeoWeightedPriceAnalysis.build(
+      tickets: jsonList(results[0]),
+      activePrices: jsonList(results[5]),
+      wholesaleSales: jsonList(results[6]),
+    ),
     currentTicketRows: jsonList(
       results[0],
     ).map(_MenudeoWeeklyTicketRow.fromJson).toList(growable: false),
@@ -5739,6 +5914,7 @@ class _MenudeoWeeklyCut {
 }
 
 class _MenudeoWeeklySourceBundle {
+  final MenudeoWeightedPriceAnalysis priceAnalysis;
   final List<_MenudeoWeeklyTicketRow> currentTicketRows;
   final List<_MenudeoWeeklyTicketRow> previousTicketRows;
   final List<_MenudeoWeeklyVoucherRow> currentVoucherRows;
@@ -5746,6 +5922,7 @@ class _MenudeoWeeklySourceBundle {
   final List<_MenudeoWeeklyPriceAdjustmentRow> currentAdjustmentRows;
 
   const _MenudeoWeeklySourceBundle({
+    required this.priceAnalysis,
     required this.currentTicketRows,
     required this.previousTicketRows,
     required this.currentVoucherRows,

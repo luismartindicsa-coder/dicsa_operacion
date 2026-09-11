@@ -74,7 +74,7 @@ class _NominaFixtureState extends _HumanResourcesNominaPageState {
       'fiscal': metrics.fiscal,
       'deposit': metrics.fiscalDeposited,
       'cheque': metrics.fiscalCash,
-      'flow': metrics.total - metrics.fiscal,
+      'flow': metrics.total - metrics.fiscalDeposited,
       'total': metrics.total,
       'rows': [
         for (final r in _allRows)
@@ -146,6 +146,7 @@ Map<String, dynamic> hrNominaFiscalTotalsForTesting({
     'fiscal': metrics.fiscal,
     'deposit': metrics.fiscalDeposited,
     'cheque': metrics.fiscalCash,
+    'flow_delivery': metrics.total - metrics.fiscalDeposited,
     'total': metrics.total,
     'rows': [
       for (final row in rows)
@@ -154,6 +155,7 @@ Map<String, dynamic> hrNominaFiscalTotalsForTesting({
           'fiscal': row.fiscalAmount,
           'deposit': row.fiscalDepositedAmount,
           'cheque': row.fiscalCashAmount,
+          'flow_delivery': row.flowDeliveryAmount,
           'channel': row.paymentChannelLabel,
           'total': row.totalAmount,
         },

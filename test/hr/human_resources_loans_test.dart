@@ -536,7 +536,10 @@ void main() {
       },
     );
     expect(row['fiscal'], 1700);
-    expect(row['envelope'], 1700);
+    // The outside payment is delivered in the envelope, but still does not
+    // authorize withholding a loan from fiscal cash.
+    expect(row['envelope'], 1800);
+    expect(row['envelope'], row['flow_delivery']);
     expect(row['total'], 1800);
     expect(row['payload']['source_snapshot']['loan_fund']['amount'], 0);
   });

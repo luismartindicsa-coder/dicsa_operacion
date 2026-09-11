@@ -750,7 +750,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
               amount: _preview.fiscalCashAmount,
             ),
             const Text(
-              'La distribución del fiscal no incrementa el pago en Flujo.',
+              'El cheque se entrega dentro del Flujo y conserva su origen fiscal. Se cuenta una sola vez en el total.',
             ),
             if (_draftNeedsOperationalNote(_preview)) ...[
               const SizedBox(height: 12),

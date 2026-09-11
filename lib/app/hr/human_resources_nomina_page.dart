@@ -1153,6 +1153,7 @@ class _HrNominaSummaryRow {
   }
 
   double get operationalCashAmount => complementsAmount - deductionsAmount;
+  double get flowDeliveryAmount => totalAmount - fiscalDepositedAmount;
 }
 
 class _HrNominaMetrics {

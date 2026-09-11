@@ -915,7 +915,9 @@ class _HumanResourcesPrenominaPageState
             return a.employeeId.compareTo(b.employeeId);
           });
     if (cashRows.isEmpty) {
-      _showSnack('No hay efectivo de sobre para exportar en este periodo.');
+      _showSnack(
+        'No hay efectivo de sobre para exportar con los filtros actuales.',
+      );
       return;
     }
 
@@ -932,15 +934,17 @@ class _HumanResourcesPrenominaPageState
           )
           .toList(growable: false),
     );
-    final path = await saveBytesAs(
-      bytes: bytes,
-      suggestedFileName:
-          'sobres_efectivo_${_prenominaFileSafeLabel(_activePeriodLabel)}.xlsx',
-      dialogTitle: 'Guardar Excel de sobres de efectivo',
-    );
+    final path = await _saveCashEnvelopeXlsx(bytes);
     if (!mounted || path == null) return;
     _showSnack('${cashRows.length} sobre(s) de efectivo exportados.');
   }
+
+  Future<String?> _saveCashEnvelopeXlsx(Uint8List bytes) => saveBytesAs(
+    bytes: bytes,
+    suggestedFileName:
+        'sobres_efectivo_${_prenominaFileSafeLabel(_activePeriodLabel)}.xlsx',
+    dialogTitle: 'Guardar Excel de sobres de efectivo',
+  );
 
   Future<void> _settleOperationalEventsForPublishedDraft({
     required SupabaseClient client,
@@ -2504,11 +2508,15 @@ class _HrPrenominaSummaryRow {
     return amount < 0 ? 0 : amount;
   }
 
-  double get cashEnvelopeAmount {
-    final amount =
-        fiscalCashAmount + operationalCashTotalAmount + manualAdjustmentAmount;
-    return amount > 0 ? amount : 0;
-  }
+  // Delivery includes fiscal paid by cheque; it does not change the salary
+  // complement or the fiscal origin used by payroll, receipts and loans.
+  double get flowDeliveryAmount =>
+      weeklyPaymentVisibleAmount - fiscalDepositedAmount;
+
+  // Export the same payable cash as the screen, including payment outside.
+  // Use the displayed cents; zero or negative balances need no envelope.
+  double get cashEnvelopeAmount =>
+      math.max(0.0, double.parse(flowDeliveryAmount.toStringAsFixed(2)));
 
   double get weeklyPaymentVisibleAmount =>
       fiscalTotalAmount +
@@ -2815,8 +2823,8 @@ const List<_HrPrenominaGridColumn> _kPrenominaGridColumns =
       _HrPrenominaGridColumn(id: 'asistencia', label: 'Asistencia'),
       _HrPrenominaGridColumn(id: 'vacaciones', label: 'Vacaciones'),
       _HrPrenominaGridColumn(id: 'permisos', label: 'Permisos'),
-      _HrPrenominaGridColumn(id: 'fiscal', label: 'Pago fiscal'),
-      _HrPrenominaGridColumn(id: 'flujo', label: 'Pago flujo'),
+      _HrPrenominaGridColumn(id: 'fiscal', label: 'Depósito fiscal'),
+      _HrPrenominaGridColumn(id: 'flujo', label: 'Flujo a entregar'),
       _HrPrenominaGridColumn(id: 'total', label: 'Total'),
       _HrPrenominaGridColumn(id: 'estado', label: 'Estado'),
       _HrPrenominaGridColumn(id: 'acciones', label: 'Acciones'),

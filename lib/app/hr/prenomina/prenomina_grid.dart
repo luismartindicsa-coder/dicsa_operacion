@@ -873,13 +873,14 @@ class _PrenominaRowValue extends StatelessWidget {
           : '${_prenominaCount(row.permissionWithPayHours)} · ${_prenominaCount(row.permissionWithoutPayHours)} · ${_prenominaCount(row.disabilityHours)} h',
     ),
     'fiscal' => _value(
-      _formatPrenominaMoneyZero(row.fiscalTotalAmount),
+      _formatPrenominaMoneyZero(row.fiscalDepositedAmount),
       row.fiscalDeliveryLabel,
     ),
     'flujo' => _value(
-      _formatPrenominaMoneyZero(
-        row.weeklyPaymentVisibleAmount - row.fiscalTotalAmount,
-      ),
+      _formatPrenominaMoneyZero(row.flowDeliveryAmount),
+      row.fiscalCashAmount > 0
+          ? 'Cheque ${_formatPrenominaMoneyZero(row.fiscalCashAmount)}'
+          : null,
     ),
     'total' => _value(
       _formatPrenominaMoneyZero(row.weeklyPaymentVisibleAmount),

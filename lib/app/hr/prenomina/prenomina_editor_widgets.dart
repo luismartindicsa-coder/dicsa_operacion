@@ -108,8 +108,8 @@ class _PrenominaTotals extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       for (final item in [
-        ('Fiscal', row.fiscalTotalAmount),
-        ('Flujo', row.weeklyPaymentVisibleAmount - row.fiscalTotalAmount),
+        ('Fiscal', row.fiscalDepositedAmount),
+        ('Flujo', row.flowDeliveryAmount),
         ('Total', row.weeklyPaymentVisibleAmount),
       ])
         Expanded(
@@ -131,7 +131,11 @@ class _PrenominaTotals extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.$1,
+                  switch (item.$1) {
+                    'Fiscal' => 'Depósito fiscal',
+                    'Flujo' => 'Flujo a entregar',
+                    _ => item.$1,
+                  },
                   style: TextStyle(
                     color: humanResourcesAreaTokens.badgeText,
                     fontWeight: FontWeight.w800,

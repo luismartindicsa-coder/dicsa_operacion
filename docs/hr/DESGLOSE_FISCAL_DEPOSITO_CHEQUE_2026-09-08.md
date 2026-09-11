@@ -1,5 +1,7 @@
 # Fiscal por depósito y cheque
 
+Actualización de presentación del 11 de septiembre: [Cheque dentro del Flujo a entregar](CHEQUE_FLUJO_ENTREGA_2026-09-11.md). La pantalla ahora agrupa los pagos por medio de entrega; el cheque conserva su origen fiscal. El comportamiento visual descrito abajo corresponde a la versión anterior.
+
 Prenómina y Nómina muestran el total fiscal dominante y, dentro de la misma tarjeta, su distribución en Depósito y Cheque. Los importes corresponden al periodo completo, aunque se filtre la tabla. Se conserva el espacio de trabajo de las tablas en ventanas pequeñas.
 
 La distribución automática toma `fiscal_payment_mode` de Personal. Se corrigió el caso de borradores antiguos con `check_amount=0` o nulo: ese valor por sí solo no es una excepción manual y permite aplicar la configuración del expediente. Se conserva una distribución manual explícita (incluso cero), un cheque positivo legado, y los importes de nóminas publicadas, periodos cerrados o recibos emitidos. El cheque sólo redistribuye el fiscal; no incrementa el flujo, el neto oficial ni el total a pagar.

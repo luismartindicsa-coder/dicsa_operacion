@@ -2,8 +2,7 @@ part of '../human_resources_nomina_page.dart';
 
 // Presentation grouping only: the existing total already includes deductions
 // and payment outside. No second deduction or alternative payroll calculation.
-double _nominaFlow(_HrNominaSummaryRow row) =>
-    row.totalAmount - row.fiscalAmount;
+double _nominaFlow(_HrNominaSummaryRow row) => row.flowDeliveryAmount;
 String _nominaDate(DateTime? date) => date == null
     ? '—'
     : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
@@ -134,7 +133,12 @@ class _NominaSurface extends StatelessWidget {
 class _NominaCards extends StatelessWidget {
   final List<(String, String, String)> items;
   final HrFiscalPayment? fiscalPayment;
-  const _NominaCards({required this.items, this.fiscalPayment});
+  final double? flowDeliveryAmount;
+  const _NominaCards({
+    required this.items,
+    this.fiscalPayment,
+    this.flowDeliveryAmount,
+  });
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -153,6 +157,14 @@ class _NominaCards extends StatelessWidget {
               child: item.$1 == 'Fiscal' && fiscalPayment != null
                   ? HrFiscalPaymentCard(
                       payment: fiscalPayment!,
+                      formatMoney: _fmtHrNominaMoney,
+                    )
+                  : item.$1 == 'Flujo' &&
+                        flowDeliveryAmount != null &&
+                        fiscalPayment != null
+                  ? HrFlowPaymentCard(
+                      deliveryAmount: flowDeliveryAmount!,
+                      chequeAmount: fiscalPayment!.cheque,
                       formatMoney: _fmtHrNominaMoney,
                     )
                   : Container(
@@ -240,7 +252,7 @@ class _NominaDetailTotals extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       for (final item in [
-        ('Fiscal', row.fiscalAmount),
+        ('Fiscal', row.fiscalDepositedAmount),
         ('Flujo', _nominaFlow(row)),
         ('Total', row.totalAmount),
       ])
@@ -263,7 +275,11 @@ class _NominaDetailTotals extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.$1,
+                  switch (item.$1) {
+                    'Fiscal' => 'Depósito fiscal',
+                    'Flujo' => 'Flujo a entregar',
+                    _ => item.$1,
+                  },
                   style: TextStyle(
                     color: humanResourcesAreaTokens.badgeText,
                     fontWeight: FontWeight.w800,
@@ -275,6 +291,7 @@ class _NominaDetailTotals extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _fmtHrNominaMoney(item.$2),
+                    key: ValueKey('nomina-total-${item.$1}'),
                     style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w900,

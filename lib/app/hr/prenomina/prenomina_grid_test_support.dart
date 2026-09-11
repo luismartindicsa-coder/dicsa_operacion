@@ -12,6 +12,7 @@ Widget hrPrenominaGridForTesting({
   List<Map<String, dynamic>> permissions = const [],
   required ValueChanged<Map<String, dynamic>> onSnapshot,
   required ValueChanged<String> onAction,
+  ValueChanged<Uint8List>? onExportBytes,
 }) => _PrenominaGridFixture(
   period: period,
   employees: employees,
@@ -21,6 +22,7 @@ Widget hrPrenominaGridForTesting({
   permissions: permissions,
   onSnapshot: onSnapshot,
   onAction: onAction,
+  onExportBytes: onExportBytes,
 );
 
 class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
@@ -32,6 +34,7 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
   final List<Map<String, dynamic>> permissions;
   final ValueChanged<Map<String, dynamic>> onSnapshot;
   final ValueChanged<String> onAction;
+  final ValueChanged<Uint8List>? onExportBytes;
   const _PrenominaGridFixture({
     required this.period,
     required this.employees,
@@ -41,6 +44,7 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
     required this.permissions,
     required this.onSnapshot,
     required this.onAction,
+    this.onExportBytes,
   });
   @override
   State<HumanResourcesPrenominaPage> createState() =>
@@ -96,8 +100,7 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
       ),
       'flow': _allRows.fold<double>(
         0,
-        (sum, row) =>
-            sum + row.weeklyPaymentVisibleAmount - row.fiscalTotalAmount,
+        (sum, row) => sum + row.flowDeliveryAmount,
       ),
       'total': _allRows.fold<double>(
         0,
@@ -130,5 +133,12 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
   @override
   Future<void> _exportCashEnvelopeXlsx() async {
     fixture.onAction('export');
+    if (fixture.onExportBytes != null) await super._exportCashEnvelopeXlsx();
+  }
+
+  @override
+  Future<String?> _saveCashEnvelopeXlsx(Uint8List bytes) async {
+    fixture.onExportBytes!(bytes);
+    return 'sobres_prueba.xlsx';
   }
 }

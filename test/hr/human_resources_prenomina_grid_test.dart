@@ -157,7 +157,8 @@ void main() {
       findsOneWidget,
     );
     expect(snapshot['fiscal'], 99000);
-    expect(snapshot['flow'], 14850);
+    expect(snapshot['deposit'], 94500);
+    expect(snapshot['flow'], 19350); // 14,850 complementos + 4,500 cheque.
     expect(snapshot['total'], 113850);
     expect(snapshot['visible_ids'], hasLength(40));
     await tester.tap(find.text('Siguiente'));
@@ -302,8 +303,8 @@ void main() {
       'grid layout keeps critical columns through horizontal scroll at $size',
       (tester) async {
         await mount(tester, size: size);
-        expect(find.text('PAGO FISCAL'), findsOneWidget);
-        expect(find.text('PAGO FLUJO'), findsOneWidget);
+        expect(find.text('DEPÓSITO FISCAL'), findsOneWidget);
+        expect(find.text('FLUJO A ENTREGAR'), findsOneWidget);
         expect(find.byKey(const ValueKey('kpi-Total a pagar')), findsOneWidget);
         expect(tester.takeException(), isNull);
         final path = Platform.environment['DICSA_PRENOMINA_GRID_PREVIEW_PATH'];

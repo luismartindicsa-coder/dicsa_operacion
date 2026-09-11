@@ -84,8 +84,11 @@ class _PrenominaKpis extends StatelessWidget {
     );
     final flow = rows.fold<double>(
       0,
-      (sum, row) =>
-          sum + (row.weeklyPaymentVisibleAmount - row.fiscalTotalAmount),
+      (sum, row) => sum + row.flowDeliveryAmount,
+    );
+    final cheque = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.fiscalCashAmount,
     );
     final range = _extractPrenominaDateRangeFromPeriodLabel(period);
     String date(DateTime date) =>
@@ -134,13 +137,13 @@ class _PrenominaKpis extends StatelessWidget {
       (
         'Flujo',
         _formatPrenominaMoneyZero(flow),
-        'Complementos y ajustes',
+        'A entregar · incluye cheque',
         Icons.payments_outlined,
       ),
       (
         'Total a pagar',
         _formatPrenominaMoneyZero(total),
-        'Fiscal + Flujo',
+        'Depósito + Flujo',
         Icons.account_balance_wallet_outlined,
       ),
     ];
@@ -161,11 +164,18 @@ class _PrenominaKpis extends StatelessWidget {
                           child: HrFiscalPaymentCard(
                             payment: HrFiscalPayment(
                               total: fiscal,
-                              cheque: rows.fold<double>(
-                                0,
-                                (sum, row) => sum + row.fiscalCashAmount,
-                              ),
+                              cheque: cheque,
                             ),
+                            formatMoney: _formatPrenominaMoneyZero,
+                          ),
+                        )
+                      : item.$1 == 'Flujo'
+                      ? Padding(
+                          key: const ValueKey('kpi-Flujo'),
+                          padding: const EdgeInsets.only(right: 8),
+                          child: HrFlowPaymentCard(
+                            deliveryAmount: flow,
+                            chequeAmount: cheque,
                             formatMoney: _formatPrenominaMoneyZero,
                           ),
                         )
@@ -527,7 +537,7 @@ class _PrenominaGridCaption extends StatelessWidget {
         ),
         Text(
           filtered
-              ? 'Vista filtrada · totales de los resultados'
+              ? 'Vista filtrada · totales del periodo'
               : 'Todos los colaboradores del periodo',
           style: TextStyle(
             fontSize: 11,
@@ -653,26 +663,29 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
                     isPeriodClosed ? 'Periodo cerrado' : 'Cerrar periodo',
                   ),
                 ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFF4ECFF),
-                    side: const BorderSide(color: Color(0xFFB794FF)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
+                Tooltip(
+                  message:
+                      'Exporta el Flujo a entregar de los colaboradores que cumplen los filtros, en todas las páginas.',
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFF4ECFF),
+                      side: const BorderSide(color: Color(0xFFB794FF)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      textStyle: Theme.of(context).textTheme.labelLarge
+                          ?.copyWith(fontWeight: FontWeight.w900),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                    onPressed: totalRows == 0 || activePeriodLabel.isEmpty
+                        ? null
+                        : onExportCashEnvelopes,
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text('Exportar sobres'),
                   ),
-                  onPressed: totalRows == 0 || activePeriodLabel.isEmpty
-                      ? null
-                      : onExportCashEnvelopes,
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Exportar sobres'),
                 ),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
