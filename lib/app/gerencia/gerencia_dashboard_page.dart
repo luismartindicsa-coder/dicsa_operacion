@@ -532,9 +532,9 @@ class _GerenciaWorkspace extends StatelessWidget {
             ManagementAreaReportPanel(
               areaKey: ManagementAreaKey.gerencia,
               subtitleOverride:
-                  'Desde aquí Gerencia puede generar el corte semanal del área y modelar el ritual que después replicarán los encargados.',
+                  'Genera el reporte de viernes de la semana actual para revisar metas, prioridades y acuerdos con los encargados.',
               showOpenHubButton: true,
-              showReportActions: false,
+              showReportActions: true,
               onOpenSupervisionHub: onOpenManagementSupervision,
             ),
             const SizedBox(height: 18),

@@ -83,6 +83,8 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final compactHeader =
+        _config.responsiveHeader && MediaQuery.sizeOf(context).width < 1000;
     final headerActions = <DashboardHeaderAction>[
       ..._config.headerActions.where(
         (action) => action.isVisible?.call(_profile) ?? true,
@@ -129,13 +131,22 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
           animateHeaderSlots: false,
           animateBody: !widget.instantOpen,
           headerBodySpacing: 8,
+          headerCenterSidePadding: _config.responsiveHeader
+              ? (compactHeader ? 74 : 200)
+              : 340,
           padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
           leadingBuilder: (_, _) => _AreaHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+            compact: compactHeader,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
-          centerBuilder: (_, _) => _AreaHeaderBrand(config: _config),
+          centerBuilder: (_, _) => _config.responsiveHeader
+              ? FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _AreaHeaderBrand(config: _config),
+                )
+              : _AreaHeaderBrand(config: _config),
           trailingBuilder: (_, _) => Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -143,7 +154,7 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
                 _AreaHeaderButton(
                   label: headerActions[index].label,
                   icon: headerActions[index].icon,
-                  compact: headerActions[index].compact,
+                  compact: compactHeader || headerActions[index].compact,
                   onTap: () => _runAction(headerActions[index].onTap),
                 ),
                 if (index != headerActions.length - 1)
@@ -153,7 +164,10 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
           ),
           child: Stack(
             children: [
-              _AreaDashboardBody(config: _config),
+              ExcludeFocus(
+                excluding: _config.responsiveHeader && _menuOpen,
+                child: _AreaDashboardBody(config: _config),
+              ),
               Positioned.fill(
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
@@ -176,24 +190,29 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
                 left: _menuOpen ? 0 : -332,
                 top: 0,
                 bottom: 0,
-                width: 320,
+                width: _config.responsiveHeader
+                    ? (MediaQuery.sizeOf(context).width - 48).clamp(0.0, 320.0)
+                    : 320,
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
-                  child:
-                      _config.sidePanelBuilder?.call(
-                        context,
-                        _config,
-                        _canReturnToDirection,
-                        accessItems,
-                        areaItems.toList(growable: false),
-                      ) ??
-                      _AreaSidePanel(
-                        config: _config.copyWith(
-                          areaItems: areaItems.toList(growable: false),
+                  child: ExcludeFocus(
+                    excluding: _config.responsiveHeader && !_menuOpen,
+                    child:
+                        _config.sidePanelBuilder?.call(
+                          context,
+                          _config,
+                          _canReturnToDirection,
+                          accessItems,
+                          areaItems.toList(growable: false),
+                        ) ??
+                        _AreaSidePanel(
+                          config: _config.copyWith(
+                            areaItems: areaItems.toList(growable: false),
+                          ),
+                          canReturnToDirection: _canReturnToDirection,
+                          accessItems: accessItems,
                         ),
-                        canReturnToDirection: _canReturnToDirection,
-                        accessItems: accessItems,
-                      ),
+                  ),
                 ),
               ),
             ],
@@ -255,6 +274,7 @@ class EmptyAreaDashboardConfig {
   final bool showHeroPanel;
   final bool showContractPanel;
   final bool showPlaceholderCards;
+  final bool responsiveHeader;
 
   const EmptyAreaDashboardConfig({
     required this.dashboardLabel,
@@ -326,6 +346,7 @@ class EmptyAreaDashboardConfig {
     this.showHeroPanel = true,
     this.showContractPanel = true,
     this.showPlaceholderCards = true,
+    this.responsiveHeader = false,
   });
 
   EmptyAreaDashboardConfig copyWith({
@@ -390,6 +411,7 @@ class EmptyAreaDashboardConfig {
       showHeroPanel: showHeroPanel ?? this.showHeroPanel,
       showContractPanel: showContractPanel ?? this.showContractPanel,
       showPlaceholderCards: showPlaceholderCards ?? this.showPlaceholderCards,
+      responsiveHeader: responsiveHeader,
     );
   }
 }
@@ -1390,133 +1412,136 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
     final isDark = tokens.darkGlass;
     final enabled = widget.onTap != null || widget.onTapSync != null;
     final highlighted = enabled && _hovered;
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: widget.compact ? 56 : 176,
-              height: 56,
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.compact ? 0 : 20,
-                vertical: 16,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isDark
-                      ? [
-                          Colors.white.withValues(
-                            alpha: highlighted ? 0.18 : 0.12,
-                          ),
-                          tokens.surfaceTint.withValues(
-                            alpha: highlighted ? 0.20 : 0.12,
-                          ),
-                        ]
-                      : [
-                          Color.lerp(
-                            Colors.white,
-                            tokens.primarySoft,
-                            highlighted ? 0.18 : 0.10,
-                          )!.withValues(alpha: 0.98),
-                          Color.lerp(
-                            tokens.primarySoft,
-                            tokens.surfaceTint,
-                            highlighted ? 0.68 : 0.54,
-                          )!.withValues(alpha: 0.94),
-                        ],
+    return Tooltip(
+      message: widget.compact ? widget.label : '',
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          scale: highlighted ? 1.026 : 1,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              overlayColor: WidgetStateProperty.all(Colors.transparent),
+              splashColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              splashFactory: NoSplash.splashFactory,
+              onTap: !enabled
+                  ? null
+                  : () async {
+                      if (widget.onTap != null) {
+                        await widget.onTap!();
+                      } else {
+                        widget.onTapSync?.call();
+                      }
+                    },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                transform: Matrix4.translationValues(
+                  0,
+                  highlighted ? -2.5 : 0,
+                  0,
                 ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: isDark
-                      ? (highlighted
-                            ? Colors.white.withValues(alpha: 0.76)
-                            : Colors.white.withValues(alpha: 0.48))
-                      : tokens.border.withValues(
-                          alpha: highlighted ? 0.92 : 0.74,
-                        ),
+                width: widget.compact ? 56 : 176,
+                height: 56,
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.compact ? 0 : 20,
+                  vertical: 16,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: isDark
-                        ? Colors.black.withValues(
-                            alpha: highlighted ? 0.22 : 0.12,
-                          )
-                        : Colors.black.withValues(
-                            alpha: highlighted ? 0.10 : 0.07,
-                          ),
-                    offset: Offset(0, highlighted ? 14 : 8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [
+                            Colors.white.withValues(
+                              alpha: highlighted ? 0.18 : 0.12,
+                            ),
+                            tokens.surfaceTint.withValues(
+                              alpha: highlighted ? 0.20 : 0.12,
+                            ),
+                          ]
+                        : [
+                            Color.lerp(
+                              Colors.white,
+                              tokens.primarySoft,
+                              highlighted ? 0.18 : 0.10,
+                            )!.withValues(alpha: 0.98),
+                            Color.lerp(
+                              tokens.primarySoft,
+                              tokens.surfaceTint,
+                              highlighted ? 0.68 : 0.54,
+                            )!.withValues(alpha: 0.94),
+                          ],
                   ),
-                  BoxShadow(
-                    blurRadius: highlighted ? 20 : 10,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
                     color: isDark
-                        ? tokens.glow.withValues(
-                            alpha: highlighted ? 0.12 : 0.05,
-                          )
-                        : Colors.white.withValues(
-                            alpha: highlighted ? 0.62 : 0.40,
+                        ? (highlighted
+                              ? Colors.white.withValues(alpha: 0.76)
+                              : Colors.white.withValues(alpha: 0.48))
+                        : tokens.border.withValues(
+                            alpha: highlighted ? 0.92 : 0.74,
                           ),
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: widget.compact
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.start,
-                children: [
-                  Icon(widget.icon, size: 20, color: tokens.onGlass),
-                  if (!widget.compact) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          widget.label,
-                          maxLines: 1,
-                          softWrap: false,
-                          style: TextStyle(
-                            color: tokens.onGlass,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: highlighted ? 28 : 16,
+                      color: isDark
+                          ? Colors.black.withValues(
+                              alpha: highlighted ? 0.22 : 0.12,
+                            )
+                          : Colors.black.withValues(
+                              alpha: highlighted ? 0.10 : 0.07,
+                            ),
+                      offset: Offset(0, highlighted ? 14 : 8),
+                    ),
+                    BoxShadow(
+                      blurRadius: highlighted ? 20 : 10,
+                      color: isDark
+                          ? tokens.glow.withValues(
+                              alpha: highlighted ? 0.12 : 0.05,
+                            )
+                          : Colors.white.withValues(
+                              alpha: highlighted ? 0.62 : 0.40,
+                            ),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: widget.compact
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    Icon(widget.icon, size: 20, color: tokens.onGlass),
+                    if (!widget.compact) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: tokens.onGlass,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

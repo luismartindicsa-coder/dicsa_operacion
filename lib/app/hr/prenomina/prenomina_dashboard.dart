@@ -649,7 +649,7 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
                     ),
                   ),
                   onPressed:
-                      totalRows == 0 ||
+                      rows.isEmpty ||
                           activePeriodLabel.isEmpty ||
                           isPeriodClosed
                       ? null

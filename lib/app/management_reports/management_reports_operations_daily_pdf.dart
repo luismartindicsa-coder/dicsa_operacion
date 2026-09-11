@@ -18,6 +18,10 @@ import '../mayoreo/mayoreo_financial_status.dart';
 import '../hr/human_resources_period_context.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'management_reports_registry.dart';
+import 'expenses_weekly_analysis.dart';
+import 'gerencia_weekly_analysis.dart';
+import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
+import '../shared/production_daily_summary_widget.dart';
 import 'menudeo_weighted_price_analysis.dart';
 
 const String _kOperationsDailyOtFields =
@@ -1708,6 +1712,928 @@ Future<Uint8List> buildFinanceWeeklySupervisionPdfBytes({
     ),
   );
 
+  return pdf.save();
+}
+
+class GerenciaReportSection {
+  const GerenciaReportSection(this.title, this.headers, this.rows, {this.note});
+  final String title;
+  final List<String> headers;
+  final List<List<String>> rows;
+  final String? note;
+}
+
+Future<List<GerenciaReportSection>> _loadGerenciaDashboardSections(
+  DateTime at,
+) async {
+  final start = DateTime(
+    at.year,
+    at.month,
+    at.day,
+  ).subtract(Duration(days: at.weekday - 1));
+  final end = _pdfDateOnly(at);
+  final cut = _LogisticsWeeklyCut(
+    weekStart: start,
+    friday: start.add(const Duration(days: 4)),
+    cutoffAt: at,
+  );
+  final results = await Future.wait<dynamic>([
+    ProductionDailySummaryStore.loadWeek(start),
+    _loadLogisticsWeeklySourceBundle(cut),
+    fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from('inventory_movements_v2')
+          .select(
+            'id,op_date,flow,inventory_level,weight_kg,net_kg,gross_kg,tare_kg,total_amount_kg,'
+            'general_material:general_material_id(code,name),'
+            'source_commercial:source_commercial_material_id(code,name,general_material:general_material_id(code,name)),'
+            'commercial_material:commercial_material_id(code,name,general_material:general_material_id(code,name))',
+          )
+          .gte('op_date', _formatDbDate(start))
+          .lte('op_date', _formatDbDate(end))
+          .order('op_date')
+          .order('id')
+          .range(from, to),
+    ),
+    Supabase.instance.client
+        .from('logistics_diesel_consumption')
+        .select('entry_date,balance_liters,liters_purchased,liters_requested')
+        .lte('entry_date', _formatDbDate(end))
+        .order('entry_date', ascending: false)
+        .order('created_at', ascending: false)
+        .order('id')
+        .limit(1)
+        .maybeSingle(),
+    GerenciaBaleWeeklyTrackingStore.loadRecentHistory(readOnly: true),
+  ]);
+  final production = results[0] as ProductionDailySummaryBundle;
+  final logistics = _buildLogisticsWeeklyInsights(
+    results[1] as _LogisticsWeeklySourceBundle,
+    cut,
+  );
+  final flowGroups = <(String, String), double>{};
+  for (final raw in results[2] as List) {
+    final row = Map<String, dynamic>.from(raw as Map);
+    final incoming = row['flow'] == 'IN' && row['inventory_level'] == 'GENERAL';
+    final outgoing =
+        row['flow'] == 'OUT' && row['inventory_level'] == 'COMMERCIAL';
+    if (!incoming && !outgoing) continue;
+    final general = row['general_material'] as Map?;
+    final commercial =
+        (incoming ? row['source_commercial'] : row['commercial_material'])
+            as Map?;
+    final parent = commercial?['general_material'] as Map?;
+    final name = incoming
+        ? (general?['name'] ?? parent?['name'] ?? commercial?['name'])
+        : (parent?['name'] ?? commercial?['name'] ?? general?['name']);
+    final direct =
+        _toNullableDouble(row['net_kg']) ?? _toNullableDouble(row['weight_kg']);
+    final gross = _toNullableDouble(row['gross_kg']);
+    final tare = _toNullableDouble(row['tare_kg']) ?? 0;
+    final kg = direct != null && direct > 0
+        ? direct
+        : gross != null && gross > 0
+        ? math.max(0.0, gross - math.max(0.0, tare))
+        : math.max(0.0, _toNullableDouble(row['total_amount_kg']) ?? 0);
+    final key = (
+      incoming ? 'Entrada' : 'Salida',
+      _stringOrFallback(name, 'Sin material identificado'),
+    );
+    flowGroups.update(key, (v) => v + kg, ifAbsent: () => kg);
+  }
+  final flowKeys = flowGroups.keys.toList()
+    ..sort((a, b) => '$a'.compareTo('$b'));
+  final diesel = results[3] as Map<String, dynamic>?;
+  final balance =
+      _toNullableDouble(diesel?['balance_liters']) ??
+      (diesel == null
+          ? null
+          : (_toNullableDouble(diesel['liters_purchased']) ?? 0) -
+                (_toNullableDouble(diesel['liters_requested']) ?? 0));
+  final history = results[4] as List<GerenciaBaleWeeklyHistorySnapshot>;
+  return [
+    GerenciaReportSection(
+      'Historico de metas del dashboard',
+      [
+        'Semana',
+        'Produccion real',
+        'Meta produccion',
+        'Embarque real',
+        'Meta embarque',
+      ],
+      [
+        for (final h in history.where((h) => h.weekStartDate.isBefore(start)))
+          [
+            '${_formatShortDate(h.weekStartDate)} - ${_formatShortDate(h.weekEndDate)}',
+            '${h.productionActualBales}',
+            h.productionTargetBales > 0
+                ? '${h.productionTargetBales}'
+                : 'Sin meta',
+            '${h.shipmentActualBales}',
+            h.shipmentTargetBales > 0 ? '${h.shipmentTargetBales}' : 'Sin meta',
+          ],
+      ],
+      note:
+          'Semanas previas de los ultimos seis planes del dashboard; cifras de semana completa segun el resumen guardado o la fuente actual si falta. No son la comparacion al mismo avance del viernes.',
+    ),
+    GerenciaReportSection(
+      'Diesel - disponibilidad registrada',
+      ['Ultima captura', 'Saldo registrado L', 'Estado del dashboard'],
+      [
+        [
+          diesel == null
+              ? 'Sin captura'
+              : _formatOptionalDate(
+                  DateTime.tryParse('${diesel['entry_date']}'),
+                ),
+          balance == null ? 'Sin dato' : _formatQuantity(balance),
+          balance == null
+              ? 'Sin dato'
+              : balance > 600
+              ? 'Suficiente'
+              : balance >= 300
+              ? 'Solicitar'
+              : 'Critico',
+        ],
+      ],
+      note:
+          'Saldo de la ultima captura al corte, como en el dashboard. No sustituye una medicion fisica; confirmar disponibilidad con Logistica.',
+    ),
+
+    GerenciaReportSection(
+      'Produccion diaria consolidada por turno',
+      ['Fecha', 'Diurno', 'Nocturno', 'Total pacas'],
+      [
+        for (final d in production.days.where((d) => !d.date.isAfter(end)))
+          [
+            _formatShortDate(d.date),
+            '${d.dayShiftTotal}',
+            '${d.nightShiftTotal}',
+            '${d.total}',
+          ],
+      ],
+      note:
+          'Misma fuente y clasificacion del dashboard. Las cifras de turno y las metas pueden tener distinto alcance de materiales; no se suman entre si. Nacional sin clasificar C1/C2 en la semana: ${production.unassignedNationalCount}.',
+    ),
+    GerenciaReportSection(
+      'Produccion por material y turno',
+      ['Fecha', 'Material', 'Diurno', 'Nocturno'],
+      [
+        for (final d in production.days.where((d) => !d.date.isAfter(end)))
+          for (final r in production.rows)
+            if (r.countFor(d.date, d.dayShiftKey) != 0 ||
+                r.countFor(d.date, d.nightShiftKey) != 0)
+              [
+                _formatShortDate(d.date),
+                r.label,
+                '${r.countFor(d.date, d.dayShiftKey)}',
+                '${r.countFor(d.date, d.nightShiftKey)}',
+              ],
+      ],
+    ),
+    GerenciaReportSection(
+      'Flujo de material operativo',
+      ['Frente', 'Material', 'KG acumulados'],
+      [
+        for (final k in flowKeys) [k.$1, k.$2, _formatQuantity(flowGroups[k]!)],
+      ],
+      note:
+          'Entrada general y salida comercial, con las reglas de material y peso del dashboard. Ventana semanal al corte; el dashboard muestra una ventana movil de 42 dias. Entrada menos salida no representa por si sola merma ni inventario.',
+    ),
+    GerenciaReportSection(
+      'Logistica - pulso semanal',
+      ['Indicador', 'Valor'],
+      [
+        [
+          'Viajes actuales / semana previa al mismo avance',
+          '${logistics.currentTripCount} / ${logistics.previousTripCount}',
+        ],
+        [
+          'Completados / en curso / pendientes',
+          '${logistics.completedTripCount} / ${logistics.inProgressTripCount} / ${logistics.pendingTripCount}',
+        ],
+        [
+          'Cancelados / sin asignacion completa',
+          '${logistics.canceledTripCount} / ${logistics.unassignedTripCount}',
+        ],
+        [
+          'Diesel solicitado (L)',
+          _formatQuantity(logistics.currentDieselRequestedLiters),
+        ],
+        [
+          'Diesel comprado (L)',
+          _formatQuantity(logistics.currentDieselPurchasedLiters),
+        ],
+        [
+          'Gasolina cargada (L)',
+          _formatQuantity(logistics.currentGasolineLoadedLiters),
+        ],
+      ],
+      note:
+          'Solicitudes, compras y cargas son conceptos distintos; no son medicion de consumo real ni existencia del tanque. Sin metas formales de viajes o combustible no se califica cumplimiento.',
+    ),
+    GerenciaReportSection(
+      'Logistica por operador',
+      [
+        'Operador',
+        'Viajes',
+        'Cancelados',
+        'Diesel solicitado L',
+        'Gasolina cargada L',
+      ],
+      [
+        for (final r in logistics.operatorRows)
+          [
+            r.operatorLabel,
+            '${r.tripCount}',
+            '${r.canceledTripCount}',
+            _formatQuantity(r.dieselRequestedLiters),
+            _formatQuantity(r.gasolineLoadedLiters),
+          ],
+      ],
+    ),
+    GerenciaReportSection(
+      'Logistica por unidad',
+      [
+        'Unidad',
+        'Viajes',
+        'Cancelados',
+        'Diesel solicitado L',
+        'Gasolina cargada L',
+      ],
+      [
+        for (final r in logistics.unitRows)
+          [
+            r.unitLabel,
+            '${r.tripCount}',
+            '${r.canceledTripCount}',
+            _formatQuantity(r.dieselRequestedLiters),
+            _formatQuantity(r.gasolineLoadedLiters),
+          ],
+      ],
+    ),
+    GerenciaReportSection(
+      'Logistica - alertas para coordinar',
+      ['Hallazgo'],
+      [
+        for (final a in logistics.alerts) [a],
+      ],
+      note:
+          'El responsable de Logistica valida la causa, propone accion y acuerda fecha. Gerencia resuelve prioridades y dependencias entre areas.',
+    ),
+  ];
+}
+
+Future<Uint8List> buildGerenciaWeeklySupervisionPdfBytes({
+  required ManagementAreaDefinition area,
+  required DateTime generatedAt,
+  required String generatedBy,
+  GerenciaBaleWeeklyTrackingBundle? bundle,
+  GerenciaBaleWeeklyTrackingBundle? previousBundle,
+  List<GerenciaReportSection>? dashboardSections,
+}) async {
+  final weekStart = DateTime(
+    generatedAt.year,
+    generatedAt.month,
+    generatedAt.day,
+  ).subtract(Duration(days: generatedAt.weekday - 1));
+  final fridayEnd = weekStart
+      .add(const Duration(days: 5))
+      .subtract(const Duration(microseconds: 1));
+  final cutoff = generatedAt.isBefore(fridayEnd) ? generatedAt : fridayEnd;
+  final loaded = await Future.wait<dynamic>([
+    bundle != null
+        ? Future.value(bundle)
+        : GerenciaBaleWeeklyTrackingStore.loadWeekForReport(weekStart),
+    previousBundle != null
+        ? Future.value(previousBundle)
+        : GerenciaBaleWeeklyTrackingStore.loadWeekForReport(
+            weekStart.subtract(const Duration(days: 7)),
+          ),
+    dashboardSections != null
+        ? Future.value(dashboardSections)
+        : _loadGerenciaDashboardSections(cutoff),
+  ]);
+  final current = GerenciaWeeklyAnalysis(
+    loaded[0] as GerenciaBaleWeeklyTrackingBundle,
+    cutoff,
+  );
+  final previous = GerenciaWeeklyAnalysis(
+    loaded[1] as GerenciaBaleWeeklyTrackingBundle,
+    cutoff.subtract(const Duration(days: 7)),
+  );
+  final sections = loaded[2] as List<GerenciaReportSection>;
+  final logo = await _tryLoadManagementReportLogo();
+  final accent = _pdfColorFromFlutter(_managementAccentInk(area.accent));
+  final soft = _pdfColorFromFlutter(_blendWithWhite(area.accent, .9));
+  final border = _pdfColorFromFlutter(_blendWithWhite(area.accent, .74));
+  String count(int? n) => n == null ? 'Sin meta' : '$n';
+  String pct(double? n) => n == null ? 'Sin meta' : '${n.toStringAsFixed(1)}%';
+  List<pw.Widget> table(
+    String title,
+    List<String> headers,
+    List<List<String>> rows, {
+    String? note,
+  }) =>
+      _pdfChunkedTableSections(
+            title: title,
+            accent: accent,
+            headers: headers,
+            rows: rows.map((r) => r.map(_sanitizePdfText).toList()).toList(),
+            emptyLabel: 'Sin registros para este corte.',
+            headerColor: accent,
+            compact: true,
+            maxRowsPerSection: 8,
+            introNote: note,
+          )
+          .map(
+            (w) => w is pw.SizedBox || w is pw.NewPage
+                ? w
+                : pw.Inseparable(child: w),
+          )
+          .toList();
+  final pdf = pw.Document();
+  pdf.addPage(
+    pw.MultiPage(
+      pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
+      maxPages: 200,
+      build: (_) => <pw.Widget>[
+        _pdfHeader(
+          logoImage: logo,
+          eyebrow: 'SUPERVISION GERENCIAL',
+          title: 'Gerencia - metas y coordinacion de la semana',
+          subtitle:
+              'Disenar, priorizar, desarrollar y supervisar. El encargado propone y ejecuta; Gerencia coordina, habilita y verifica.',
+          badges: [
+            MapEntry('Corte viernes', _formatDateTimeShort(cutoff)),
+            MapEntry(
+              'Plan operativo',
+              '${_formatShortDate(current.bundle.weekStartDate)} - ${_formatShortDate(current.bundle.weekEndDate)}',
+            ),
+            MapEntry('Generado por', generatedBy),
+          ],
+          accent: accent,
+          accentSoft: soft,
+          accentBorder: border,
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Lectura para dirigir',
+          accent: accent,
+          child: _pdfBulletList([
+            'Produccion al corte: ${current.actual('Produccion')} pacas; embarques: ${current.actual('Embarque')} pacas. ${current.goals.where((g) => !g.hasTarget).length} frentes por material sin meta positiva definida.',
+            '${current.goals.where((g) => g.hasTarget && g.gap! < 0).length} frentes por debajo del ritmo esperado. Revisar restricciones de capacidad, abastecimiento, programacion o coordinacion antes de atribuir causas a personas.',
+            'La meta del dashboard es de lunes a sabado. Este reporte del viernes no declara cerrada la semana: muestra avance al dia, pendiente y ritmo requerido para los dias restantes.',
+            'El ritmo esperado distribuye la meta uniformemente entre dias operativos. La proyeccion es lineal, no un compromiso. Los datos por fecha incluyen lo capturado del dia; no reconstruyen un cierre historico por hora.',
+            'La ausencia de una meta es una definicion pendiente del sistema. Flujo de materiales y logistica son indicadores de contexto cuando no existe objetivo formal.',
+          ]),
+        ),
+        ...table(
+          'Cumplimiento de metas por material',
+          [
+            'Material',
+            'Frente',
+            'Meta semanal',
+            'Real al corte',
+            'Esperado al dia',
+            'Brecha vs ritmo',
+            'Avance',
+            'Estado',
+          ],
+          [
+            for (final g in current.goals)
+              [
+                g.material,
+                g.front,
+                g.hasTarget ? count(g.target) : 'Sin meta',
+                '${g.actual}',
+                count(g.expected),
+                count(g.gap),
+                pct(g.progress),
+                g.state,
+              ],
+          ],
+        ),
+        ...table(
+          'Cierre previsto y capacidad necesaria',
+          [
+            'Material',
+            'Frente',
+            'Pendiente meta',
+            'Proyeccion cierre',
+            'Necesarias por dia restante',
+            'Dias restantes',
+          ],
+          [
+            for (final g in current.goals)
+              [
+                g.material,
+                g.front,
+                count(g.remaining),
+                '${g.projected}',
+                g.requiredPerDay == null ? 'No aplica' : '${g.requiredPerDay}',
+                '${g.totalDays - g.daysElapsed}',
+              ],
+          ],
+          note:
+              'Las metas y faltantes se revisan por material: el exceso de uno no compensa el faltante de otro.',
+        ),
+        ...table(
+          'Comparacion con semana previa al mismo avance',
+          ['Frente', 'Real actual', 'Real previo', 'Diferencia pacas'],
+          [
+            for (final f in ['Produccion', 'Embarque'])
+              [
+                f,
+                '${current.actual(f)}',
+                '${previous.actual(f)}',
+                '${current.actual(f) - previous.actual(f)}',
+              ],
+          ],
+          note:
+              'Comparacion al mismo dia operativo; no se compara un viernes parcial con el cierre del sabado.',
+        ),
+        ...table(
+          'Prioridades propuestas para la junta',
+          [
+            'Prioridad',
+            'Frente / material',
+            'Hecho verificable',
+            'Decision de Gerencia',
+            'Rol propuesto',
+          ],
+          [
+            for (final g in current.priorities)
+              [
+                g.hasTarget ? 'Recuperar ritmo' : 'Definir sistema',
+                '${g.front} / ${g.material}',
+                g.hasTarget
+                    ? 'Brecha ${g.gap} pacas contra ritmo'
+                    : 'No hay meta positiva definida',
+                g.hasTarget
+                    ? 'Validar restriccion y acordar recursos / secuencia'
+                    : 'Definir meta, capacidad y responsable',
+                g.front == 'Produccion'
+                    ? 'Encargado de Operaciones'
+                    : 'Encargado de Logistica',
+              ],
+          ],
+          note:
+              'Roles sugeridos para discutir, no asignaciones registradas. La causa y la accion deben validarse con el encargado; no se infieren de una desviacion.',
+        ),
+        ...table(
+          'Contexto registrado en el plan',
+          ['Origen', 'Nota'],
+          [
+            if (current.bundle.currentPlan?.notes.trim().isNotEmpty == true)
+              ['Plan semanal', current.bundle.currentPlan!.notes],
+            for (final line in current.bundle.lineSummaries)
+              if (line.planLine?.notes.trim().isNotEmpty == true)
+                [line.baleType.label, line.planLine!.notes],
+          ],
+        ),
+        ...table(
+          'Calidad de datos y cobertura',
+          ['Revision', 'Resultado'],
+          [
+            [
+              'Plan semanal',
+              current.bundle.hasPlan ? 'Registrado' : 'Pendiente de definir',
+            ],
+            [
+              'Produccion sin mapeo a tipo de paca',
+              current.bundle.unmappedProductionCodes.isEmpty
+                  ? 'Sin codigos pendientes'
+                  : current.bundle.unmappedProductionCodes.join(', '),
+            ],
+            [
+              'Embarques sin mapeo a tipo de paca',
+              current.bundle.unmappedShipmentCodes.isEmpty
+                  ? 'Sin codigos pendientes'
+                  : current.bundle.unmappedShipmentCodes.join(', '),
+            ],
+            [
+              'Responsables nominales, compromisos y fechas',
+              'Sin registro estructurado en el plan; se acuerdan en junta',
+            ],
+          ],
+          note:
+              'Los codigos sin mapeo pueden dejar volumen fuera de las metas. Validar la captura antes de calificar resultados.',
+        ),
+        for (final s in sections)
+          ...table(s.title, s.headers, s.rows, note: s.note),
+        ...table(
+          'Acuerdos de delegacion - completar en junta',
+          [
+            'Objetivo / prioridad',
+            'Responsable acordado',
+            'Accion / recurso',
+            'Fecha compromiso',
+            'Evidencia / siguiente revision',
+          ],
+          [
+            for (final front in [
+              'Produccion',
+              'Embarques',
+              'Flujo de materiales',
+              'Logistica',
+            ])
+              [
+                front,
+                'Por acordar',
+                'Por acordar',
+                'Por acordar',
+                'Por acordar',
+              ],
+          ],
+          note:
+              'El PDF es una hoja de seguimiento, no guarda acuerdos. Registrar responsable, fecha y evidencia en el sistema de trabajo acordado; revisar compromisos anteriores al iniciar la siguiente junta.',
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Ritual de supervision consciente',
+          accent: accent,
+          child: _pdfBulletList([
+            'Preparacion: cada encargado revisa sus datos, explica desviaciones y llega con propuesta, necesidad de apoyo y siguiente paso.',
+            'Priorizar: atender primero seguridad y continuidad cuando exista evidencia; despues, restricciones a las metas y mejoras que eviten urgencias recurrentes.',
+            'Delegar: acordar resultado esperado, autonomia, recursos, responsable y fecha. Gerencia no sustituye al encargado en la ejecucion.',
+            'Desarrollar: preguntar que claridad, capacidad, herramienta o coordinacion necesita el equipo; permitir comunicar problemas sin ocultarlos.',
+            'Supervisar: revisar evidencia y compromisos, dar retroalimentacion y corregir el sistema. Escalar decisiones entre areas, no absorber todas las tareas.',
+          ]),
+        ),
+      ].map((w) => w is pw.SizedBox || w is pw.NewPage ? w : pw.Inseparable(child: w)).toList(),
+    ),
+  );
+  return pdf.save();
+}
+
+Future<Uint8List> buildExpensesWeeklySupervisionPdfBytes({
+  required ManagementAreaDefinition area,
+  required DateTime generatedAt,
+  required String generatedBy,
+  List<ExpensesWeeklyOrder>? orders,
+}) async {
+  final source =
+      orders ??
+      (await _loadExpensesDailyPurchaseOrderRows())
+          .map(
+            (r) => ExpensesWeeklyOrder(
+              id: r.id,
+              folio: r.folio,
+              orderDate: r.orderDate,
+              status: r.status,
+              vendor: r.vendorLabel,
+              target: r.targetLabel,
+              concept: r.conceptLabel,
+              ot: r.isLinkedToOt ? r.otLabel : '',
+              estimated: r.estimatedTotal.isFinite && r.estimatedTotal > 0
+                  ? r.estimatedTotal
+                  : null,
+              actual: r.actualTotal?.isFinite == true ? r.actualTotal : null,
+              purchasedAt: r.purchasedAt?.toLocal(),
+              sentToCashAt: r.sentToCashAt?.toLocal(),
+              createdAt: r.createdAt?.toLocal(),
+            ),
+          )
+          .toList();
+  final cut = ExpensesWeeklyCut(generatedAt);
+  final data = ExpensesWeeklyAnalysis(source, cut);
+  final logo = await _tryLoadManagementReportLogo();
+  final accent = _pdfColorFromFlutter(_managementAccentInk(area.accent));
+  final soft = _pdfColorFromFlutter(_blendWithWhite(area.accent, .9));
+  final border = _pdfColorFromFlutter(_blendWithWhite(area.accent, .74));
+  String money(double? value) =>
+      value == null ? 'Sin dato' : _formatCurrency(value);
+  String percent(double? value) =>
+      value == null ? 'No comparable' : '${value.toStringAsFixed(1)}%';
+  String real(ExpensesWeeklySummary s) =>
+      s.rows.isNotEmpty && s.withoutActual == s.rows.length
+      ? 'Sin dato'
+      : money(s.actual);
+  String label(String value) => _sanitizePdfText(_truncate(value, 64));
+  List<pw.Widget> table(
+    String title,
+    List<String> headers,
+    List<List<String>> rows, {
+    String? note,
+  }) =>
+      _pdfChunkedTableSections(
+            title: title,
+            accent: accent,
+            headers: headers,
+            rows: rows,
+            emptyLabel: 'Sin registros en este corte.',
+            headerColor: accent,
+            compact: true,
+            maxRowsPerSection: 12,
+            introNote: note,
+          )
+          .map(
+            (w) => w is pw.SizedBox || w is pw.NewPage
+                ? w
+                : pw.Inseparable(child: w),
+          )
+          .toList();
+  List<List<String>> groupRows(String Function(ExpensesWeeklyOrder) key) => data
+      .groupBy(key)
+      .entries
+      .map(
+        (e) => [
+          label(e.key),
+          '${e.value.rows.length}',
+          real(e.value),
+          '${e.value.withoutActual}',
+          money(e.value.comparable.isEmpty ? null : e.value.comparableEstimate),
+          money(e.value.variance),
+          percent(e.value.variancePercent),
+        ],
+      )
+      .toList();
+  final alerts = <String>[
+    if (data.current.overBudget > 0)
+      '${data.current.overBudget} compra(s) superan su estimado. Revisar el detalle de desviaciones.',
+    if (data.current.withoutActual > 0)
+      '${data.current.withoutActual} compra(s) de la semana sin importe real capturado; no se reemplaza por el estimado.',
+    if (data.current.comparable.length < data.current.rows.length)
+      '${data.current.rows.length - data.current.comparable.length} compra(s) sin pareja de estimado y real para calcular desviacion.',
+    if (data.undatedPurchases.isNotEmpty)
+      '${data.undatedPurchases.length} OC(s) compradas sin fecha de compra: excluidas de los totales semanales hasta corregir la fuente.',
+    if (data.backlog.isNotEmpty)
+      '${data.backlog.length} OC(s) abiertas vienen de semanas anteriores.',
+  ];
+  final pdf = pw.Document();
+  pdf.addPage(
+    pw.MultiPage(
+      pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
+      maxPages: 200,
+      build: (_) =>
+          [
+                _pdfHeader(
+                  logoImage: logo,
+                  eyebrow: 'REPORTE DE SEGUIMIENTO',
+                  title: 'Gastos - cierre de viernes',
+                  subtitle:
+                      'Compras realizadas, real contra estimado y pendientes para la junta semanal.',
+                  badges: [
+                    MapEntry('Area', area.title),
+                    MapEntry(
+                      'Semana',
+                      '${_formatShortDate(cut.start)} - ${_formatShortDate(cut.friday)}',
+                    ),
+                    MapEntry('Corte', _formatDateTimeShort(cut.end)),
+                    MapEntry('Generado por', generatedBy),
+                  ],
+                  accent: accent,
+                  accentSoft: soft,
+                  accentBorder: border,
+                ),
+                pw.SizedBox(height: 14),
+                _pdfSection(
+                  title: 'Alcance y criterio de lectura',
+                  accent: accent,
+                  child: _pdfBulletList([
+                    'Compras operativas registradas en Compras OT, con sus conceptos y OT vinculada. No representa todos los egresos bancarios ni el estado de resultados.',
+                    'La semana va de lunes a viernes, acumulada hasta el corte. La semana previa usa el mismo avance: ${_formatDateTimeShort(cut.previousStart)} a ${_formatDateTimeShort(cut.previousEnd)}. Sabado y domingo muestran el viernes cerrado.',
+                    'Una compra pertenece a la semana por su fecha de compra y estado Comprada, aunque su OC se haya creado antes. Los importes y estatus reflejan la fuente actual, no un cierre historico congelado.',
+                    'Real = importe real capturado, no pago bancario. Desviacion = real menos estimado de las mismas OCs comparables; porcentaje sobre su estimado. El estimado usa el total de OC o sus renglones cuando falta.',
+                  ]),
+                ),
+                pw.SizedBox(height: 14),
+                _pdfSection(
+                  title: 'Resumen ejecutivo',
+                  accent: accent,
+                  child: _pdfBulletList([
+                    '${data.current.rows.length} compras realizadas; importe real capturado ${real(data.current)}. ${data.current.withoutActual} sin importe real.',
+                    'Comparables: ${data.current.comparable.length} de ${data.current.rows.length}. Desviacion ${money(data.current.variance)} (${percent(data.current.variancePercent)}). Positivo = sobrecosto; negativo = ahorro.',
+                    '${data.pending.length} OCs abiertas al corte observado, con estimado conocido ${money(data.pendingEstimate)}; ${data.backlog.length} son arrastre previo. ${data.pending.where((r) => r.estimated == null).length} abiertas sin estimado.',
+                  ]),
+                ),
+                pw.SizedBox(height: 14),
+                _pdfSection(
+                  title: 'Indicadores semanales',
+                  accent: accent,
+                  child: _pdfKpiGrid(
+                    accent: accent,
+                    accentSoft: soft,
+                    items: [
+                      _PdfKpiItem(
+                        'Compradas',
+                        '${data.current.rows.length}',
+                        note: real(data.current),
+                      ),
+                      _PdfKpiItem(
+                        'Comparables',
+                        '${data.current.comparable.length}',
+                        note: 'De ${data.current.rows.length} compradas',
+                      ),
+                      _PdfKpiItem(
+                        'Desviacion',
+                        money(data.current.variance),
+                        note: percent(data.current.variancePercent),
+                      ),
+                      _PdfKpiItem(
+                        'Sobrecostos',
+                        '${data.current.overBudget}',
+                        note: 'OCs sobre estimado',
+                      ),
+                      _PdfKpiItem(
+                        'Abiertas',
+                        '${data.pending.length}',
+                        note: money(data.pendingEstimate),
+                      ),
+                      _PdfKpiItem(
+                        'OCs de la semana',
+                        '${data.opened.length}',
+                        note: '${data.rejected.length} rechazadas',
+                      ),
+                    ],
+                  ),
+                ),
+                if (alerts.isNotEmpty) ...[
+                  pw.SizedBox(height: 14),
+                  _pdfSection(
+                    title: 'Alertas de supervision',
+                    accent: accent,
+                    child: _pdfBulletList(alerts),
+                  ),
+                ],
+                ...table(
+                  'Comparacion con semana previa',
+                  [
+                    'Periodo',
+                    'Compradas',
+                    'Real capturado',
+                    'Sin real',
+                    'Comparables',
+                    'Estimado comparable',
+                    'Real comparable',
+                    'Desviacion',
+                    'Delta %',
+                  ],
+                  [
+                    for (final item in [
+                      MapEntry('Actual', data.current),
+                      MapEntry('Previa', data.previous),
+                    ])
+                      [
+                        item.key,
+                        '${item.value.rows.length}',
+                        real(item.value),
+                        '${item.value.withoutActual}',
+                        '${item.value.comparable.length}',
+                        money(
+                          item.value.comparable.isEmpty
+                              ? null
+                              : item.value.comparableEstimate,
+                        ),
+                        money(
+                          item.value.comparable.isEmpty
+                              ? null
+                              : item.value.comparableActual,
+                        ),
+                        money(item.value.variance),
+                        percent(item.value.variancePercent),
+                      ],
+                  ],
+                  note:
+                      'Los totales capturados pueden ser parciales. Compare la cobertura de importes antes de interpretar cambios entre semanas.',
+                ),
+                ...table(
+                  'Compras de la semana - real vs estimado',
+                  [
+                    'OC / compra',
+                    'Proveedor',
+                    'Destino / concepto',
+                    'OT',
+                    'Estimado',
+                    'Real',
+                    'Desviacion',
+                    'Delta %',
+                  ],
+                  [
+                    for (final r in data.current.rows)
+                      [
+                        '${r.folio}\n${_formatOptionalDate(r.purchasedAt)}',
+                        label(r.vendor),
+                        label('${r.target} / ${r.concept}'),
+                        label(r.ot.isEmpty ? 'Sin OT' : r.ot),
+                        money(r.estimated),
+                        money(r.actual),
+                        money(r.variance),
+                        percent(r.variancePercent),
+                      ],
+                  ],
+                  note:
+                      'Todas las compras de la semana, sin recortar a un top. Sin dato no equivale a cero.',
+                ),
+                ...table('Gasto por proveedor', [
+                  'Proveedor',
+                  'Compras',
+                  'Real capturado',
+                  'Sin real',
+                  'Est. comparable',
+                  'Desviacion',
+                  'Delta %',
+                ], groupRows((r) => r.vendor)),
+                ...table('Gasto por destino', [
+                  'Destino',
+                  'Compras',
+                  'Real capturado',
+                  'Sin real',
+                  'Est. comparable',
+                  'Desviacion',
+                  'Delta %',
+                ], groupRows((r) => r.target)),
+                ...table(
+                  'Compras vinculadas a OT',
+                  [
+                    'OT',
+                    'Compras',
+                    'Real capturado',
+                    'Sin real',
+                    'Est. comparable',
+                    'Desviacion',
+                    'Delta %',
+                  ],
+                  groupRows((r) => r.ot.isEmpty ? 'Sin OT vinculada' : r.ot),
+                ),
+                ...table(
+                  'Pendientes y arrastre al corte observado',
+                  [
+                    'OC / fecha',
+                    'Proveedor',
+                    'Destino',
+                    'OT',
+                    'Etapa',
+                    'Estimado',
+                    'Dias abierta',
+                  ],
+                  [
+                    for (final r in data.pending)
+                      [
+                        '${r.folio}\n${_formatShortDate(r.orderDate)}',
+                        label(r.vendor),
+                        label(r.target),
+                        label(r.ot.isEmpty ? 'Sin OT' : r.ot),
+                        r.stage,
+                        money(r.estimated),
+                        '${cut.end.difference(r.orderDate).inDays}',
+                      ],
+                  ],
+                  note:
+                      'Solo borradores, pendientes de Direccion y autorizadas. Rechazadas y compradas no se suman al compromiso abierto. Enviada a caja no significa pagada.',
+                ),
+                ...table(
+                  'Compras marcadas sin fecha - corregir fuente',
+                  ['OC', 'Fecha OC', 'Proveedor', 'Real capturado'],
+                  [
+                    for (final r in data.undatedPurchases)
+                      [
+                        r.folio,
+                        _formatShortDate(r.orderDate),
+                        label(r.vendor),
+                        money(r.actual),
+                      ],
+                  ],
+                ),
+                ...table(
+                  'Forma de pago y documentacion - cobertura',
+                  ['Dato requerido', 'Estado', 'Compras sin clasificar'],
+                  [
+                    [
+                      'Efectivo / tarjeta / transferencia',
+                      'Sin vinculo registrado por OC',
+                      '${data.current.rows.length}',
+                    ],
+                    [
+                      'Con factura / sin factura',
+                      'Sin vinculo registrado por OC',
+                      '${data.current.rows.length}',
+                    ],
+                  ],
+                  note:
+                      'Factura es documentacion, no forma de pago. No se infiere efectivo por envio a caja ni se asignan movimientos bancarios por coincidencia de monto o proveedor.',
+                ),
+                pw.SizedBox(height: 14),
+                _pdfSection(
+                  title: 'Acuerdos para la junta',
+                  accent: accent,
+                  child: _pdfBulletList([
+                    'Explicar los sobrecostos y definir ajustes al estimado de proximas compras.',
+                    'Completar importes reales y fechas faltantes en Compras; regenerar el reporte despues de corregir.',
+                    'Resolver OCs pendientes de Direccion o caja, asignando responsable y fecha de cierre.',
+                    'Vincular medio de pago y comprobante a cada OC para completar el control financiero.',
+                  ]),
+                ),
+              ]
+              .map(
+                (widget) => widget is pw.SizedBox || widget is pw.NewPage
+                    ? widget
+                    : pw.Inseparable(child: widget),
+              )
+              .toList(),
+    ),
+  );
   return pdf.save();
 }
 

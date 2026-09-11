@@ -62,6 +62,7 @@ part 'prenomina/prenomina_dashboard.dart';
 part 'prenomina/prenomina_employee_sidebar.dart';
 part 'prenomina/prenomina_editor_sections.dart';
 part 'prenomina/prenomina_editor_widgets.dart';
+part 'prenomina/prenomina_closure_review.dart';
 
 const String _kHrPrenominaProfilesTable = 'hr_employee_profiles';
 const String _kHrPrenominaImportLotsTable = 'hr_attendance_import_lots';
@@ -148,6 +149,13 @@ class _HumanResourcesPrenominaPageState
       const <_HrPrenominaDraftRowRecord>[];
   HrLoanFundState? _loanFund;
   String? _loanLoadError;
+  String? _changingStatusEmployeeId;
+  final _statusMenuKeys =
+      <String, GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>>>{};
+
+  GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>> _statusMenuKey(
+    String employeeId,
+  ) => _statusMenuKeys.putIfAbsent(employeeId, () => GlobalKey());
   List<_HrPrenominaPeriodClosure> _periodClosures =
       const <_HrPrenominaPeriodClosure>[];
   List<_HrPrenominaSummaryRow> _allRows = const <_HrPrenominaSummaryRow>[];
@@ -537,6 +545,7 @@ class _HumanResourcesPrenominaPageState
   }
 
   Future<void> _selectPeriod(String periodLabel) async {
+    if (_changingStatusEmployeeId != null) return;
     await HumanResourcesPeriodContext.select(periodLabel);
     if (!mounted) return;
     _selectedPeriodLabel = periodLabel;
@@ -643,16 +652,24 @@ class _HumanResourcesPrenominaPageState
     await _openSummaryRowAtIndex(initialIndex);
   }
 
-  Future<void> _openSummaryRowAtIndex(int index) async {
+  Future<void> _openSummaryRowAtIndex(
+    int index, {
+    bool entirePeriod = false,
+    _PrenominaSection initialSection = _PrenominaSection.resumen,
+  }) async {
+    if (_changingStatusEmployeeId != null) return;
+    List<_HrPrenominaSummaryRow> editRows() =>
+        entirePeriod ? _periodRows : _allRows;
     var currentIndex = index;
-    while (currentIndex >= 0 && currentIndex < _allRows.length) {
-      final row = _allRows[currentIndex];
+    while (currentIndex >= 0 && currentIndex < editRows().length) {
+      final row = editRows()[currentIndex];
       _focusEmployeeRow(row.employeeId);
       if (!mounted) return;
       final result = await showDialog<_HrPrenominaEditResult>(
         context: context,
         barrierDismissible: true,
         builder: (context) => _HrPrenominaEditDialog(
+          initialSection: initialSection,
           row: row,
           attendance: _attendanceRecords
               .where(
@@ -695,7 +712,7 @@ class _HumanResourcesPrenominaPageState
           },
           periodLabel: _activePeriodLabel,
           canGoPrevious: currentIndex > 0,
-          canGoNext: currentIndex < _allRows.length - 1,
+          canGoNext: currentIndex < editRows().length - 1,
         ),
       );
       if (result == null) return;
@@ -712,13 +729,57 @@ class _HumanResourcesPrenominaPageState
           _focusEmployeeRow(row.employeeId);
           return;
         case _HrPrenominaEditAction.next:
-          if (currentIndex < _allRows.length - 1) {
+          if (currentIndex < editRows().length - 1) {
             currentIndex += 1;
             continue;
           }
           _focusEmployeeRow(row.employeeId);
           return;
       }
+    }
+  }
+
+  Future<void> _changeRowStatus(
+    _HrPrenominaSummaryRow row,
+    _HrPrenominaDraftStatus status,
+  ) async {
+    if (_changingStatusEmployeeId != null || _isActivePeriodClosed) return;
+    if (status == row.draftStatus && row.draftId.isNotEmpty) {
+      if (row.statusLabel != status.label) {
+        _showSnack(
+          'El estado guardado es ${status.label}; la tabla muestra '
+          '${row.statusLabel} porque hay asistencia pendiente de revisión.',
+        );
+      }
+      return;
+    }
+    final draft = _HrPrenominaDraftDraft.fromSummaryRow(row)
+      ..draftStatus = status;
+    final validation = draft.validationMessage(
+      fiscalAvailable: row.fiscalBeforeManualDeductionAmount,
+    );
+    if (validation != null) {
+      _showSnack('$validation Abre el detalle para corregirlo.');
+      return;
+    }
+    setState(() => _changingStatusEmployeeId = row.employeeId);
+    try {
+      await _saveDraftRow(
+        row: row,
+        result: _HrPrenominaEditResult(
+          action: _HrPrenominaEditAction.save,
+          draft: draft,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        _showSnack(
+          'No se pudo completar el cambio de estado de ${row.displayName}. '
+          'Revisa tu conexión e intenta nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _changingStatusEmployeeId = null);
     }
   }
 
@@ -764,7 +825,6 @@ class _HumanResourcesPrenominaPageState
       );
       if (confirmed != true) return;
     }
-    final client = Supabase.instance.client;
     final payload = result.draft.toRow(
       periodLabel: _activePeriodLabel,
       employeeId: row.employeeId,
@@ -772,22 +832,39 @@ class _HumanResourcesPrenominaPageState
       empresa: row.empresa,
       existingId: row.draftId,
     );
+    await _persistDraftRow(payload);
+    await _loadData();
+    if (!mounted) return;
+    final reviewNote =
+        result.draft.draftStatus == _HrPrenominaDraftStatus.listo &&
+            row.attendanceReviewDays > 0
+        ? ' La tabla sigue en Revisión RH por asistencia pendiente.'
+        : '';
+    _showSnack(
+      'Prenómina de ${row.displayName} guardada: ${result.draft.draftStatus.label}.$reviewNote',
+    );
+  }
+
+  Future<void> _persistDraftRow(Map<String, dynamic> payload) async {
+    final client = Supabase.instance.client;
+    final employeeId = payload['employee_id'] as String;
+    final periodLabel = payload['period_label'] as String;
     await client
         .from(_kHrPrenominaDraftRowsTable)
         .upsert(payload, onConflict: 'period_label,employee_id');
 
-    if (result.draft.draftStatus == _HrPrenominaDraftStatus.publicado) {
+    if (payload['draft_status'] == 'publicado') {
       await _settleOperationalEventsForPublishedDraft(
         client: client,
-        employeeId: row.employeeId,
+        employeeId: employeeId,
       );
     }
 
     final refreshedResult = await client
         .from(_kHrPrenominaDraftRowsTable)
         .select()
-        .eq('period_label', _activePeriodLabel)
-        .eq('employee_id', row.employeeId)
+        .eq('period_label', periodLabel)
+        .eq('employee_id', employeeId)
         .limit(1);
     final refreshed = (refreshedResult as List)
         .map((raw) => Map<String, dynamic>.from(raw as Map))
@@ -795,62 +872,33 @@ class _HumanResourcesPrenominaPageState
         .toList(growable: false);
     _draftRows = [
       for (final item in _draftRows)
-        if (!(item.periodLabel == _activePeriodLabel &&
-            item.employeeId == row.employeeId))
+        if (!(item.periodLabel == periodLabel && item.employeeId == employeeId))
           item,
       ...refreshed,
     ];
-    await _loadData();
-    if (!mounted) return;
-    _showSnack('Borrador de prenómina de ${row.displayName} actualizado.');
   }
 
   Future<void> _closeActivePeriod() async {
-    if (_loanLoadError != null) {
-      _showSnack(_loanLoadError!);
-      return;
-    }
-    final staleLoans = _periodRows.where((row) {
-      final live = HrLoanPayrollPlan.fromSnapshot(row.sourceSnapshot);
-      final saved = _draftRows
-          .where(
-            (d) =>
-                d.employeeId == row.employeeId &&
-                d.periodLabel == _activePeriodLabel,
-          )
-          .firstOrNull;
-      final previous = HrLoanPayrollPlan.fromSnapshot(
-        saved?.sourceSnapshot ?? const {},
-      );
-      return (live.requestedCents > 0 || previous.recoveredCents > 0) &&
-          jsonEncode(live.toJson()) != jsonEncode(previous.toJson());
-    }).length;
-    if (staleLoans > 0) {
-      _showSnack(
-        'Actualiza y guarda $staleLoans detalle(s) de prenómina: sus préstamos tienen abonos o cuotas nuevos.',
-      );
-      return;
-    }
-
+    if (_changingStatusEmployeeId != null) return;
     if (_activePeriodLabel.trim().isEmpty) {
-      _showSnack('No hay un periodo activo para cerrar.');
+      await _showClosureMessage(
+        'Selecciona un periodo en Prenómina antes de iniciar el cierre.',
+      );
       return;
     }
     if (_isActivePeriodClosed) {
-      _showSnack('Este periodo ya está cerrado y listo para Nómina.');
-      return;
-    }
-    if (_periodRows.isEmpty) {
-      _showSnack('No hay colaboradores para validar en este periodo.');
-      return;
-    }
-    final pending = _activePendingDraftCount;
-    if (pending > 0) {
-      _showSnack(
-        'Faltan $pending colaborador(es) por publicar antes del cierre global.',
+      await _showClosureMessage(
+        'Este periodo ya está cerrado. Puedes consultar sus pagos y recibos en Nómina.',
       );
       return;
     }
+    if (_periodRows.isEmpty) {
+      await _showClosureMessage(
+        'No hay colaboradores en este periodo. Revisa el periodo seleccionado y sus registros antes de cerrar.',
+      );
+      return;
+    }
+    if (!await _reviewClosureRequirements() || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -897,6 +945,47 @@ class _HumanResourcesPrenominaPageState
     _showSnack(
       'Periodo cerrado. Ya puedes continuar a Nómina y emitir recibos.',
     );
+  }
+
+  Future<void> _showClosureMessage(String message) => showDialog<void>(
+    context: context,
+    builder: (_) => _PrenominaClosureReviewDialog(
+      period: _activePeriodLabel,
+      issues: const [],
+      message: message,
+    ),
+  );
+
+  Future<bool> _reviewClosureRequirements() async {
+    while (mounted) {
+      final issues = _buildPrenominaClosureIssues(
+        rows: _periodRows,
+        drafts: _draftRows,
+        period: _activePeriodLabel,
+        checkLoans: _loanLoadError == null,
+      );
+      if (issues.isEmpty && _loanLoadError == null) return true;
+      if (!mounted) return false;
+      final selected = await showDialog<_PrenominaClosureIssue>(
+        context: context,
+        builder: (_) => _PrenominaClosureReviewDialog(
+          period: _activePeriodLabel,
+          issues: issues,
+          message: _loanLoadError,
+        ),
+      );
+      if (!mounted || selected == null) return false;
+      final index = _periodRows.indexWhere(
+        (row) => row.employeeId == selected.row.employeeId,
+      );
+      if (index < 0) continue;
+      await _openSummaryRowAtIndex(
+        index,
+        entirePeriod: true,
+        initialSection: selected.section,
+      );
+    }
+    return false;
   }
 
   Future<void> _exportCashEnvelopeXlsx() async {
@@ -1385,6 +1474,15 @@ class _HumanResourcesPrenominaPageState
     if (_visibleRows.isEmpty) return;
     final index = _navigationController.active.rowIndex;
     if (index < 0 || index >= _visibleRows.length) return;
+    if (_navigationController.active.columnIndex ==
+        _kPrenominaGridColumns.indexWhere((column) => column.id == 'estado')) {
+      if (!_isActivePeriodClosed && _changingStatusEmployeeId == null) {
+        _statusMenuKey(
+          _visibleRows[index].employeeId,
+        ).currentState?.showButtonMenu();
+      }
+      return;
+    }
     unawaited(_openSummaryRow(_visibleRows[index]));
   }
 
@@ -1516,6 +1614,9 @@ class _HumanResourcesPrenominaPageState
                           onEndDragSelection: _endDragSelection,
                           onRowContextMenu: _openRowMenu,
                           onOpenRow: _openSummaryRow,
+                          onChangeStatus: _changeRowStatus,
+                          changingStatusEmployeeId: _changingStatusEmployeeId,
+                          statusMenuKey: _statusMenuKey,
                           currentPage: _currentPage,
                           totalPages: _allRows.isEmpty
                               ? 1
@@ -1650,28 +1751,52 @@ class _HrPrenominaEditResult {
 
 class _HrPrenominaStatusBadge extends StatelessWidget {
   final String label;
+  final bool interactive;
+  final bool saving;
 
-  const _HrPrenominaStatusBadge({required this.label});
+  const _HrPrenominaStatusBadge({
+    required this.label,
+    this.interactive = false,
+    this.saving = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colorSet = _prenominaStatusBadgeColorSet(label);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: interactive ? 6 : 10,
+        vertical: 6,
+      ),
       decoration: BoxDecoration(
         color: colorSet.background,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: colorSet.border),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: colorSet.foreground,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              saving ? 'Guardando' : label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: colorSet.foreground,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (interactive) ...[
+            const SizedBox(width: 2),
+            Icon(
+              saving ? Icons.hourglass_top_rounded : Icons.expand_more_rounded,
+              size: 16,
+              color: colorSet.foreground,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2684,6 +2809,22 @@ class _HrPrenominaDraftDraft {
     ];
     for (final field in fields) {
       if (!_isPrenominaMoneyInputValid(field.$2)) return field.$1;
+    }
+    return null;
+  }
+
+  String? validationMessage({required double fiscalAvailable}) {
+    final invalidField = firstInvalidMoneyFieldLabel;
+    if (invalidField != null) {
+      return 'Revisa "$invalidField". Captura un monto válido, por ejemplo 1250.50.';
+    }
+    final manual =
+        _parsePrenominaDraftText(fiscalManualDeductionAmountText) ?? 0;
+    if (manual < 0 || manual > fiscalAvailable + .001) {
+      return 'El descuento fiscal manual debe estar entre cero y el fiscal disponible (${_formatPrenominaMoneyZero(fiscalAvailable)}).';
+    }
+    if (manual > 0 && fiscalManualDeductionReason.trim().isEmpty) {
+      return 'Indica el motivo del descuento fiscal manual.';
     }
     return null;
   }

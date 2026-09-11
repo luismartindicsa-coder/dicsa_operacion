@@ -549,8 +549,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'expenses_real_vs_estimate',
         title: 'Real vs estimado',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Compras + finanzas',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'OCs compradas + estimados y reales capturados',
         followUpPrompt:
             'Qué gasto se salió del estimado y qué ajuste de planeación toca.',
       ),
@@ -576,8 +576,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'expenses_payment_mix',
         title: 'Compras en efectivo, tarjeta y factura',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Compras + caja + bancos',
+        dataStatus: ManagementReportDataStatus.pending,
+        sourceLabel: 'Pendiente: vinculo de OC con pago y comprobante',
         followUpPrompt:
             'Cómo se está pagando y si la mezcla actual es sana para control financiero.',
       ),
@@ -727,7 +727,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     title: 'Gerencia',
     ownerLabel: 'Gerente del área',
     subtitle:
-        'Metas, problemas, cobros, pagos y seguimiento a nuevos negocios desde lectura ejecutiva.',
+        'Metas del dashboard, desviaciones y coordinacion de responsables para el cierre semanal.',
     accent: Color(0xFFD84B5B),
     icon: Icons.monitor_heart_outlined,
     reports: <ManagementReportDefinition>[
@@ -736,45 +736,10 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         title: 'Cumplimiento de metas',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Gerencia semanal',
+        sourceLabel:
+            'Dashboard Gerencia: plan, produccion, embarques y logistica',
         followUpPrompt:
             'Qué meta sí se movió, cuál no y qué apoyo interárea requiere.',
-      ),
-      ManagementReportDefinition(
-        key: 'management_problem_kpis',
-        title: 'Análisis KPI de problemas en DICSA y otras empresas',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
-        followUpPrompt:
-            'Qué problema se repite, cómo se clasifica y quién debe tomarlo.',
-      ),
-      ManagementReportDefinition(
-        key: 'management_new_business',
-        title: 'Seguimiento a nuevos negocios',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Comercial + gerencia',
-        followUpPrompt:
-            'Qué negocio avanza, qué se enfrió y cuál merece priorización.',
-      ),
-      ManagementReportDefinition(
-        key: 'management_pending_collections',
-        title: 'Cobros y pagos pendientes',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Finanzas + comercial',
-        followUpPrompt:
-            'Qué pendiente amenaza más la operación y quién lo toma al cierre.',
-      ),
-      ManagementReportDefinition(
-        key: 'management_bonuses',
-        title: 'Manejo de bonos y comisiones',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
-        followUpPrompt:
-            'Qué bono aplica, qué comisión se ganó y qué criterio debe quedar claro.',
       ),
     ],
   ),

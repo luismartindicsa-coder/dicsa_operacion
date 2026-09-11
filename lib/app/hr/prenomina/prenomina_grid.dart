@@ -51,6 +51,16 @@ class _HrPrenominaWorkspace extends StatelessWidget {
   )
   onRowContextMenu;
   final Future<void> Function(_HrPrenominaSummaryRow row) onOpenRow;
+  final void Function(
+    _HrPrenominaSummaryRow row,
+    _HrPrenominaDraftStatus status,
+  )
+  onChangeStatus;
+  final String? changingStatusEmployeeId;
+  final GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>> Function(
+    String,
+  )
+  statusMenuKey;
   final int currentPage;
   final int totalPages;
   final int pageSize;
@@ -106,6 +116,9 @@ class _HrPrenominaWorkspace extends StatelessWidget {
     required this.onEndDragSelection,
     required this.onRowContextMenu,
     required this.onOpenRow,
+    required this.onChangeStatus,
+    required this.changingStatusEmployeeId,
+    required this.statusMenuKey,
     required this.currentPage,
     required this.totalPages,
     required this.pageSize,
@@ -137,7 +150,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
           navigationController: navigationController,
           focusNode: rowsFocusNode,
           onEscape: onEscape,
-          onConfirm: () => unawaited(onOpenSelectedRow()),
+          onConfirm: onOpenActiveCell,
           onOpenActiveCell: onOpenActiveCell,
           onNavigated: (position) {
             if (position.zone != GridNavigationZone.grid) return;
@@ -217,6 +230,10 @@ class _HrPrenominaWorkspace extends StatelessWidget {
                           onEndDragSelection: onEndDragSelection,
                           onRowContextMenu: onRowContextMenu,
                           onOpenRow: onOpenRow,
+                          onChangeStatus: onChangeStatus,
+                          isPeriodClosed: isPeriodClosed,
+                          changingStatusEmployeeId: changingStatusEmployeeId,
+                          statusMenuKey: statusMenuKey,
                           hasActiveFilter: hasActiveFilter,
                           onOpenFilter: onOpenFilter,
                           onHoverRowChanged: onHoverRowChanged,
@@ -246,6 +263,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
 }
 
 class _HrPrenominaGrid extends StatelessWidget {
+  final bool isPeriodClosed;
   final Map<String, _PrenominaAttendanceDiagnostic> diagnostics;
   final List<_HrPrenominaSummaryRow> rows;
   final String? hoveredRowId;
@@ -270,6 +288,16 @@ class _HrPrenominaGrid extends StatelessWidget {
   final void Function(String rowId) onUpdateDragSelection;
   final VoidCallback onEndDragSelection;
   final Future<void> Function(_HrPrenominaSummaryRow row) onOpenRow;
+  final void Function(
+    _HrPrenominaSummaryRow row,
+    _HrPrenominaDraftStatus status,
+  )
+  onChangeStatus;
+  final String? changingStatusEmployeeId;
+  final GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>> Function(
+    String,
+  )
+  statusMenuKey;
   final Future<void> Function(
     TapDownDetails details,
     _HrPrenominaSummaryRow row,
@@ -281,6 +309,7 @@ class _HrPrenominaGrid extends StatelessWidget {
   final ValueChanged<String?> onHoverRowChanged;
 
   const _HrPrenominaGrid({
+    required this.isPeriodClosed,
     required this.rows,
     required this.diagnostics,
     required this.hoveredRowId,
@@ -298,6 +327,9 @@ class _HrPrenominaGrid extends StatelessWidget {
     required this.onUpdateDragSelection,
     required this.onEndDragSelection,
     required this.onOpenRow,
+    required this.onChangeStatus,
+    required this.changingStatusEmployeeId,
+    required this.statusMenuKey,
     required this.onRowContextMenu,
     required this.hasActiveFilter,
     required this.onOpenFilter,
@@ -381,6 +413,22 @@ class _HrPrenominaGrid extends StatelessWidget {
                                                 diagnostics[rows[index]
                                                     .employeeId] ??
                                                 const _PrenominaAttendanceDiagnostic(),
+                                            statusMenuKey: statusMenuKey(
+                                              rows[index].employeeId,
+                                            ),
+                                            statusEnabled:
+                                                !isPeriodClosed &&
+                                                changingStatusEmployeeId ==
+                                                    null,
+                                            statusSaving:
+                                                changingStatusEmployeeId ==
+                                                rows[index].employeeId,
+                                            periodClosed: isPeriodClosed,
+                                            onChangeStatus: (status) =>
+                                                onChangeStatus(
+                                                  rows[index],
+                                                  status,
+                                                ),
                                             rowIndex: index,
                                             hovered:
                                                 hoveredRowId ==
@@ -510,6 +558,11 @@ class _HrPrenominaGridRow extends StatelessWidget {
   final bool active;
   final bool selected;
   final VoidCallback onTap;
+  final GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>> statusMenuKey;
+  final bool statusEnabled;
+  final bool statusSaving;
+  final bool periodClosed;
+  final ValueChanged<_HrPrenominaDraftStatus> onChangeStatus;
   final Future<void> Function() onOpen;
   final VoidCallback onPrepareActionsMenu;
   final ValueChanged<bool>? onPrimaryPointerDown;
@@ -527,6 +580,11 @@ class _HrPrenominaGridRow extends StatelessWidget {
     required this.active,
     required this.selected,
     required this.onTap,
+    required this.statusMenuKey,
+    required this.statusEnabled,
+    required this.statusSaving,
+    required this.periodClosed,
+    required this.onChangeStatus,
     required this.onOpen,
     required this.onPrepareActionsMenu,
     this.onPrimaryPointerDown,
@@ -565,6 +623,16 @@ class _HrPrenominaGridRow extends StatelessWidget {
       child: Listener(
         onPointerDown: (event) {
           if ((event.buttons & kPrimaryMouseButton) != 0) {
+            // Selecting/scrolling the row on pointer-down can move the status
+            // button before pointer-up and cancel its first click. The menu
+            // prepares the selection itself once the click has completed.
+            final statusBox = statusMenuKey.currentContext?.findRenderObject();
+            if (statusBox is RenderBox &&
+                (Offset.zero & statusBox.size).contains(
+                  statusBox.globalToLocal(event.position),
+                )) {
+              return;
+            }
             final pressed = HardwareKeyboard.instance.logicalKeysPressed;
             final additive =
                 pressed.contains(LogicalKeyboardKey.controlLeft) ||
@@ -634,6 +702,16 @@ class _HrPrenominaGridRow extends StatelessWidget {
                                       onSelected: (_) async => onOpen(),
                                     ),
                               )
+                            : column.id == 'estado'
+                            ? _PrenominaStatusMenu(
+                                row: row,
+                                menuKey: statusMenuKey,
+                                enabled: statusEnabled,
+                                saving: statusSaving,
+                                periodClosed: periodClosed,
+                                onOpened: onPrepareActionsMenu,
+                                onSelected: onChangeStatus,
+                              )
                             : _PrenominaRowValue(
                                 row: row,
                                 diagnostic: diagnostic,
@@ -645,6 +723,86 @@ class _HrPrenominaGridRow extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PrenominaStatusMenu extends StatelessWidget {
+  final _HrPrenominaSummaryRow row;
+  final GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>> menuKey;
+  final bool enabled;
+  final bool saving;
+  final bool periodClosed;
+  final VoidCallback onOpened;
+  final ValueChanged<_HrPrenominaDraftStatus> onSelected;
+
+  const _PrenominaStatusMenu({
+    required this.row,
+    required this.menuKey,
+    required this.enabled,
+    required this.saving,
+    required this.periodClosed,
+    required this.onOpened,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = humanResourcesAreaTokens;
+    return Center(
+      key: ValueKey('prenomina-status-${row.employeeId}'),
+      child: Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        child: PopupMenuButton<_HrPrenominaDraftStatus>(
+          key: menuKey,
+          enabled: enabled,
+          requestFocus: true,
+          tooltip: periodClosed
+              ? 'Periodo cerrado · ${row.statusLabel}'
+              : 'Cambiar estado de ${row.displayName}',
+          position: PopupMenuPosition.under,
+          color: tokens.fieldSurface.withValues(alpha: 1),
+          borderRadius: BorderRadius.circular(999),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: tokens.border),
+          ),
+          onOpened: onOpened,
+          onSelected: onSelected,
+          itemBuilder: (_) => [
+            for (final status in _HrPrenominaDraftStatus.values)
+              PopupMenuItem(
+                key: ValueKey('prenomina-status-option-${status.name}'),
+                value: status,
+                child: Row(
+                  children: [
+                    SizedBox.square(
+                      dimension: 20,
+                      child: status == row.draftStatus
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 18,
+                              color: tokens.onGlass,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(status.label, style: TextStyle(color: tokens.onGlass)),
+                  ],
+                ),
+              ),
+          ],
+          child: _HrPrenominaStatusBadge(
+            label: row.statusLabel,
+            interactive: !periodClosed,
+            saving: saving,
           ),
         ),
       ),

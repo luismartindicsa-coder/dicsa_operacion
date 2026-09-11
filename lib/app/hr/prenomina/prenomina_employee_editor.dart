@@ -7,6 +7,7 @@ class _HrPrenominaEditDialog extends StatefulWidget {
   final _HrPrenominaSummaryRow Function(_HrPrenominaDraftDraft) preview;
   final bool canGoPrevious;
   final bool canGoNext;
+  final _PrenominaSection initialSection;
 
   const _HrPrenominaEditDialog({
     required this.row,
@@ -15,6 +16,7 @@ class _HrPrenominaEditDialog extends StatefulWidget {
     required this.periodLabel,
     required this.canGoPrevious,
     required this.canGoNext,
+    this.initialSection = _PrenominaSection.resumen,
   });
 
   @override
@@ -26,7 +28,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
   late final _HrPrenominaDraftDraft _draft =
       _HrPrenominaDraftDraft.fromSummaryRow(widget.row);
   String? _moneyValidationMessage;
-  _PrenominaSection _section = _PrenominaSection.resumen;
+  late _PrenominaSection _section = widget.initialSection;
   late _HrPrenominaSummaryRow _preview = widget.row;
 
   void _changed() {
@@ -82,29 +84,11 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
   }
 
   void _save([_HrPrenominaEditAction action = _HrPrenominaEditAction.save]) {
-    final invalidField = _draft.firstInvalidMoneyFieldLabel;
-    if (invalidField != null) {
-      setState(() {
-        _moneyValidationMessage =
-            'Revisa "$invalidField". Captura un monto válido, por ejemplo 1250.50.';
-      });
-      return;
-    }
-    final manual =
-        _parsePrenominaDraftText(_draft.fiscalManualDeductionAmountText) ?? 0;
-    if (manual < 0 ||
-        manual > _preview.fiscalBeforeManualDeductionAmount + .001) {
-      setState(
-        () => _moneyValidationMessage =
-            'El descuento fiscal manual debe estar entre cero y el fiscal disponible (${_formatPrenominaMoneyZero(_preview.fiscalBeforeManualDeductionAmount)}).',
-      );
-      return;
-    }
-    if (manual > 0 && _draft.fiscalManualDeductionReason.trim().isEmpty) {
-      setState(
-        () => _moneyValidationMessage =
-            'Indica el motivo del descuento fiscal manual.',
-      );
+    final validation = _draft.validationMessage(
+      fiscalAvailable: _preview.fiscalBeforeManualDeductionAmount,
+    );
+    if (validation != null) {
+      setState(() => _moneyValidationMessage = validation);
       return;
     }
     Navigator.of(

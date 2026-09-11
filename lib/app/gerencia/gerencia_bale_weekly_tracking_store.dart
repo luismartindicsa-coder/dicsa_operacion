@@ -334,9 +334,15 @@ class GerenciaBaleWeeklyTrackingStore {
     }
   }
 
+  /// Fresh report read; exporting must not update the dashboard snapshots.
+  static Future<GerenciaBaleWeeklyTrackingBundle> loadWeekForReport(
+    DateTime weekStart,
+  ) => _loadWeekUncached(_weekStartMonday(weekStart), persistSnapshot: false);
+
   static Future<GerenciaBaleWeeklyTrackingBundle> _loadWeekUncached(
-    DateTime normalizedWeekStart,
-  ) async {
+    DateTime normalizedWeekStart, {
+    bool persistSnapshot = true,
+  }) async {
     final weekEndDate = normalizedWeekStart.add(const Duration(days: 5));
     try {
       final baleTypes = await _loadBaleTypes();
@@ -610,7 +616,7 @@ class GerenciaBaleWeeklyTrackingStore {
         unmappedProductionCodes: unmappedProductionCodes.toList()..sort(),
         unmappedShipmentCodes: unmappedShipmentCodes.toList()..sort(),
       );
-      _persistSummarySnapshotIfNeeded(currentPlan, bundle);
+      if (persistSnapshot) _persistSummarySnapshotIfNeeded(currentPlan, bundle);
       return bundle;
     } catch (e, st) {
       AppErrorReporter.report(
@@ -625,6 +631,7 @@ class GerenciaBaleWeeklyTrackingStore {
 
   static Future<List<GerenciaBaleWeeklyHistorySnapshot>> loadRecentHistory({
     int limit = 6,
+    bool readOnly = false,
   }) async {
     try {
       final planRows = await _supa
@@ -674,7 +681,11 @@ class GerenciaBaleWeeklyTrackingStore {
       }
       if (missingWeekStartDates.isNotEmpty) {
         final bundles = await Future.wait(
-          missingWeekStartDates.map((weekStartDate) => loadWeek(weekStartDate)),
+          missingWeekStartDates.map(
+            (weekStartDate) => readOnly
+                ? loadWeekForReport(weekStartDate)
+                : loadWeek(weekStartDate),
+          ),
         );
         snapshots.addAll(
           bundles.map(

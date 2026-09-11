@@ -25,6 +25,7 @@ import '../finanzas/finanzas_due_alerts_store.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
+import '../gestion_documental/gestion_documental_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
 import '../management_reports/management_supervision_page.dart';
@@ -209,6 +210,18 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const ContabilidadDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openGestionDocumentalDashboard() async {
+    if (!mounted) return;
+    setState(() => _menuOverlayOpen = false);
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const GestionDocumentalDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -427,6 +440,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenCompras: _openComprasDashboard,
       onOpenFinanzas: _openFinanzasDashboard,
       onOpenContabilidad: _openContabilidadDashboard,
+      onOpenGestionDocumental: _openGestionDocumentalDashboard,
       onOpenLogistics: _openLogisticsDashboard,
       onOpenGerencia: _openGerenciaDashboard,
       onOpenHumanResources: _openHumanResourcesDashboard,
@@ -450,6 +464,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
             onOpenFinanzasDashboard: _openFinanzasDashboard,
             onOpenContabilidad: _openContabilidadDashboard,
+            onOpenGestionDocumental: _openGestionDocumentalDashboard,
             onOpenLogistics: _openLogisticsDashboard,
             onOpenTradeAnalysis: _openDirectionTradeAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
@@ -510,6 +525,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenFinanzasDashboard;
   final Future<void> Function() onOpenContabilidad;
+  final Future<void> Function() onOpenGestionDocumental;
   final Future<void> Function() onOpenLogistics;
   final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
@@ -526,6 +542,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenMenudeoAnalysis,
     required this.onOpenFinanzasDashboard,
     required this.onOpenContabilidad,
+    required this.onOpenGestionDocumental,
     required this.onOpenLogistics,
     required this.onOpenTradeAnalysis,
     required this.onOpenPurchaseOrders,
@@ -740,6 +757,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                 width: 420,
                 child: _DirectionCommercialFollowUpsSummary(
                   onOpenCommercial: onOpenCommercial,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Gestión Documental',
+                  subtitle:
+                      'Documentos, expedientes, trámites y calendario de obligaciones de DICSA.',
+                  badge: 'Área nueva',
+                  icon: Icons.folder_copy_rounded,
+                  onTap: onOpenGestionDocumental,
                 ),
               ),
             ],
@@ -6125,6 +6153,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenCompras;
   final Future<void> Function()? onOpenFinanzas;
   final Future<void> Function()? onOpenContabilidad;
+  final Future<void> Function()? onOpenGestionDocumental;
   final Future<void> Function()? onOpenLogistics;
   final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenGerencia;
@@ -6148,6 +6177,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenCompras,
     this.onOpenFinanzas,
     this.onOpenContabilidad,
+    this.onOpenGestionDocumental,
     this.onOpenLogistics,
     this.onOpenHumanResources,
     this.onOpenGerencia,
@@ -6333,6 +6363,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Desarrollo Comercial',
                       subtitle: 'Dashboard, radar, directorio y agenda',
                       onTap: onOpenCommercial,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.folder_copy_rounded,
+                      title: 'Gestión Documental',
+                      subtitle: 'Expedientes, trámites y calendario',
+                      onTap: onOpenGestionDocumental,
                     ),
                   ],
                 ),

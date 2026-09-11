@@ -53,6 +53,14 @@ Future<Uint8List> buildManagementReportPdfBytes({
   required DateTime generatedAt,
   required String generatedBy,
 }) async {
+  if (area.key == ManagementAreaKey.gerencia &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildGerenciaWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
   if (area.key == ManagementAreaKey.operaciones &&
       frequency == ManagementReportFrequency.daily) {
     return buildOperationsDailySupervisionPdfBytes(
@@ -72,6 +80,14 @@ Future<Uint8List> buildManagementReportPdfBytes({
   if (area.key == ManagementAreaKey.gastos &&
       frequency == ManagementReportFrequency.daily) {
     return buildExpensesDailySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.gastos &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildExpensesWeeklySupervisionPdfBytes(
       area: area,
       generatedAt: generatedAt,
       generatedBy: generatedBy,

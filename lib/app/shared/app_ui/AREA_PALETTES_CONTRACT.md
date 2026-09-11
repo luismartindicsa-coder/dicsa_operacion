@@ -333,8 +333,23 @@ Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens f
 
 ### Gestion Documental
 
-- caracter: limpio, ordenado, neutro, documental
-- familia sugerida: gris azulado
+- estado: `direccion rosa aprobada por el usuario; base visual implementada`
+- caracter: documental, ordenado, administrativo
+- familia oficial: rosa profundo / rosa claro, en `dark glass`
+- fuente de tokens: `lib/app/gestion_documental/gestion_documental_theme.dart`
+- anclas iniciales:
+  - fondo `#24101B`, `#361426`, `#501D38`
+  - superficies `#351525`, `#2C1220`
+  - primario `#FF93C5`, primario fuerte `#AD326E`
+  - acento `#A82E66` (seleccion/confirmacion con texto claro), texto `#FFF3F8`
+- alcance obligatorio:
+  - fondos, header, navegacion overlay, cards y listas
+  - botones, grid, hover, foco, seleccion y captura
+  - filtros, calendarios, pickers, menus, dialogs y estados vacios
+- los overlays reciben los mismos tokens y tema Material rosa; no heredan el fallback azul ni el verde global
+- conservar glass, blur, radios, spacing y microinteracciones homologadas
+- los semaforos temporales pueden usar colores semanticos discretos con texto e icono; no recolorean la interfaz
+- no reciclar la identidad morada de RH ni la familia vino de Gerencia
 
 ### Finanzas
 
@@ -385,4 +400,4 @@ Cada area debe definirse unicamente con:
 
 - `Administracion` no queda como area oficial independiente por ahora.
 - La tarjeta azul que hoy aparece como `Administracion` no define la paleta de `Direccion`.
-- Esa familia azul puede reciclarse despues para `Gestion Documental` si hace sentido.
+- `Gestion Documental` tiene identidad rosa propia; no usa la familia azul de `Administracion`.
