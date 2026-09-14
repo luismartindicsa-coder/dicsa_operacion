@@ -13,6 +13,7 @@ const String kLogisticsNavIncidentsLabel = 'Incidencias';
 const String kLogisticsNavCatalogsLabel = 'Catálogos Operativos';
 const String kLogisticsNavDieselLabel = 'Consumo de Diesel';
 const String kLogisticsNavGasolineLabel = 'Control de Gasolina';
+const String kLogisticsNavPerformanceLabel = 'Rendimiento';
 const String kLogisticsNavSavingsLabel = 'Ahorro y Planeación';
 const String kLogisticsNavDirectionDashboardLabel = 'Dashboard Dirección';
 
@@ -122,6 +123,11 @@ List<LogisticsAreaNavSection> _buildLogisticsAreaSections({
           subtitle: 'Cargas directas en gasolinera',
         ),
         buildEntry(
+          icon: Icons.speed_rounded,
+          title: kLogisticsNavPerformanceLabel,
+          subtitle: 'Kilometraje, combustible y km/L',
+        ),
+        buildEntry(
           icon: Icons.insights_outlined,
           title: kLogisticsNavSavingsLabel,
           subtitle: 'Rutas, zonas y oportunidades',
@@ -222,6 +228,10 @@ List<LogisticsAreaNavSection> _buildDashboardSections({
     areaItems,
     kLogisticsNavGasolineLabel,
   );
+  final performance = _entryFromDashboardAction(
+    areaItems,
+    kLogisticsNavPerformanceLabel,
+  );
   final savings = _entryFromDashboardAction(
     areaItems,
     kLogisticsNavSavingsLabel,
@@ -240,7 +250,7 @@ List<LogisticsAreaNavSection> _buildDashboardSections({
     LogisticsAreaNavSection(
       icon: Icons.tune_rounded,
       title: 'Planeación',
-      children: [?catalogs, ?diesel, ?gasoline, ?savings],
+      children: [?catalogs, ?diesel, ?gasoline, ?performance, ?savings],
     ),
     LogisticsAreaNavSection(
       icon: Icons.apps_rounded,

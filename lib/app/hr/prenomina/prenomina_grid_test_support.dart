@@ -19,6 +19,7 @@ Widget hrPrenominaGridForTesting({
   bool useStatusActions = false,
   bool periodClosed = false,
   Future<void> Function(Map<String, dynamic>)? onPersistDraft,
+  Future<void> Function(Map<String, dynamic>)? onAfterPersistDraft,
 }) => _PrenominaGridFixture(
   period: period,
   employees: employees,
@@ -35,6 +36,7 @@ Widget hrPrenominaGridForTesting({
   useStatusActions: useStatusActions,
   periodClosed: periodClosed,
   onPersistDraft: onPersistDraft,
+  onAfterPersistDraft: onAfterPersistDraft,
 );
 
 class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
@@ -53,6 +55,7 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
   final bool useStatusActions;
   final bool periodClosed;
   final Future<void> Function(Map<String, dynamic>)? onPersistDraft;
+  final Future<void> Function(Map<String, dynamic>)? onAfterPersistDraft;
   const _PrenominaGridFixture({
     required this.period,
     required this.employees,
@@ -69,6 +72,7 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
     this.useStatusActions = false,
     this.periodClosed = false,
     this.onPersistDraft,
+    this.onAfterPersistDraft,
   });
   @override
   State<HumanResourcesPrenominaPage> createState() =>
@@ -194,8 +198,12 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
         if (draft['employee_id'] != payload['employee_id'] ||
             draft['period_label'] != payload['period_label'])
           draft,
-      payload,
+      {
+        ...payload,
+        'id': payload['id'] ?? 'fixture-draft-${payload['employee_id']}',
+      },
     ];
+    await fixture.onAfterPersistDraft?.call(payload);
   }
 
   @override

@@ -147,6 +147,18 @@ class LogisticsZoneStore {
       onConflict: 'id',
     );
   }
+
+  static Future<void> saveZoneRows(List<LogisticsZoneRecord> records) async {
+    if (records.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kLogisticsZonesTable)
+        .upsert(
+          records
+              .map((record) => record.toUpsertJson())
+              .toList(growable: false),
+          onConflict: 'id',
+        );
+  }
 }
 
 DateTime? _tryParseDateTime(String? raw) {

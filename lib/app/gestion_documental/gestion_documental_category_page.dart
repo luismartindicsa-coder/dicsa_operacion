@@ -7,9 +7,11 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'gestion_documental_area_chrome.dart';
 import 'gestion_documental_catalog.dart';
+import 'gestion_documental_records_workspace.dart';
+import 'gestion_documental_records.dart';
 import 'gestion_documental_widgets.dart';
 
-/// Initial, empty category surface. Editable records will adopt Entradas/Salidas.
+/// Routes enabled categories to their shared master-detail workspace.
 class GestionDocumentalCategoryPage extends StatelessWidget {
   final DocumentalCategory category;
   final Route<dynamic> dashboardRoute;
@@ -23,10 +25,19 @@ class GestionDocumentalCategoryPage extends StatelessWidget {
   Widget build(BuildContext context) => GestionDocumentalAreaShell(
     current: category.key,
     dashboardRoute: dashboardRoute,
-    workspaceBuilder: (context, navigate) => _CategoryWorkspace(
-      category: category,
-      onBack: () => navigate('resumen'),
-    ),
+    workspaceBuilder: (context, navigate) =>
+        DocumentalRecordKind.values.any((kind) => kind.key == category.key)
+        ? DocumentalRecordsWorkspace(
+            key: ValueKey(category.key),
+            kind: DocumentalRecordKind.values.firstWhere(
+              (kind) => kind.key == category.key,
+            ),
+            onBack: () => navigate('dashboard'),
+          )
+        : _CategoryWorkspace(
+            category: category,
+            onBack: () => navigate('dashboard'),
+          ),
   );
 }
 
@@ -104,7 +115,7 @@ class _CategoryWorkspaceState extends State<_CategoryWorkspace> {
             onPressed: widget.onBack,
             style: TextButton.styleFrom(foregroundColor: t.primary),
             icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: const Text('Gestión Documental · Resumen'),
+            label: const Text('Dashboard Gestión Documental'),
           ),
         ),
         const SizedBox(height: 8),
@@ -172,8 +183,9 @@ class _CategoryWorkspaceState extends State<_CategoryWorkspace> {
                         child: const Text('Limpiar'),
                       ),
                     Tooltip(
-                      message:
-                          'La captura se habilitará en la siguiente etapa de esta categoría.',
+                      message: category.key == 'documentacion-legal'
+                          ? 'Abrir la captura y vista previa del documento legal.'
+                          : 'La captura se habilitará en la siguiente etapa de esta categoría.',
                       child: ElevatedButton.icon(
                         onPressed: null,
                         style: contractPrimaryButtonStyle(context),
@@ -229,8 +241,9 @@ class _CategoryWorkspaceState extends State<_CategoryWorkspace> {
               DocumentalEmptyState(
                 icon: category.icon,
                 title: 'Expediente por integrar',
-                description:
-                    'Esta categoría está en su vista inicial. La captura, los archivos y el seguimiento se habilitarán en la próxima etapa.',
+                description: category.key == 'documentacion-legal'
+                    ? 'Abre Nuevo para recorrer la captura y consultar la vista previa de un documento legal.'
+                    : 'Esta categoría está en su vista inicial. La captura, los archivos y el seguimiento se habilitarán en la próxima etapa.',
               ),
               if (category.key == 'documentacion-legal')
                 const Align(

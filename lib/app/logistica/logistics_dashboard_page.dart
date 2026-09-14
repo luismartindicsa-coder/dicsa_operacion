@@ -18,6 +18,8 @@ import 'logistics_control_daily_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_diesel_store.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_performance_page.dart';
+import 'logistics_savings_page.dart';
 import 'logistics_theme.dart';
 
 class LogisticsDashboardPage extends StatelessWidget {
@@ -147,6 +149,16 @@ class LogisticsDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openPerformance() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const LogisticsPerformancePage(),
+          duration: const Duration(milliseconds: 420),
+          reverseDuration: const Duration(milliseconds: 360),
+        ),
+      );
+    }
+
     Future<void> openIncidents() async {
       _showLogisticsPhaseSnack(
         context,
@@ -155,9 +167,12 @@ class LogisticsDashboardPage extends StatelessWidget {
     }
 
     Future<void> openSavings() async {
-      _showLogisticsPhaseSnack(
-        context,
-        'Ahorro y Planeación se conectará después del Control Diario.',
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const LogisticsSavingsPage(),
+          duration: const Duration(milliseconds: 420),
+          reverseDuration: const Duration(milliseconds: 360),
+        ),
       );
     }
 
@@ -219,6 +234,13 @@ class LogisticsDashboardPage extends StatelessWidget {
             subtitle: 'Cargas directas en gasolinera por operador y unidad',
             icon: Icons.local_gas_station_outlined,
             onTap: openGasoline,
+          ),
+          DashboardNavAction(
+            title: kLogisticsNavPerformanceLabel,
+            subtitle:
+                'Kilometraje, combustible, viajes y rendimiento por unidad',
+            icon: Icons.speed_rounded,
+            onTap: openPerformance,
           ),
           DashboardNavAction(
             title: kLogisticsNavSavingsLabel,

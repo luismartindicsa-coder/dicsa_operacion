@@ -69,6 +69,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
   final ValueChanged<int> onPageSizeChanged;
   final Future<void> Function() onOpenSelectedRow;
   final Future<void> Function() onClosePeriod;
+  final Future<void> Function()? onPublishAll;
   final Future<void> Function() onExportCashEnvelopes;
   final ValueChanged<String> onSelectPeriod;
   final VoidCallback onEscape;
@@ -127,6 +128,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
     required this.onPageSizeChanged,
     required this.onOpenSelectedRow,
     required this.onClosePeriod,
+    required this.onPublishAll,
     required this.onExportCashEnvelopes,
     required this.onSelectPeriod,
     required this.onEscape,
@@ -175,6 +177,9 @@ class _HrPrenominaWorkspace extends StatelessWidget {
               pendingDraftCount: pendingDraftCount,
               onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
               onClosePeriod: () => unawaited(onClosePeriod()),
+              onPublishAll: onPublishAll == null
+                  ? null
+                  : () => unawaited(onPublishAll!()),
               onExportCashEnvelopes: () => unawaited(onExportCashEnvelopes()),
               onSelectPeriod: onSelectPeriod,
             ),

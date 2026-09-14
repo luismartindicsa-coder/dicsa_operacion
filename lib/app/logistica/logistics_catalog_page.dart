@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,8 @@ import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_performance_page.dart';
+import 'logistics_savings_page.dart';
 import 'logistics_geocoding_service.dart';
 import 'logistics_resource_profile_store.dart';
 import 'logistics_theme.dart';
@@ -334,6 +337,290 @@ class _CompanyCatalogStatusRow {
   const _CompanyCatalogStatusRow({required this.row, required this.status});
 }
 
+class _GeneratedLogisticsZone {
+  final LogisticsZoneRecord zone;
+  final List<LogisticsCompanyProfileRecord> companies;
+
+  const _GeneratedLogisticsZone({required this.zone, required this.companies});
+}
+
+const LatLng _kDicsaLogisticsBase = LatLng(20.492298, -100.811669);
+const double _kDicsaLocalRadiusKm = 55;
+
+double _distanceFromDicsaKm(LatLng point) {
+  const earthRadiusKm = 6371.0;
+  final latitudeDelta =
+      (point.latitude - _kDicsaLogisticsBase.latitude) * math.pi / 180;
+  final longitudeDelta =
+      (point.longitude - _kDicsaLogisticsBase.longitude) * math.pi / 180;
+  final a =
+      math.sin(latitudeDelta / 2) * math.sin(latitudeDelta / 2) +
+      math.cos(_kDicsaLogisticsBase.latitude * math.pi / 180) *
+          math.cos(point.latitude * math.pi / 180) *
+          math.sin(longitudeDelta / 2) *
+          math.sin(longitudeDelta / 2);
+  return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+}
+
+double _locationDistanceSquared(LatLng a, LatLng b) {
+  final longitudeScale = math.cos(
+    ((a.latitude + b.latitude) / 2) * math.pi / 180,
+  );
+  final latitudeDelta = a.latitude - b.latitude;
+  final longitudeDelta = (a.longitude - b.longitude) * longitudeScale;
+  return latitudeDelta * latitudeDelta + longitudeDelta * longitudeDelta;
+}
+
+List<LatLng> _convexHull(List<LatLng> points) {
+  if (points.length <= 2) return List<LatLng>.from(points);
+  final sorted = List<LatLng>.from(points)
+    ..sort((a, b) {
+      final longitude = a.longitude.compareTo(b.longitude);
+      return longitude != 0 ? longitude : a.latitude.compareTo(b.latitude);
+    });
+
+  double cross(LatLng origin, LatLng a, LatLng b) =>
+      (a.longitude - origin.longitude) * (b.latitude - origin.latitude) -
+      (a.latitude - origin.latitude) * (b.longitude - origin.longitude);
+
+  final lower = <LatLng>[];
+  for (final point in sorted) {
+    while (lower.length >= 2 &&
+        cross(lower[lower.length - 2], lower.last, point) <= 0) {
+      lower.removeLast();
+    }
+    lower.add(point);
+  }
+  final upper = <LatLng>[];
+  for (final point in sorted.reversed) {
+    while (upper.length >= 2 &&
+        cross(upper[upper.length - 2], upper.last, point) <= 0) {
+      upper.removeLast();
+    }
+    upper.add(point);
+  }
+  lower.removeLast();
+  upper.removeLast();
+  return [...lower, ...upper];
+}
+
+List<LatLng> _zonePolygonForCompanies(
+  List<LogisticsCompanyProfileRecord> companies,
+) {
+  final points = companies
+      .map((company) => LatLng(company.latitude!, company.longitude!))
+      .toList(growable: false);
+  if (points.isEmpty) return const <LatLng>[];
+  if (points.length < 3) {
+    final latitude =
+        points.map((point) => point.latitude).reduce((a, b) => a + b) /
+        points.length;
+    final longitude =
+        points.map((point) => point.longitude).reduce((a, b) => a + b) /
+        points.length;
+    const padding = 0.018;
+    return <LatLng>[
+      LatLng(latitude + padding, longitude - padding),
+      LatLng(latitude + padding, longitude + padding),
+      LatLng(latitude - padding, longitude + padding),
+      LatLng(latitude - padding, longitude - padding),
+    ];
+  }
+  final hull = _convexHull(points);
+  final latitude =
+      hull.map((point) => point.latitude).reduce((a, b) => a + b) / hull.length;
+  final longitude =
+      hull.map((point) => point.longitude).reduce((a, b) => a + b) /
+      hull.length;
+  return hull
+      .map(
+        (point) => LatLng(
+          latitude + (point.latitude - latitude) * 1.055,
+          longitude + (point.longitude - longitude) * 1.055,
+        ),
+      )
+      .toList(growable: false);
+}
+
+List<List<LogisticsCompanyProfileRecord>> _clusterCompaniesByDistance(
+  List<LogisticsCompanyProfileRecord> companies,
+  int requestedClusterCount,
+) {
+  if (companies.isEmpty) return const <List<LogisticsCompanyProfileRecord>>[];
+  if (companies.length == 1) return [companies];
+  final clusterCount = math.min(requestedClusterCount, companies.length);
+  final points = companies
+      .map((company) => LatLng(company.latitude!, company.longitude!))
+      .toList(growable: false);
+  final mean = LatLng(
+    points.map((point) => point.latitude).reduce((a, b) => a + b) /
+        points.length,
+    points.map((point) => point.longitude).reduce((a, b) => a + b) /
+        points.length,
+  );
+  final centroids = <LatLng>[
+    points.reduce(
+      (closest, point) =>
+          _locationDistanceSquared(point, mean) <
+              _locationDistanceSquared(closest, mean)
+          ? point
+          : closest,
+    ),
+  ];
+  while (centroids.length < clusterCount) {
+    centroids.add(
+      points.reduce((farthest, point) {
+        final pointDistance = centroids
+            .map((centroid) => _locationDistanceSquared(point, centroid))
+            .reduce(math.min);
+        final farthestDistance = centroids
+            .map((centroid) => _locationDistanceSquared(farthest, centroid))
+            .reduce(math.min);
+        return pointDistance > farthestDistance ? point : farthest;
+      }),
+    );
+  }
+
+  var clusters = List<List<LogisticsCompanyProfileRecord>>.generate(
+    clusterCount,
+    (_) => <LogisticsCompanyProfileRecord>[],
+  );
+  for (var iteration = 0; iteration < 24; iteration++) {
+    clusters = List<List<LogisticsCompanyProfileRecord>>.generate(
+      clusterCount,
+      (_) => <LogisticsCompanyProfileRecord>[],
+    );
+    for (final company in companies) {
+      final point = LatLng(company.latitude!, company.longitude!);
+      var bestIndex = 0;
+      var bestDistance = _locationDistanceSquared(point, centroids.first);
+      for (var index = 1; index < centroids.length; index++) {
+        final distance = _locationDistanceSquared(point, centroids[index]);
+        if (distance < bestDistance) {
+          bestIndex = index;
+          bestDistance = distance;
+        }
+      }
+      clusters[bestIndex].add(company);
+    }
+    var changed = false;
+    for (var index = 0; index < clusters.length; index++) {
+      final cluster = clusters[index];
+      if (cluster.isEmpty) continue;
+      final next = LatLng(
+        cluster.map((company) => company.latitude!).reduce((a, b) => a + b) /
+            cluster.length,
+        cluster.map((company) => company.longitude!).reduce((a, b) => a + b) /
+            cluster.length,
+      );
+      if (_locationDistanceSquared(centroids[index], next) > 0.0000000001) {
+        changed = true;
+      }
+      centroids[index] = next;
+    }
+    if (!changed) break;
+  }
+
+  return clusters.where((cluster) => cluster.isNotEmpty).toList()..sort((a, b) {
+    final aLatitude =
+        a.map((company) => company.latitude!).reduce((x, y) => x + y) /
+        a.length;
+    final bLatitude =
+        b.map((company) => company.latitude!).reduce((x, y) => x + y) /
+        b.length;
+    return bLatitude.compareTo(aLatitude);
+  });
+}
+
+List<_GeneratedLogisticsZone> _generateLogisticsZones(
+  List<LogisticsCompanyProfileRecord> companies,
+) {
+  if (companies.length < 2) return const <_GeneratedLogisticsZone>[];
+  final local = <LogisticsCompanyProfileRecord>[];
+  final regional = <LogisticsCompanyProfileRecord>[];
+  for (final company in companies) {
+    final point = LatLng(company.latitude!, company.longitude!);
+    if (_distanceFromDicsaKm(point) <= _kDicsaLocalRadiusKm) {
+      local.add(company);
+    } else {
+      regional.add(company);
+    }
+  }
+
+  final localClusterCount = local.length >= 8
+      ? math.min(5, math.max(3, math.sqrt(local.length).round()))
+      : math.min(2, local.length);
+  final regionalClusterCount = regional.isEmpty
+      ? 0
+      : math.min(3, math.max(1, math.sqrt(regional.length).round()));
+  final localClusters = _clusterCompaniesByDistance(local, localClusterCount);
+  final regionalClusters = _clusterCompaniesByDistance(
+    regional,
+    regionalClusterCount,
+  );
+  const colors = <String>[
+    '#7D8995',
+    '#6F7C88',
+    '#8A939C',
+    '#65717D',
+    '#A1A9B0',
+    '#596570',
+  ];
+  final generated = <_GeneratedLogisticsZone>[];
+
+  void appendClusters(
+    List<List<LogisticsCompanyProfileRecord>> clusters, {
+    required String prefix,
+    required String namePrefix,
+    required bool localToDicsa,
+  }) {
+    for (var index = 0; index < clusters.length; index++) {
+      final number = (index + 1).toString().padLeft(2, '0');
+      final code = '$prefix-$number';
+      final name = '$namePrefix ${index + 1}';
+      final cluster = clusters[index];
+      generated.add(
+        _GeneratedLogisticsZone(
+          zone: LogisticsZoneRecord(
+            id: buildLogisticsZoneId(code: code, name: name),
+            code: code,
+            name: name,
+            city: 'Celaya',
+            state: 'Guanajuato',
+            colorHex: colors[generated.length % colors.length],
+            coverageHint: localToDicsa
+                ? '${cluster.length} empresas dentro del radio de ${_kDicsaLocalRadiusKm.toStringAsFixed(0)} km de DICSA.'
+                : '${cluster.length} empresas fuera del radio local de DICSA, agrupadas por cercanía regional.',
+            displayOrder: generated.length + 1,
+            polygonPoints: _zonePolygonPointsToJson(
+              _zonePolygonForCompanies(cluster),
+            ),
+            active: true,
+            notes:
+                'Generada automáticamente con DICSA como origen. Revisar horarios, capacidad y restricciones antes de usar en ruteo.',
+            updatedAt: null,
+          ),
+          companies: cluster,
+        ),
+      );
+    }
+  }
+
+  appendClusters(
+    localClusters,
+    prefix: 'CEL',
+    namePrefix: 'Zona Celaya',
+    localToDicsa: true,
+  );
+  appendClusters(
+    regionalClusters,
+    prefix: 'REG',
+    namePrefix: 'Zona regional',
+    localToDicsa: false,
+  );
+  return generated;
+}
+
 _ZoneDetectionResult _detectZoneForCoordinate({
   required LatLng point,
   required List<LogisticsZoneRecord> zones,
@@ -366,6 +653,7 @@ class LogisticsCatalogPage extends StatefulWidget {
 class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
   final ScrollController _zonesScrollController = ScrollController();
   final ScrollController _containersScrollController = ScrollController();
+  final MapController _companiesMapController = MapController();
 
   bool _loading = true;
   bool _canReturnToDirection = false;
@@ -382,6 +670,8 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
   String _driverSearch = '';
   String _vehicleSearch = '';
   String _containerSearch = '';
+  String? _selectedCompanyMapSiteId;
+  bool _companiesMapReady = false;
 
   @override
   void initState() {
@@ -393,6 +683,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
   void dispose() {
     _zonesScrollController.dispose();
     _containersScrollController.dispose();
+    _companiesMapController.dispose();
     super.dispose();
   }
 
@@ -485,6 +776,24 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     );
   }
 
+  Future<void> _openPerformance() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const LogisticsPerformancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _openSavings() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const LogisticsSavingsPage()));
+  }
+
   void _showPhaseSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -507,6 +816,9 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
       case kLogisticsNavGasolineLabel:
         unawaited(_openGasoline());
         return;
+      case kLogisticsNavPerformanceLabel:
+        unawaited(_openPerformance());
+        return;
       case kLogisticsNavFleetStatusLabel:
         _showPhaseSnack(
           'Estado de Unidades se conectará después de homologar esta lectura de catálogos.',
@@ -518,9 +830,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
         );
         return;
       case kLogisticsNavSavingsLabel:
-        _showPhaseSnack(
-          'Ahorro y Planeación nacerá encima de empresas, zonas y contenedores.',
-        );
+        unawaited(_openSavings());
         return;
       case kLogisticsNavDirectionDashboardLabel:
         unawaited(_openDirectionDashboard());
@@ -641,6 +951,38 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
 
   List<LogisticsZoneRecord> get _activeZones {
     return _zones.where((zone) => zone.active).toList(growable: false);
+  }
+
+  void _fitCompanyLocations(Iterable<LogisticsCompanyProfileRecord> companies) {
+    if (!_companiesMapReady) return;
+    final points = companies
+        .where(
+          (company) => company.latitude != null && company.longitude != null,
+        )
+        .map((company) => LatLng(company.latitude!, company.longitude!))
+        .toList(growable: false);
+    if (points.isEmpty) return;
+    if (points.length == 1) {
+      _companiesMapController.move(points.first, 13.4);
+      return;
+    }
+    _companiesMapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        padding: const EdgeInsets.all(56),
+        maxZoom: 11.8,
+      ),
+    );
+  }
+
+  void _selectCompanyOnMap(LogisticsCompanyProfileRecord company) {
+    final latitude = company.latitude;
+    final longitude = company.longitude;
+    if (latitude == null || longitude == null) return;
+    setState(() => _selectedCompanyMapSiteId = company.siteId);
+    if (_companiesMapReady) {
+      _companiesMapController.move(LatLng(latitude, longitude), 13.8);
+    }
   }
 
   int get _containersWithCompanyLinkCount {
@@ -779,6 +1121,56 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     } catch (error) {
       if (!mounted) return;
       _showPhaseSnack('No se pudo guardar la zona: $error');
+    }
+  }
+
+  Future<void> _createAutomaticZones() async {
+    if (_activeZones.isNotEmpty) {
+      _showPhaseSnack(
+        'La generación automática se bloquea cuando ya existen zonas activas para no sobrescribir su trabajo.',
+      );
+      return;
+    }
+    final companies = _companyProfiles
+        .where(
+          (company) => company.latitude != null && company.longitude != null,
+        )
+        .toList(growable: false);
+    final proposals = _generateLogisticsZones(companies);
+    if (proposals.isEmpty) {
+      _showPhaseSnack(
+        'Se requieren al menos dos empresas con coordenadas para proponer zonas.',
+      );
+      return;
+    }
+
+    final confirmed =
+        await showLogisticsContractDialog<List<_GeneratedLogisticsZone>>(
+          context: context,
+          builder: (_) => _AutomaticZonesPreviewDialog(proposals: proposals),
+        );
+    if (confirmed == null || confirmed.isEmpty) return;
+
+    try {
+      await LogisticsZoneStore.saveZoneRows(
+        confirmed.map((proposal) => proposal.zone).toList(growable: false),
+      );
+      await LogisticsCompanyProfileStore.saveProfileRows([
+        for (final proposal in confirmed)
+          for (final company in proposal.companies)
+            company.copyWith(zoneId: proposal.zone.id),
+      ]);
+      await _reloadCatalogMasters();
+      if (!mounted) return;
+      _showPhaseSnack(
+        '${confirmed.length} zonas automáticas creadas y ${companies.length} empresas asignadas.',
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      _showPhaseSnack('No se pudieron crear las zonas: ${error.message}');
+    } catch (error) {
+      if (!mounted) return;
+      _showPhaseSnack('No se pudieron crear las zonas: $error');
     }
   }
 
@@ -1507,13 +1899,21 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
           ),
         )
         .toList(growable: false);
-    final locatedCount = companyRows
+    final mapLocatedCount = companyRows
         .where(
-          (entry) => entry.status.kind == _CompanyLocationStatusKind.located,
+          (entry) => entry.row.latitude != null && entry.row.longitude != null,
         )
         .length;
-    final pendingCount = companyRows
-        .where((entry) => entry.status.isPending)
+    final pendingLocationCount = companyRows
+        .where(
+          (entry) => entry.row.latitude == null || entry.row.longitude == null,
+        )
+        .length;
+    final pendingZoneCount = companyRows
+        .where(
+          (entry) =>
+              entry.status.kind == _CompanyLocationStatusKind.pendingZone,
+        )
         .length;
     final outsideCount = companyRows
         .where(
@@ -1533,9 +1933,6 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     const pendingForeground = Color(0xFF7A5C1F);
     const pendingBackground = Color(0xFFF7EED8);
     const pendingBorder = Color(0xFFE6D2A4);
-    const alertForeground = Color(0xFF8A3F3F);
-    const alertBackground = Color(0xFFF5E3E3);
-    const alertBorder = Color(0xFFD9B7B7);
     const warningForeground = Color(0xFF7A4E1F);
     const warningBackground = Color(0xFFF4E6DA);
     const warningBorder = Color(0xFFE0C3A8);
@@ -1561,36 +1958,36 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
             children: [
               _CatalogStatusMetricChip(
                 icon: Icons.check_circle_rounded,
-                label: 'Ya ubicadas',
-                value: locatedCount.toString(),
-                helper: 'Listas para ruteo',
+                label: 'Ubicadas en mapa',
+                value: mapLocatedCount.toString(),
+                helper: 'Con dirección y coordenadas',
                 foreground: readyForeground,
                 background: readyBackground,
                 border: readyBorder,
               ),
               _CatalogStatusMetricChip(
                 icon: Icons.place_rounded,
-                label: 'Pendientes',
-                value: pendingCount.toString(),
-                helper: 'Ubicar o asignar zona',
+                label: 'Sin coordenadas',
+                value: pendingLocationCount.toString(),
+                helper: 'Pendientes de ubicar',
                 foreground: pendingForeground,
                 background: pendingBackground,
                 border: pendingBorder,
               ),
               _CatalogStatusMetricChip(
-                icon: Icons.report_problem_outlined,
-                label: 'Fuera de poligono',
-                value: outsideCount.toString(),
-                helper: 'No caen en zonas activas',
-                foreground: alertForeground,
-                background: alertBackground,
-                border: alertBorder,
+                icon: Icons.route_rounded,
+                label: 'Pendientes de zona',
+                value: pendingZoneCount.toString(),
+                helper: 'Ubicadas, falta confirmar polígono',
+                foreground: pendingForeground,
+                background: pendingBackground,
+                border: pendingBorder,
               ),
               _CatalogStatusMetricChip(
                 icon: Icons.fact_check_outlined,
                 label: 'Por revisar',
-                value: reviewCount.toString(),
-                helper: 'Conflictos de zona',
+                value: (outsideCount + reviewCount).toString(),
+                helper: 'Fuera o con conflicto de zona',
                 foreground: warningForeground,
                 background: warningBackground,
                 border: warningBorder,
@@ -1916,6 +2313,19 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
         final compactMapHeight = (availableHeight * 0.46)
             .clamp(300.0, 460.0)
             .toDouble();
+        final mapCompanies = _filteredCompanies
+            .where(
+              (company) =>
+                  company.latitude != null && company.longitude != null,
+            )
+            .toList(growable: false);
+        LogisticsCompanyProfileRecord? selectedMapCompany;
+        for (final company in mapCompanies) {
+          if (company.siteId == _selectedCompanyMapSiteId) {
+            selectedMapCompany = company;
+            break;
+          }
+        }
 
         final mapPanel = _CatalogSurface(
           padding: EdgeInsets.zero,
@@ -1925,9 +2335,11 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
               children: [
                 Positioned.fill(
                   child: FlutterMap(
-                    options: const MapOptions(
+                    mapController: _companiesMapController,
+                    options: MapOptions(
                       initialCenter: LatLng(20.5235, -100.8157),
                       initialZoom: 10.9,
+                      onMapReady: () => _companiesMapReady = true,
                     ),
                     children: [
                       TileLayer(
@@ -1954,6 +2366,38 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                             )
                             .toList(growable: false),
                       ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            width: 52,
+                            height: 52,
+                            point: _kDicsaLogisticsBase,
+                            child: const _DicsaBaseMapMarker(),
+                          ),
+                        ],
+                      ),
+                      if (mapCompanies.isNotEmpty)
+                        MarkerLayer(
+                          markers: mapCompanies
+                              .map(
+                                (company) => Marker(
+                                  width: 42,
+                                  height: 42,
+                                  point: LatLng(
+                                    company.latitude!,
+                                    company.longitude!,
+                                  ),
+                                  child: _CompanyLocationMapMarker(
+                                    company: company,
+                                    selected:
+                                        company.siteId ==
+                                        _selectedCompanyMapSiteId,
+                                    onTap: () => _selectCompanyOnMap(company),
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
                       RichAttributionWidget(
                         attributions: [
                           TextSourceAttribution(
@@ -1996,7 +2440,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          'Mapa por polígonos',
+                          'Empresas y zonas',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
@@ -2009,45 +2453,95 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           runSpacing: 8,
                           children: [
                             _CompactMetricPill(
-                              label: 'Visibles',
-                              value: renderedPolygons.length.toString(),
+                              label: 'Empresas',
+                              value: mapCompanies.length.toString(),
                             ),
                             _CompactMetricPill(
-                              label: 'Sin polígono',
-                              value: zonesWithoutPolygons.toString(),
+                              label: 'Zonas',
+                              value: renderedPolygons.length.toString(),
+                            ),
+                            const _CompactMetricPill(
+                              label: 'Base',
+                              value: 'DICSA',
                             ),
                           ],
                         ),
+                        const SizedBox(height: 10),
+                        Text(
+                          renderedPolygons.isEmpty
+                              ? 'Los puntos ya se pueden revisar antes de dibujar zonas.'
+                              : '$zonesWithoutPolygons zona(s) siguen sin polígono.',
+                          style: const TextStyle(
+                            fontSize: 11.6,
+                            height: 1.35,
+                            fontWeight: FontWeight.w600,
+                            color: kLogisticsSilverTextSecondary,
+                          ),
+                        ),
+                        if (mapCompanies.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: () => _fitCompanyLocations(mapCompanies),
+                            icon: const Icon(
+                              Icons.fit_screen_rounded,
+                              size: 17,
+                            ),
+                            label: const Text('Ver todas'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: kLogisticsSilverTextPrimary,
+                              side: const BorderSide(
+                                color: kLogisticsSilverBorder,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 9,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 260),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.84),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: kLogisticsSilverBorderLight),
-                    ),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: renderedPolygons
-                          .map(
-                            (polygon) => _ZoneLegendChip(
-                              code: polygon.code,
-                              label: polygon.label,
-                              color: polygon.borderColor,
-                            ),
-                          )
-                          .toList(growable: false),
+                if (renderedPolygons.isNotEmpty)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 260),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.84),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: kLogisticsSilverBorderLight),
+                      ),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: renderedPolygons
+                            .map(
+                              (polygon) => _ZoneLegendChip(
+                                code: polygon.code,
+                                label: polygon.label,
+                                color: polygon.borderColor,
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
                     ),
                   ),
-                ),
+                if (selectedMapCompany != null)
+                  Positioned(
+                    left: 16,
+                    bottom: 16,
+                    child: _CompanyMapSelectionCard(
+                      company: selectedMapCompany,
+                      onClose: () =>
+                          setState(() => _selectedCompanyMapSiteId = null),
+                      onEdit: () =>
+                          unawaited(_editCompanyProfile(selectedMapCompany!)),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2110,6 +2604,16 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                         ),
                       ),
                       const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => unawaited(_createAutomaticZones()),
+                        icon: const Icon(Icons.auto_awesome_rounded),
+                        label: const Text('Generar zonas automáticas'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kLogisticsSilverTextPrimary,
+                          side: const BorderSide(color: kLogisticsSilverBorder),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       FilledButton.icon(
                         onPressed: () => unawaited(_createZone()),
                         style: FilledButton.styleFrom(
@@ -2157,6 +2661,16 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                               ),
                             ),
                           ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => unawaited(_createAutomaticZones()),
+                        icon: const Icon(Icons.auto_awesome_rounded),
+                        label: const Text('Generar zonas'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kLogisticsSilverTextPrimary,
+                          side: const BorderSide(color: kLogisticsSilverBorder),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2871,6 +3385,366 @@ class _CompactMetricPill extends StatelessWidget {
           fontSize: 11.2,
           fontWeight: FontWeight.w800,
           color: kLogisticsSilverTextPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _DicsaBaseMapMarker extends StatelessWidget {
+  const _DicsaBaseMapMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'DICSA · Bernal 7, Rancho Seco, Celaya',
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: kLogisticsSilverTextPrimary,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2.6),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 16,
+              color: Colors.black.withValues(alpha: 0.28),
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.warehouse_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+class _CompanyLocationMapMarker extends StatelessWidget {
+  final LogisticsCompanyProfileRecord company;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CompanyLocationMapMarker({
+    required this.company,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: company.siteName,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? kLogisticsSilverTextPrimary
+                : kLogisticsSilverSurfaceTop,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? Colors.white : kLogisticsSilverBorder,
+              width: selected ? 2.4 : 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: selected ? 16 : 10,
+                color: Colors.black.withValues(alpha: selected ? 0.24 : 0.16),
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.apartment_rounded,
+            size: 19,
+            color: selected ? Colors.white : kLogisticsSilverTextSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompanyMapSelectionCard extends StatelessWidget {
+  final LogisticsCompanyProfileRecord company;
+  final VoidCallback onClose;
+  final VoidCallback onEdit;
+
+  const _CompanyMapSelectionCard({
+    required this.company,
+    required this.onClose,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final coordinates =
+        '${company.latitude!.toStringAsFixed(5)}, ${company.longitude!.toStringAsFixed(5)}';
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 330),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kLogisticsSilverBorderLight),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: Colors.black.withValues(alpha: 0.16),
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: kLogisticsSilverSurfaceInteractive,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.apartment_rounded,
+              size: 18,
+              color: kLogisticsSilverIcon,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  company.siteName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.4,
+                    fontWeight: FontWeight.w900,
+                    color: kLogisticsSilverTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  company.addressLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.1,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                    color: kLogisticsSilverTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  coordinates,
+                  style: const TextStyle(
+                    fontSize: 10.8,
+                    fontWeight: FontWeight.w800,
+                    color: kLogisticsSilverTextMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Editar perfil'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: kLogisticsSilverTextPrimary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onClose,
+            tooltip: 'Cerrar detalle',
+            icon: const Icon(
+              Icons.close_rounded,
+              size: 18,
+              color: kLogisticsSilverIcon,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutomaticZonesPreviewDialog extends StatelessWidget {
+  final List<_GeneratedLogisticsZone> proposals;
+
+  const _AutomaticZonesPreviewDialog({required this.proposals});
+
+  @override
+  Widget build(BuildContext context) {
+    final companyCount = proposals.fold<int>(
+      0,
+      (total, proposal) => total + proposal.companies.length,
+    );
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 700, maxHeight: 720),
+        child: _CatalogSurface(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      gradient: kLogisticsCapsuleGradient,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: kLogisticsSilverBorderLight),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: kLogisticsSilverIcon,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Propuesta automática de zonas',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: kLogisticsSilverTextPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Se agruparán $companyCount empresas en ${proposals.length} zonas por cercanía geográfica. También se asignará cada empresa a su zona propuesta.',
+                style: const TextStyle(
+                  fontSize: 12.6,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                  color: kLogisticsSilverTextSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Es una base visual para revisión. No sustituye horarios, capacidad, tráfico ni restricciones de servicio.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.4,
+                  fontWeight: FontWeight.w700,
+                  color: kLogisticsSilverTextMuted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: proposals.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final proposal = proposals[index];
+                    final companyNames = proposal.companies
+                        .map((company) => company.siteName)
+                        .toList(growable: false);
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.74),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: kLogisticsSilverBorderLight),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 14,
+                            height: 14,
+                            margin: const EdgeInsets.only(top: 3),
+                            decoration: BoxDecoration(
+                              color: _zoneColorFromHex(proposal.zone.colorHex),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${proposal.zone.code} · ${proposal.zone.name}',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: kLogisticsSilverTextPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${proposal.companies.length} empresas · ${companyNames.join(', ')}',
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.6,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w600,
+                                    color: kLogisticsSilverTextSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kLogisticsSilverTextSecondary,
+                    ),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(proposals),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kLogisticsSilverTextPrimary,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                    label: Text('Crear ${proposals.length} zonas'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -6089,6 +6963,27 @@ class _LogisticsZoneEditorDialogState
     return '${points.length} vértices';
   }
 
+  List<DropdownMenuItem<String>> _polygonTemplateItems() {
+    final labels = <String, String>{
+      _kZonePolygonTemplateNone: 'Sin polígono todavía',
+      _kZonePolygonTemplateExisting: 'Polígono manual',
+    };
+    for (final template in _logisticsZonePolygonTemplates()) {
+      labels.putIfAbsent(
+        template.key,
+        () => '${template.code} · ${template.label}',
+      );
+    }
+    return labels.entries
+        .map(
+          (entry) => DropdownMenuItem<String>(
+            value: entry.key,
+            child: Text(entry.value),
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> _openPolygonEditor() async {
     final zoneName = _nameController.text.trim().isNotEmpty
         ? _nameController.text.trim()
@@ -6241,24 +7136,7 @@ class _LogisticsZoneEditorDialogState
                     helperText:
                         'Sirve para que la zona se pinte de inmediato dentro del mapa.',
                   ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: _kZonePolygonTemplateNone,
-                      child: Text('Sin polígono todavía'),
-                    ),
-                    if (widget.record != null &&
-                        _polygonTemplateKey == _kZonePolygonTemplateExisting)
-                      const DropdownMenuItem<String>(
-                        value: _kZonePolygonTemplateExisting,
-                        child: Text('Conservar polígono existente'),
-                      ),
-                    ..._logisticsZonePolygonTemplates().map(
-                      (template) => DropdownMenuItem<String>(
-                        value: template.key,
-                        child: Text('${template.code} · ${template.label}'),
-                      ),
-                    ),
-                  ],
+                  items: _polygonTemplateItems(),
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _polygonTemplateKey = value);

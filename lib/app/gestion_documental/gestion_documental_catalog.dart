@@ -39,6 +39,14 @@ const documentalCategories = <DocumentalCategory>[
       'Constancias fiscales',
       'Escrituras',
     ],
+    columns: [
+      'Documento',
+      'Tipo',
+      'Emisión',
+      'Vencimiento',
+      'Responsable',
+      'Folio',
+    ],
   ),
   DocumentalCategory(
     key: 'permisos-y-tramites',

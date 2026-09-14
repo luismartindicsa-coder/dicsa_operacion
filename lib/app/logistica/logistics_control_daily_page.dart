@@ -11,6 +11,8 @@ import 'logistics_catalog_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_performance_page.dart';
+import 'logistics_savings_page.dart';
 
 class LogisticsControlDailyPage extends StatefulWidget {
   const LogisticsControlDailyPage({super.key});
@@ -92,6 +94,17 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
     );
   }
 
+  Future<void> _openPerformance() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const LogisticsPerformancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   void _showPhaseSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -119,14 +132,19 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
       case kLogisticsNavGasolineLabel:
         unawaited(_openGasoline());
         return;
+      case kLogisticsNavPerformanceLabel:
+        unawaited(_openPerformance());
+        return;
       case kLogisticsNavIncidentsLabel:
         _showPhaseSnack(
           'Incidencias se habilitará cuando quede validado el flujo base.',
         );
         return;
       case kLogisticsNavSavingsLabel:
-        _showPhaseSnack(
-          'Ahorro y Planeación se conectará después del Control Diario.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsSavingsPage())),
         );
         return;
       case kLogisticsNavDirectionDashboardLabel:

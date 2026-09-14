@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import 'gestion_documental_records.dart';
+import 'gestion_documental_theme.dart';
 
 /// DICSA glass card with the same lift used by area navigation and dashboards.
 class DocumentalActionCard extends StatefulWidget {
@@ -97,8 +99,9 @@ class _DocumentalActionCardState extends State<DocumentalActionCard> {
 class DocumentalBadge extends StatelessWidget {
   final String label;
   final IconData? icon;
+  final Color? iconColor;
 
-  const DocumentalBadge(this.label, {super.key, this.icon});
+  const DocumentalBadge(this.label, {super.key, this.icon, this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -114,7 +117,7 @@ class DocumentalBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 15, color: t.badgeText),
+            Icon(icon, size: 15, color: iconColor ?? t.badgeText),
             const SizedBox(width: 6),
           ],
           Flexible(
@@ -131,6 +134,51 @@ class DocumentalBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class DocumentalProgress extends StatelessWidget {
+  final int value;
+  const DocumentalProgress(this.value, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$value%',
+          style: TextStyle(
+            color: tokens.primarySoft,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: value.clamp(0, 100) / 100,
+            minHeight: 6,
+            color: tokens.primary,
+            backgroundColor: tokens.primary.withValues(alpha: 0.14),
+            semanticsLabel: 'Avance del trámite',
+            semanticsValue: '$value%',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class DocumentalUrgencyBadge extends StatelessWidget {
+  final DocumentalUrgency urgency;
+  const DocumentalUrgencyBadge(this.urgency, {super.key});
+  @override
+  Widget build(BuildContext context) => DocumentalBadge(
+    urgency.label,
+    icon: urgency.icon,
+    iconColor: documentalUrgencyColor(context, urgency),
+  );
 }
 
 class DocumentalIcon extends StatelessWidget {

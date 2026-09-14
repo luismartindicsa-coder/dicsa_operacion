@@ -25,6 +25,8 @@ import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_performance_page.dart';
+import 'logistics_savings_page.dart';
 import 'logistics_diesel_store.dart';
 import 'logistics_theme.dart';
 
@@ -373,6 +375,17 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     );
   }
 
+  Future<void> _openPerformance() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const LogisticsPerformancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   void _showPhaseSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -395,6 +408,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       case kLogisticsNavGasolineLabel:
         unawaited(_openGasoline());
         return;
+      case kLogisticsNavPerformanceLabel:
+        unawaited(_openPerformance());
+        return;
       case kLogisticsNavFleetStatusLabel:
         _showPhaseSnack(
           'Estado de Unidades se abrirá en la siguiente fase del área.',
@@ -406,8 +422,10 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         );
         return;
       case kLogisticsNavSavingsLabel:
-        _showPhaseSnack(
-          'Ahorro y Planeación seguirá después de consolidar diesel, zonas y programación.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsSavingsPage())),
         );
         return;
       case kLogisticsNavDirectionDashboardLabel:

@@ -7,6 +7,7 @@ import '../commercial/commercial_development_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
+import '../gestion_documental/gestion_documental_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../logistica/logistics_control_daily_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
@@ -38,6 +39,8 @@ class _RoleRouterState extends State<RoleRouter> {
     if (!profile.isActive) return _BlockedUser(email: profile.email);
 
     switch (AuthAccess.routeKeyForProfile(profile)) {
+      case 'gestion_documental_dashboard':
+        return const GestionDocumentalDashboardPage();
       case 'menudeo_dashboard':
         return const MenudeoDashboardPage();
       case 'mayoreo_dashboard':

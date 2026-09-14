@@ -63,6 +63,7 @@ part 'prenomina/prenomina_employee_sidebar.dart';
 part 'prenomina/prenomina_editor_sections.dart';
 part 'prenomina/prenomina_editor_widgets.dart';
 part 'prenomina/prenomina_closure_review.dart';
+part 'prenomina/prenomina_publication_dialog.dart';
 
 const String _kHrPrenominaProfilesTable = 'hr_employee_profiles';
 const String _kHrPrenominaImportLotsTable = 'hr_attendance_import_lots';
@@ -150,6 +151,10 @@ class _HumanResourcesPrenominaPageState
   HrLoanFundState? _loanFund;
   String? _loanLoadError;
   String? _changingStatusEmployeeId;
+  bool _publishingAll = false;
+  final _publicationRetries = <String, Set<String>>{};
+  bool get _updatingStatuses =>
+      _publishingAll || _changingStatusEmployeeId != null;
   final _statusMenuKeys =
       <String, GlobalKey<PopupMenuButtonState<_HrPrenominaDraftStatus>>>{};
 
@@ -545,7 +550,7 @@ class _HumanResourcesPrenominaPageState
   }
 
   Future<void> _selectPeriod(String periodLabel) async {
-    if (_changingStatusEmployeeId != null) return;
+    if (_updatingStatuses) return;
     await HumanResourcesPeriodContext.select(periodLabel);
     if (!mounted) return;
     _selectedPeriodLabel = periodLabel;
@@ -657,7 +662,7 @@ class _HumanResourcesPrenominaPageState
     bool entirePeriod = false,
     _PrenominaSection initialSection = _PrenominaSection.resumen,
   }) async {
-    if (_changingStatusEmployeeId != null) return;
+    if (_updatingStatuses) return;
     List<_HrPrenominaSummaryRow> editRows() =>
         entirePeriod ? _periodRows : _allRows;
     var currentIndex = index;
@@ -743,7 +748,7 @@ class _HumanResourcesPrenominaPageState
     _HrPrenominaSummaryRow row,
     _HrPrenominaDraftStatus status,
   ) async {
-    if (_changingStatusEmployeeId != null || _isActivePeriodClosed) return;
+    if (_updatingStatuses || _isActivePeriodClosed) return;
     if (status == row.draftStatus && row.draftId.isNotEmpty) {
       if (row.statusLabel != status.label) {
         _showSnack(
@@ -833,6 +838,7 @@ class _HumanResourcesPrenominaPageState
       existingId: row.draftId,
     );
     await _persistDraftRow(payload);
+    _publicationRetries[_activePeriodLabel]?.remove(row.employeeId);
     await _loadData();
     if (!mounted) return;
     final reviewNote =
@@ -878,8 +884,173 @@ class _HumanResourcesPrenominaPageState
     ];
   }
 
+  Future<void> _publishAll() async {
+    if (_updatingStatuses || _isActivePeriodClosed || !_requireActivePeriod()) {
+      return;
+    }
+    final period = _activePeriodLabel;
+    final retries = _publicationRetries.putIfAbsent(period, () => <String>{});
+    final candidates = _periodRows
+        .where(
+          (row) =>
+              row.draftId.isEmpty ||
+              row.draftStatus != _HrPrenominaDraftStatus.publicado ||
+              retries.contains(row.employeeId),
+        )
+        .toList(growable: false);
+    setState(() => _publishingAll = true);
+    try {
+      if (_loanLoadError != null) {
+        await _showPublicationMessage(
+          'No se puede publicar todavía',
+          _loanLoadError!,
+        );
+        return;
+      }
+      if (candidates.isEmpty) {
+        await _showPublicationMessage(
+          'Publicar todo',
+          _periodRows.isEmpty
+              ? 'No hay colaboradores en este periodo.'
+              : 'Todos los colaboradores del periodo ya están publicados.',
+        );
+        return;
+      }
+      final payloads = <Map<String, dynamic>>[];
+      final invalid = <String>[];
+      for (final row in candidates) {
+        final draft = _HrPrenominaDraftDraft.fromSummaryRow(row)
+          ..draftStatus = _HrPrenominaDraftStatus.publicado;
+        final validation = draft.validationMessage(
+          fiscalAvailable: row.fiscalBeforeManualDeductionAmount,
+        );
+        if (validation != null) {
+          invalid.add(
+            '${row.displayName} · ID ${row.employeeId} · ${row.empresa}\n$validation',
+          );
+        } else {
+          payloads.add(
+            draft.toRow(
+              periodLabel: period,
+              employeeId: row.employeeId,
+              employeeName: row.displayName,
+              empresa: row.empresa,
+              existingId: row.draftId,
+            ),
+          );
+        }
+      }
+      if (invalid.isNotEmpty) {
+        await _showPublicationMessage(
+          'Revisa estos colaboradores',
+          'Corrige los siguientes datos en el detalle antes de publicar todo. No se guardó ningún cambio.',
+          details: invalid,
+        );
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => _PrenominaPublicationDialog(
+          title: 'Publicar todo el periodo',
+          period: period,
+          message:
+              'Se publicarán ${candidates.length} colaboradores de este periodo, incluidos los ocultos por filtros y otras páginas. '
+              '${_periodRows.length - candidates.length} ya publicados se conservarán.\n\n'
+              'Se guardarán los importes y notas actuales y se liquidarán los eventos de vacaciones y permisos, igual que al publicar cada detalle. '
+              'Las correcciones posteriores deberán registrarse como ajustes RH.',
+          confirmLabel: 'Publicar todo',
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final progress = ValueNotifier<(int, String)>((
+        0,
+        'Preparando publicación…',
+      ));
+      final progressDialog = showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: ValueListenableBuilder<(int, String)>(
+            valueListenable: progress,
+            builder: (_, value, _) => _PrenominaPublicationDialog(
+              title: 'Publicando prenómina',
+              period: period,
+              message:
+                  '${value.$1} de ${payloads.length} procesados\n${value.$2}',
+              progress: value.$1 / payloads.length,
+            ),
+          ),
+        ),
+      );
+      final failures = <String>[];
+      var published = 0;
+      try {
+        for (var index = 0; index < payloads.length; index++) {
+          if (!mounted) break;
+          final payload = payloads[index];
+          final employeeId = payload['employee_id'] as String;
+          progress.value = (index, payload['employee_name'] as String);
+          try {
+            // Use the same persistence and event settlement as individual publication.
+            await _persistDraftRow(payload);
+            retries.remove(employeeId);
+            published++;
+          } catch (_) {
+            // An upsert may succeed before an event settlement or read fails.
+            // Keep that employee eligible for retry even if its state is already Publicado.
+            retries.add(employeeId);
+            failures.add(
+              '${payload['employee_name']} · ID $employeeId · ${payload['empresa']}',
+            );
+          }
+          progress.value = (index + 1, payload['employee_name'] as String);
+        }
+        if (mounted) await _loadData();
+      } finally {
+        if (mounted) Navigator.of(context, rootNavigator: true).pop();
+        await progressDialog;
+        progress.dispose();
+      }
+      if (!mounted) return;
+      await _showPublicationMessage(
+        failures.isEmpty
+            ? 'Publicación completada'
+            : 'Publicación con pendientes',
+        failures.isEmpty
+            ? '$published colaboradores publicados. El periodo sigue abierto; puedes cerrarlo cuando termines la revisión.'
+            : '$published colaboradores publicados. No se pudo confirmar la publicación completa de ${failures.length}. '
+                  'Revisa tu conexión y vuelve a pulsar Publicar todo para reintentar los pendientes.',
+        details: failures,
+      );
+    } finally {
+      if (mounted) setState(() => _publishingAll = false);
+    }
+  }
+
+  Future<void> _showPublicationMessage(
+    String title,
+    String message, {
+    List<String> details = const [],
+  }) => showDialog<void>(
+    context: context,
+    builder: (_) => _PrenominaPublicationDialog(
+      title: title,
+      period: _activePeriodLabel,
+      message: message,
+      details: details,
+    ),
+  );
+
   Future<void> _closeActivePeriod() async {
-    if (_changingStatusEmployeeId != null) return;
+    if (_updatingStatuses) return;
+    if (_publicationRetries[_activePeriodLabel]?.isNotEmpty == true) {
+      await _showPublicationMessage(
+        'Publicación con pendientes',
+        'Vuelve a pulsar Publicar todo para completar las publicaciones pendientes antes de cerrar el periodo.',
+      );
+      return;
+    }
     if (_activePeriodLabel.trim().isEmpty) {
       await _showClosureMessage(
         'Selecciona un periodo en Prenómina antes de iniciar el cierre.',
@@ -1476,7 +1647,7 @@ class _HumanResourcesPrenominaPageState
     if (index < 0 || index >= _visibleRows.length) return;
     if (_navigationController.active.columnIndex ==
         _kPrenominaGridColumns.indexWhere((column) => column.id == 'estado')) {
-      if (!_isActivePeriodClosed && _changingStatusEmployeeId == null) {
+      if (!_isActivePeriodClosed && !_updatingStatuses) {
         _statusMenuKey(
           _visibleRows[index].employeeId,
         ).currentState?.showButtonMenu();
@@ -1641,6 +1812,7 @@ class _HumanResourcesPrenominaPageState
                             if (row != null) await _openSummaryRow(row);
                           },
                           onClosePeriod: _closeActivePeriod,
+                          onPublishAll: _updatingStatuses ? null : _publishAll,
                           onExportCashEnvelopes: _exportCashEnvelopeXlsx,
                           onSelectPeriod: _selectPeriod,
                           onEscape: _handleEscape,

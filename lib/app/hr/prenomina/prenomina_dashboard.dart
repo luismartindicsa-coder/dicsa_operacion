@@ -570,6 +570,7 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
   final int pendingDraftCount;
   final VoidCallback onOpenSelectedRow;
   final VoidCallback onClosePeriod;
+  final VoidCallback? onPublishAll;
   final VoidCallback onExportCashEnvelopes;
   final ValueChanged<String> onSelectPeriod;
 
@@ -585,6 +586,7 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
     required this.pendingDraftCount,
     required this.onOpenSelectedRow,
     required this.onClosePeriod,
+    required this.onPublishAll,
     required this.onExportCashEnvelopes,
     required this.onSelectPeriod,
   });
@@ -632,6 +634,34 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
                   selectedLabel: activePeriodLabel,
                   options: periodOptions,
                   onSelected: onSelectPeriod,
+                ),
+                Tooltip(
+                  message:
+                      'Publica a todos los colaboradores del periodo, incluidos los ocultos por filtros y otras páginas.',
+                  child: FilledButton.icon(
+                    key: const ValueKey('publish-all'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: humanResourcesAreaTokens.accent,
+                      foregroundColor: humanResourcesAreaTokens.primaryStrong,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      textStyle: Theme.of(context).textTheme.labelLarge
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    onPressed:
+                        rows.isEmpty ||
+                            activePeriodLabel.isEmpty ||
+                            isPeriodClosed
+                        ? null
+                        : onPublishAll,
+                    icon: const Icon(Icons.publish_rounded),
+                    label: const Text('Publicar todo'),
+                  ),
                 ),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(

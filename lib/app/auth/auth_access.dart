@@ -391,6 +391,8 @@ class AuthAccess {
     if (hasMayoreoAccess(profile)) return 'mayoreo_dashboard';
 
     switch (profile.role) {
+      case 'gestion_documental':
+        return 'gestion_documental_dashboard';
       case 'services':
       case 'logistics':
       case 'logistica':

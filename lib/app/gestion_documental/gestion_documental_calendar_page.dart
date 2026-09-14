@@ -21,7 +21,7 @@ class GestionDocumentalCalendarPage extends StatelessWidget {
     current: 'calendario',
     dashboardRoute: dashboardRoute,
     workspaceBuilder: (context, navigate) =>
-        _CalendarWorkspace(onBack: () => navigate('resumen')),
+        _CalendarWorkspace(onBack: () => navigate('dashboard')),
   );
 }
 
@@ -105,7 +105,7 @@ class _CalendarWorkspaceState extends State<_CalendarWorkspace> {
             onPressed: widget.onBack,
             style: TextButton.styleFrom(foregroundColor: t.primary),
             icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: const Text('Gestión Documental · Resumen'),
+            label: const Text('Dashboard Gestión Documental'),
           ),
         ),
         const SizedBox(height: 8),

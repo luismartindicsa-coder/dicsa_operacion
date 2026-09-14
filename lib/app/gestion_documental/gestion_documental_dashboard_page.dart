@@ -14,7 +14,7 @@ class GestionDocumentalDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestionDocumentalAreaShell(
-    current: 'resumen',
+    current: 'dashboard',
     instantOpen: instantOpen,
     workspaceBuilder: (context, navigate) =>
         _DocumentalDashboardWorkspace(onNavigate: navigate),
@@ -32,7 +32,7 @@ class _DocumentalDashboardWorkspace extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         DocumentalPageHeading(
-          title: 'Resumen',
+          title: 'Dashboard Gestión Documental',
           description:
               'Documentos, expedientes y obligaciones de DICSA en un solo lugar.',
           action: OutlinedButton.icon(

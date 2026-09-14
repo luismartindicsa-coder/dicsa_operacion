@@ -2,6 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
+import 'gestion_documental_records.dart';
+
+// Discrete temporal semantics; they never recolor the area's pink surfaces.
+const documentalUrgencySuccess = Color(0xFF81D5A0);
+const documentalUrgencyWarning = Color(0xFFF4CA64);
+Color documentalUrgencyColor(BuildContext context, DocumentalUrgency urgency) =>
+    switch (urgency) {
+      DocumentalUrgency.completed ||
+      DocumentalUrgency.onTime => documentalUrgencySuccess,
+      DocumentalUrgency.attention => documentalUrgencyWarning,
+      DocumentalUrgency.critical ||
+      DocumentalUrgency.expired => Theme.of(context).colorScheme.error,
+      DocumentalUrgency.noExpiration => documentalAreaTokens.primary,
+    };
 
 // Area identity only. Glass, spacing and interaction come from DICSA's contract.
 const documentalAreaTokens = ContractAreaTokens(
@@ -83,6 +97,19 @@ ThemeData documentalMaterialTheme(ThemeData base) {
     ),
     iconTheme: IconThemeData(color: t.primary),
     dividerColor: t.border.withValues(alpha: 0.22),
+    scrollbarTheme: base.scrollbarTheme.copyWith(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => t.primary.withValues(
+          alpha:
+              states.contains(WidgetState.hovered) ||
+                  states.contains(WidgetState.dragged)
+              ? 0.9
+              : 0.6,
+        ),
+      ),
+      trackColor: WidgetStatePropertyAll(t.primary.withValues(alpha: 0.08)),
+      trackBorderColor: WidgetStatePropertyAll(t.border.withValues(alpha: 0.2)),
+    ),
     textSelectionTheme: TextSelectionThemeData(
       cursorColor: t.primary,
       selectionColor: t.primary.withValues(alpha: 0.3),
@@ -98,6 +125,10 @@ ThemeData documentalMaterialTheme(ThemeData base) {
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide(color: t.border.withValues(alpha: 0.35)),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: t.border.withValues(alpha: 0.18)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
