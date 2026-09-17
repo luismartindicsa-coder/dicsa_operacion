@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -49,12 +49,16 @@ jobs:
           --dart-define=DICSA_UPDATE_MANIFEST_URL=${{ env.UPDATE_MANIFEST_URL }}
 
       - name: Build installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
-        with:
-          path: installer/dicsa_operacion.iss
-          options: >-
-            /DMyAppVersion=${{ env.APP_VERSION }}
-            /DFlutterBuildDir=${{ github.workspace }}\build\windows\x64\runner\Release
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) {
+            throw "No se encontro Inno Setup en el runner: $compiler"
+          }
+          & $compiler "/DMyAppVersion=$env:APP_VERSION" "/DFlutterBuildDir=$env:GITHUB_WORKSPACE\build\windows\x64\runner\Release" "installer/dicsa_operacion.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup fallo con codigo $LASTEXITCODE"
+          }
 
       - name: Create update manifest
         shell: pwsh
@@ -71,12 +75,41 @@ jobs:
           Set-Content -Path build\installer\version.json -Value $manifest -Encoding utf8
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
+        id: publish
+        continue-on-error: true
+        uses: softprops/action-gh-release@v3
+        with: &release-options
           tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           name: Windows ${{ env.APP_VERSION }}
           generate_release_notes: true
           overwrite_files: true
+          fail_on_unmatched_files: true
+          # El manifiesto solo se carga despues de completar el instalador.
+          preserve_order: true
           files: |
             build/installer/DicsaOperacionSetup.exe
             build/installer/version.json
+
+      - name: Wait before retrying release
+        if: steps.publish.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 15
+
+      - name: Retry publish release
+        id: publish-retry
+        if: steps.publish.outcome == 'failure'
+        uses: softprops/action-gh-release@v3
+        with: *release-options
+
+      - name: Preserve installer after publish failure
+        if: failure() && steps.publish-retry.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release-${{ env.APP_VERSION }}-${{ github.run_attempt }}
+          path: |
+            build/installer/DicsaOperacionSetup.exe
+            build/installer/version.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -51,11 +51,35 @@ jobs:
             build/macos/artifacts/DICSA-macOS.zip
 
       - name: Publish release asset
-        uses: softprops/action-gh-release@v2
-        with:
+        id: publish
+        continue-on-error: true
+        uses: softprops/action-gh-release@v3
+        with: &release-options
           tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           name: Release ${{ env.APP_VERSION }}
           generate_release_notes: true
           overwrite_files: true
+          fail_on_unmatched_files: true
           files: |
             build/macos/artifacts/DICSA-macOS.zip
+
+      - name: Wait before retrying release
+        if: steps.publish.outcome == 'failure'
+        run: sleep 15
+
+      - name: Retry publish release asset
+        id: publish-retry
+        if: steps.publish.outcome == 'failure'
+        uses: softprops/action-gh-release@v3
+        with: *release-options
+
+      - name: Preserve macOS package after publish failure
+        if: failure() && steps.publish-retry.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-release-${{ env.APP_VERSION }}-${{ github.run_attempt }}
+          path: build/macos/artifacts/DICSA-macOS.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

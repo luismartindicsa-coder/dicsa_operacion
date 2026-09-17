@@ -81,6 +81,24 @@ En las PCs ya instaladas:
 - muestra el aviso
 - abre la descarga del instalador nuevo
 
+## Si falla la publicacion en GitHub
+
+El aviso de retiro de Node 20 no identifica por si solo la causa de un
+`Error uploading`. Si `Build Windows app` y `Build installer` terminan bien,
+el fallo esta en la publicacion, no en la compilacion.
+
+Los workflows de Windows y macOS usan `softprops/action-gh-release@v3`
+(Node 24) y reintentan una vez la publicacion despues de 15 segundos.
+Windows carga primero `DicsaOperacionSetup.exe` y despues `version.json`.
+Si tambien falla el reintento, el job conserva el error y trata de guardar
+los archivos como un artifact de Actions por 7 dias para recuperarlos desde
+el resumen de la ejecucion.
+
+Para aplicar una correccion del workflow, hay que subirla a `main` o
+`master` y usar la nueva ejecucion del push, o `Run workflow` sobre esa rama.
+`Re-run jobs` sobre una ejecucion vieja utiliza el workflow del commit viejo.
+No es necesario cambiar la version solo para reparar una carga fallida.
+
 ## Alcance actual
 
 La implementacion actual detecta y ofrece la descarga automaticamente.
