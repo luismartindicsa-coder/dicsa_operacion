@@ -605,7 +605,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   }
 
   double _pendingContributionForRow(_MayoreoAccountRow row) {
-    if (row.status == _MayoreoAccountsStatus.cancelada) return 0;
+    if (row.status == _MayoreoAccountsStatus.cancelada ||
+        row.status == _MayoreoAccountsStatus.chequeCanjeado) {
+      return 0;
+    }
     final effectivePending = row.pendingBalance
         .clamp(0, double.infinity)
         .toDouble();
@@ -2736,7 +2739,7 @@ class _MayoreoGridPager extends StatelessWidget {
             ),
             const Text('Filas/pág:'),
             SizedBox(
-              width: 90,
+              width: 110,
               child: DropdownButtonFormField<int>(
                 initialValue: pageSize,
                 isDense: true,

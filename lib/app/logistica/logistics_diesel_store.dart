@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/fetch_all_supabase_rows.dart';
+
 const String _kLogisticsDieselConsumptionTable = 'logistics_diesel_consumption';
 
 class LogisticsDieselConsumptionRecord {
@@ -96,18 +98,20 @@ class LogisticsDieselConsumptionRecord {
 }
 
 class LogisticsDieselConsumptionStore {
-  static Future<List<LogisticsDieselConsumptionRecord>> loadEntries() async {
-    final rows = await Supabase.instance.client
-        .from(_kLogisticsDieselConsumptionTable)
-        .select()
-        .order('entry_date', ascending: false)
-        .order('created_at', ascending: false);
-    return (rows as List)
-        .map(
-          (raw) => LogisticsDieselConsumptionRecord.fromRemoteRow(
-            Map<String, dynamic>.from(raw as Map),
-          ),
-        )
+  static Future<List<LogisticsDieselConsumptionRecord>> loadEntries({
+    SupabaseClient? client,
+  }) async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => (client ?? Supabase.instance.client)
+          .from(_kLogisticsDieselConsumptionTable)
+          .select()
+          .order('entry_date', ascending: false)
+          .order('created_at', ascending: false)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
+    return rows
+        .map(LogisticsDieselConsumptionRecord.fromRemoteRow)
         .toList(growable: false);
   }
 

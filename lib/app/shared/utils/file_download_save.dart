@@ -38,6 +38,7 @@ Future<String?> saveBytesAs({
   required Uint8List bytes,
   required String suggestedFileName,
   String dialogTitle = 'Guardar como...',
+  bool throwOnPickerError = false,
 }) async {
   String? outputPath;
   try {
@@ -48,6 +49,7 @@ Future<String?> saveBytesAs({
       allowedExtensions: _allowedExtensionsFor(suggestedFileName),
     );
   } catch (_) {
+    if (throwOnPickerError) rethrow;
     return null;
   }
 

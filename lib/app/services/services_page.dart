@@ -2108,8 +2108,16 @@ class _ServicesPageState extends State<ServicesPage>
   Future<void> _exportLogisticsPlanningPdf() async {
     if (_exportingPlanningPdf) return;
     final rows = List<Map<String, dynamic>>.from(_filteredRows);
+    final isTodayDispatch =
+        _logisticsPlanningView == _LogisticsPlanningView.dispatchToday;
+    final reportTitle = isTodayDispatch
+        ? 'DESPACHO DE HOY'
+        : 'PLANEACIÓN ANTICIPADA DE RUTAS';
+    final reportLabel = isTodayDispatch
+        ? 'Despacho de hoy'
+        : 'Planeación anticipada';
     if (rows.isEmpty) {
-      _toast('No hay rutas en la planeación anticipada para imprimir');
+      _toast('No hay rutas en $reportLabel para imprimir');
       return;
     }
 
@@ -2177,7 +2185,7 @@ class _ServicesPageState extends State<ServicesPage>
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text(
-                  'DICSA - Planeación anticipada de Logística',
+                  'DICSA - $reportLabel de Logística',
                   style: const pw.TextStyle(color: muted, fontSize: 7.5),
                 ),
                 pw.Text(
@@ -2226,7 +2234,7 @@ class _ServicesPageState extends State<ServicesPage>
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text(
-                          'PLANEACIÓN ANTICIPADA DE RUTAS',
+                          reportTitle,
                           style: pw.TextStyle(
                             color: ink,
                             fontWeight: pw.FontWeight.bold,
@@ -2235,7 +2243,9 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                         pw.SizedBox(height: 3),
                         pw.Text(
-                          'Control Diario de Logística - entregar al chofer antes del turno.',
+                          isTodayDispatch
+                              ? 'Control Diario de Logística - despacho confirmado para el turno de hoy.'
+                              : 'Control Diario de Logística - entregar al chofer antes del turno.',
                           style: const pw.TextStyle(color: muted, fontSize: 9),
                         ),
                       ],
@@ -2365,7 +2375,7 @@ class _ServicesPageState extends State<ServicesPage>
 
       final now = DateTime.now();
       final fileName =
-          'planeacion_logistica_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
+          '${isTodayDispatch ? 'despacho_hoy_logistica' : 'planeacion_logistica'}_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
       if (kIsWeb) {
         _toast(
           'La exportación de PDF está disponible desde la aplicación de escritorio.',
@@ -2373,7 +2383,7 @@ class _ServicesPageState extends State<ServicesPage>
         return;
       }
       final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Guardar planeación de rutas como PDF',
+        dialogTitle: 'Guardar $reportLabel como PDF',
         fileName: fileName,
         allowedExtensions: const ['pdf'],
         type: FileType.custom,
@@ -2389,9 +2399,9 @@ class _ServicesPageState extends State<ServicesPage>
       await File(
         normalizedPath,
       ).writeAsBytes(await document.save(), flush: true);
-      _toast('PDF de rutas guardado: $normalizedPath');
+      _toast('PDF de $reportLabel guardado: $normalizedPath');
     } catch (error) {
-      _toast('No se pudo generar el PDF de rutas: $error');
+      _toast('No se pudo generar el PDF de $reportLabel: $error');
     } finally {
       if (mounted) setState(() => _exportingPlanningPdf = false);
     }
@@ -4350,8 +4360,9 @@ class _ServicesPageState extends State<ServicesPage>
                   ),
                 ],
                 if (widget.logisticsSilverMode &&
-                    _logisticsPlanningView ==
-                        _LogisticsPlanningView.planned) ...[
+                    (_logisticsPlanningView == _LogisticsPlanningView.planned ||
+                        _logisticsPlanningView ==
+                            _LogisticsPlanningView.dispatchToday)) ...[
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     style: _actionOutlinedButtonStyle(context),
@@ -4363,7 +4374,12 @@ class _ServicesPageState extends State<ServicesPage>
                           ? Icons.hourglass_top_rounded
                           : Icons.picture_as_pdf_rounded,
                     ),
-                    label: const Text('Imprimir rutas'),
+                    label: Text(
+                      _logisticsPlanningView ==
+                              _LogisticsPlanningView.dispatchToday
+                          ? 'Imprimir despacho'
+                          : 'Imprimir rutas',
+                    ),
                   ),
                 ],
                 if (_selectedCount > 0) ...[

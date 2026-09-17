@@ -10,15 +10,23 @@ import '../auth/auth_navigation.dart';
 import '../commercial/commercial_development_dashboard_page.dart';
 import '../commercial/commercial_store.dart';
 import '../contabilidad/contabilidad_dashboard_page.dart';
+import '../contabilidad/contabilidad_income_statement_page.dart';
 import '../contabilidad/contabilidad_trade_analysis_page.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
+import '../direction/direction_accounting_dashboard_card.dart';
+import '../direction/direction_documental_dashboard_card.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
 import '../direction/direction_maintenance_page.dart';
+import '../direction/direction_logistics_dashboard_card.dart';
+import '../direction/direction_logistics_summary.dart';
 import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
+import '../direction/direction_shipments_dashboard_card.dart';
+import '../direction/direction_human_resources_dashboard_card.dart';
 import '../direction/direction_shipments_page.dart';
+import '../direction/direction_supervision_dashboard_card.dart';
 import '../direction/direction_theme.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_due_alerts_store.dart';
@@ -28,6 +36,8 @@ import '../gerencia/gerencia_dashboard_page.dart';
 import '../gestion_documental/gestion_documental_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
+import '../logistica/logistics_diesel_page.dart';
+import '../logistica/logistics_gasoline_page.dart';
 import '../management_reports/management_supervision_page.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
@@ -216,6 +226,20 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openIncomeStatement(DateTimeRange range) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: ContabilidadIncomeStatementPage(
+          instantOpen: true,
+          initialDateRange: range,
+        ),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   Future<void> _openGestionDocumentalDashboard() async {
     if (!mounted) return;
     setState(() => _menuOverlayOpen = false);
@@ -244,6 +268,26 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const LogisticsDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openLogisticsFuelControl(
+    DirectionFuelType fuel,
+    DateTime weekStart,
+  ) async {
+    if (!mounted) return;
+    final range = DateTimeRange(
+      start: weekStart,
+      end: weekStart.add(const Duration(days: 6)),
+    );
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: fuel == DirectionFuelType.diesel
+            ? LogisticsDieselPage(initialDateRange: range)
+            : LogisticsGasolinePage(initialDateRange: range),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -349,11 +393,14 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
-  Future<void> _openDirectionShipments() async {
+  Future<void> _openDirectionShipments([DateTime? weekStartDate]) async {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const DirectionShipmentsPage(instantOpen: true),
+        page: DirectionShipmentsPage(
+          instantOpen: true,
+          initialWeekStartDate: weekStartDate,
+        ),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -463,9 +510,10 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenOperationalDashboard: _openOperationalDashboard,
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
             onOpenFinanzasDashboard: _openFinanzasDashboard,
-            onOpenContabilidad: _openContabilidadDashboard,
+            onOpenIncomeStatement: _openIncomeStatement,
             onOpenGestionDocumental: _openGestionDocumentalDashboard,
             onOpenLogistics: _openLogisticsDashboard,
+            onOpenLogisticsFuelControl: _openLogisticsFuelControl,
             onOpenTradeAnalysis: _openDirectionTradeAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
@@ -524,13 +572,15 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenOperationalDashboard;
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenFinanzasDashboard;
-  final Future<void> Function() onOpenContabilidad;
+  final Future<void> Function(DateTimeRange range) onOpenIncomeStatement;
   final Future<void> Function() onOpenGestionDocumental;
   final Future<void> Function() onOpenLogistics;
+  final Future<void> Function(DirectionFuelType fuel, DateTime weekStart)
+      onOpenLogisticsFuelControl;
   final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
-  final Future<void> Function() onOpenShipments;
+  final Future<void> Function([DateTime? weekStartDate]) onOpenShipments;
   final Future<void> Function() onOpenHumanResources;
   final Future<void> Function() onOpenGerencia;
   final Future<void> Function() onOpenCommercial;
@@ -541,9 +591,10 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenOperationalDashboard,
     required this.onOpenMenudeoAnalysis,
     required this.onOpenFinanzasDashboard,
-    required this.onOpenContabilidad,
+    required this.onOpenIncomeStatement,
     required this.onOpenGestionDocumental,
     required this.onOpenLogistics,
+    required this.onOpenLogisticsFuelControl,
     required this.onOpenTradeAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
@@ -699,58 +750,38 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Supervisión',
-                  subtitle:
-                      'Hub central para generar cortes diarios y de viernes, revisar historial y empujar a cada encargado a presentar su área.',
-                  badge: 'Dirección',
-                  icon: Icons.fact_check_rounded,
-                  onTap: onOpenSupervision,
+                width: 1288,
+                child: DirectionHumanResourcesDashboardCard(
+                  onOpenHumanResources: onOpenHumanResources,
                 ),
               ),
               SizedBox(
                 width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Embarques',
-                  subtitle:
-                      'Planeación semanal de embarques con conteo de piso, proyección histórica y alertas por compactadora.',
-                  badge: 'Dirección',
-                  icon: Icons.local_shipping_rounded,
-                  onTap: onOpenShipments,
+                height: _kDirectionExecutiveWidgetHeight,
+                child: DirectionSupervisionDashboardCard(
+                  onOpenSupervision: onOpenSupervision,
                 ),
               ),
               SizedBox(
                 width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Recursos Humanos',
-                  subtitle:
-                      'Nomina, incidencias, vacaciones y cruces de pago con Finanzas bajo formulas trazables.',
-                  badge: 'Area nueva',
-                  icon: Icons.badge_rounded,
-                  onTap: onOpenHumanResources,
+                height: _kDirectionExecutiveWidgetHeight,
+                child: DirectionShipmentsDashboardCard(
+                  onOpenShipments: (weekStart) => onOpenShipments(weekStart),
                 ),
               ),
               SizedBox(
                 width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Logística',
-                  subtitle:
-                      'Nueva entrada homologada del área para rutas, asignación diaria, flotilla y control operativo.',
-                  badge: 'Area nueva',
-                  icon: Icons.local_shipping_rounded,
-                  onTap: onOpenLogistics,
+                height: _kDirectionExecutiveWidgetHeight,
+                child: DirectionLogisticsDashboardCard(
+                  onOpenLogistics: onOpenLogistics,
+                  onOpenControl: onOpenLogisticsFuelControl,
                 ),
               ),
               SizedBox(
                 width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Contabilidad',
-                  subtitle:
-                      'Nueva area de solo lectura para flujo, gastos, estado de resultados y utilidad confiable.',
-                  badge: 'Area nueva',
-                  icon: Icons.account_balance_rounded,
-                  onTap: onOpenContabilidad,
+                height: _kDirectionExecutiveWidgetHeight,
+                child: DirectionAccountingDashboardCard(
+                  onOpenStatement: onOpenIncomeStatement,
                 ),
               ),
               SizedBox(
@@ -761,13 +792,9 @@ class _DirectionDashboardCanvas extends StatelessWidget {
               ),
               SizedBox(
                 width: 420,
-                child: _DirectionAnalysisEntryCard(
-                  title: 'Gestión Documental',
-                  subtitle:
-                      'Documentos, expedientes, trámites y calendario de obligaciones de DICSA.',
-                  badge: 'Área nueva',
-                  icon: Icons.folder_copy_rounded,
-                  onTap: onOpenGestionDocumental,
+                height: _kDirectionExecutiveWidgetHeight,
+                child: DirectionDocumentalDashboardCard(
+                  onOpenManagement: onOpenGestionDocumental,
                 ),
               ),
             ],

@@ -450,6 +450,7 @@ class DirectionShipmentPlanningBundle {
   final List<DirectionProductionCapacityImpactRecord> activeCapacityImpacts;
   final List<DirectionCapacityImpactSummary> impactSummaries;
   final List<DirectionCompactorMaintenanceAlert> maintenanceAlerts;
+  final List<DirectionProductionHistoryRecord> productionHistory;
 
   const DirectionShipmentPlanningBundle({
     required this.weekStartDate,
@@ -463,6 +464,7 @@ class DirectionShipmentPlanningBundle {
     required this.activeCapacityImpacts,
     required this.impactSummaries,
     required this.maintenanceAlerts,
+    this.productionHistory = const [],
   });
 
   int get activeFloorMaterialCount =>
@@ -519,6 +521,35 @@ class DirectionShipmentsStore {
   static DateTime normalizeWeekStartDate(DateTime weekDate) =>
       _weekStartMonday(weekDate);
 
+  /// The dashboard uses the same Monday–Saturday planning week as Embarques,
+  /// without loading production history, capacity or suggested shipments.
+  static Future<List<DirectionShipmentPlanRecord>> loadWeeklyShipments(
+    DateTime weekDate,
+  ) {
+    final start = normalizeWeekStartDate(weekDate);
+    return _loadShipmentRows(start, start.add(const Duration(days: 5)));
+  }
+
+  static Future<List<Map<String, dynamic>>> loadProgramProductionActuals(
+    DateTime weekDate,
+  ) async {
+    final start = normalizeWeekStartDate(weekDate);
+    final events = await _loadProductionEvents(
+      start,
+      start.add(const Duration(days: 4)),
+    );
+    return events
+        .map(
+          (e) => <String, dynamic>{
+            'date': _fmtDate(e.date),
+            'material': e.materialCode,
+            'shift': e.shiftKey,
+            'quantity': e.quantity,
+          },
+        )
+        .toList();
+  }
+
   static Future<DirectionShipmentPlanningBundle> loadWeek(
     DateTime weekStartDate,
   ) async {
@@ -543,7 +574,7 @@ class DirectionShipmentsStore {
       final impacts =
           results[1] as List<DirectionProductionCapacityImpactRecord>;
       final floorData = results[2] as _FloorCountLoad;
-      final events = results[3] as List<_ProductionEvent>;
+      final events = results[3] as List<DirectionProductionHistoryRecord>;
       final maintenanceAlerts =
           results[4] as List<DirectionCompactorMaintenanceAlert>;
       final gerenciaTargets = results[5] as List<_GerenciaShipmentTargetLine>;
@@ -612,6 +643,9 @@ class DirectionShipmentsStore {
         activeCapacityImpacts: impacts,
         impactSummaries: impactSummaries,
         maintenanceAlerts: alerts,
+        productionHistory: events
+            .where((event) => event.date.isBefore(weekStart))
+            .toList(growable: false),
       );
     } catch (e, st) {
       AppErrorReporter.report(
@@ -732,19 +766,22 @@ class DirectionShipmentsStore {
     DateTime weekStart,
     DateTime weekEnd,
   ) async {
-    final rows = await _supa
-        .from(_kDirectionShipmentPlansTable)
-        .select(
-          'id,ship_date,client_name,commercial_material_code,'
-          'planning_material_code,material_scope,quantity_unit,planned_units,'
-          'priority,status,notes,created_at,updated_at',
-        )
-        .gte('ship_date', _fmtDate(weekStart))
-        .lte('ship_date', _fmtDate(weekEnd))
-        .order('ship_date', ascending: true)
-        .order('created_at', ascending: true);
-    return (rows as List<dynamic>)
-        .cast<Map<String, dynamic>>()
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from(_kDirectionShipmentPlansTable)
+          .select(
+            'id,ship_date,client_name,commercial_material_code,'
+            'planning_material_code,material_scope,quantity_unit,planned_units,'
+            'priority,status,notes,created_at,updated_at',
+          )
+          .gte('ship_date', _fmtDate(weekStart))
+          .lte('ship_date', _fmtDate(weekEnd))
+          .order('ship_date', ascending: true)
+          .order('created_at', ascending: true)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
+    return rows
         .map(DirectionShipmentPlanRecord.fromRow)
         .toList(growable: false);
   }
@@ -950,7 +987,7 @@ class DirectionShipmentsStore {
     return history;
   }
 
-  static Future<List<_ProductionEvent>> _loadProductionEvents(
+  static Future<List<DirectionProductionHistoryRecord>> _loadProductionEvents(
     DateTime historyStart,
     DateTime weekEnd,
   ) async {
@@ -958,18 +995,19 @@ class DirectionShipmentsStore {
       (from, to) => _supa
           .from('material_transformation_run_outputs_v2')
           .select(
-            'output_weight_kg,output_unit_count,notes,'
+            'id,output_weight_kg,output_unit_count,notes,'
             'commercial_material:commercial_material_id('
             'code,general_material:general_material_id(code)'
             '),'
-            'run:run_id(op_date,shift,notes,source_general_material:source_general_material_id(code))',
+            'run:run_id!inner(op_date,shift,notes,source_general_material:source_general_material_id(code))',
           )
           .gte('run.op_date', _fmtDate(historyStart))
           .lte('run.op_date', _fmtDate(weekEnd))
+          .order('id', ascending: true)
           .range(from, to),
     );
 
-    final events = <_ProductionEvent>[];
+    final events = <DirectionProductionHistoryRecord>[];
     for (final row in rows) {
       final run = (row['run'] as Map?)?.cast<String, dynamic>();
       if (run == null) continue;
@@ -1000,7 +1038,7 @@ class DirectionShipmentsStore {
               DirectionShipmentQuantityUnit.bales &&
           outputUnits > 0) {
         events.add(
-          _ProductionEvent(
+          DirectionProductionHistoryRecord(
             date: opDate,
             materialCode: commercialOption.code,
             quantity: outputUnits,
@@ -1018,7 +1056,7 @@ class DirectionShipmentsStore {
               DirectionShipmentQuantityUnit.kilograms &&
           outputKg > 0) {
         events.add(
-          _ProductionEvent(
+          DirectionProductionHistoryRecord(
             date: opDate,
             materialCode: generalOption.code,
             quantity: outputKg.round(),
@@ -1029,9 +1067,16 @@ class DirectionShipmentsStore {
       }
     }
 
-    if (events.isNotEmpty) {
-      return events;
-    }
+    // Select one carton source per operational week. A modern record in one
+    // week (or a bulk output) must not hide older carton production, and the
+    // same week must never be summed from both systems.
+    final modernBaleWeeks = events
+        .where(
+          (e) =>
+              directionShipmentMaterialByCode(e.materialCode)?.isPacked == true,
+        )
+        .map((e) => _weekStartMonday(e.date))
+        .toSet();
 
     final legacyRows = await fetchAllSupabaseRows(
       (from, to) => _supa
@@ -1040,10 +1085,16 @@ class DirectionShipmentsStore {
           .gte('op_date', _fmtDate(historyStart))
           .lte('op_date', _fmtDate(weekEnd))
           .order('op_date', ascending: true)
+          .order('id', ascending: true)
           .range(from, to),
     );
-    final legacyEvents = <_ProductionEvent>[];
+    final legacyEvents = <DirectionProductionHistoryRecord>[];
     for (final row in legacyRows) {
+      if (modernBaleWeeks.contains(
+        _weekStartMonday(_parseDate(row['op_date'])),
+      )) {
+        continue;
+      }
       final count = ((row['bale_count'] as num?) ?? 0).toInt();
       if (count <= 0) continue;
       final materialCode = _normalizePlanningMaterialCode(
@@ -1057,16 +1108,17 @@ class DirectionShipmentsStore {
         continue;
       }
       legacyEvents.add(
-        _ProductionEvent(
+        DirectionProductionHistoryRecord(
           date: _parseDate(row['op_date']),
           materialCode: option.code,
           quantity: count,
           shiftKey: _normalizeShiftKey(row['shift']?.toString()),
           compactadoraKey: _compactadoraKeyFromText(row['notes']?.toString()),
+          source: 'production_runs',
         ),
       );
     }
-    return legacyEvents;
+    return [...events, ...legacyEvents];
   }
 
   static Future<List<DirectionCompactorMaintenanceAlert>>
@@ -1629,19 +1681,22 @@ class _GerenciaShipmentTargetLine {
   }
 }
 
-class _ProductionEvent {
+/// A dated output recorded by Operación, with its original unit and source.
+class DirectionProductionHistoryRecord {
   final DateTime date;
   final String materialCode;
   final int quantity;
   final String shiftKey;
   final String? compactadoraKey;
+  final String source;
 
-  const _ProductionEvent({
+  const DirectionProductionHistoryRecord({
     required this.date,
     required this.materialCode,
     required this.quantity,
     required this.shiftKey,
-    required this.compactadoraKey,
+    this.compactadoraKey,
+    this.source = 'material_transformation_runs_v2',
   });
 }
 
@@ -1797,7 +1852,7 @@ int _impactPercentForMachineOnDate({
 }
 
 Map<DateTime, Map<String, int>> _buildQuantityByDateMaterial(
-  List<_ProductionEvent> events,
+  List<DirectionProductionHistoryRecord> events,
 ) {
   final byDate = <DateTime, Map<String, int>>{};
   for (final event in events) {
@@ -1812,7 +1867,7 @@ Map<DateTime, Map<String, int>> _buildQuantityByDateMaterial(
 }
 
 Map<DateTime, Map<String, Map<String, int>>> _buildQuantityByDateMaterialShift(
-  List<_ProductionEvent> events,
+  List<DirectionProductionHistoryRecord> events,
 ) {
   final byDate = <DateTime, Map<String, Map<String, int>>>{};
   for (final event in events) {
@@ -1834,7 +1889,9 @@ Map<DateTime, Map<String, Map<String, int>>> _buildQuantityByDateMaterialShift(
 }
 
 Map<DateTime, Map<String, Map<String, int>>>
-_buildQuantityByDateMaterialMachine(List<_ProductionEvent> events) {
+_buildQuantityByDateMaterialMachine(
+  List<DirectionProductionHistoryRecord> events,
+) {
   final byDate = <DateTime, Map<String, Map<String, int>>>{};
   for (final event in events) {
     final shares = _machineSharesForEvent(event);
@@ -1859,7 +1916,9 @@ _buildQuantityByDateMaterialMachine(List<_ProductionEvent> events) {
 }
 
 Map<DateTime, Map<String, Map<String, Map<String, int>>>>
-_buildQuantityByDateMaterialMachineShift(List<_ProductionEvent> events) {
+_buildQuantityByDateMaterialMachineShift(
+  List<DirectionProductionHistoryRecord> events,
+) {
   final byDate = <DateTime, Map<String, Map<String, Map<String, int>>>>{};
   for (final event in events) {
     final shares = _machineSharesForEvent(event);
@@ -1887,7 +1946,9 @@ _buildQuantityByDateMaterialMachineShift(List<_ProductionEvent> events) {
   return byDate;
 }
 
-Map<String, int> _machineSharesForEvent(_ProductionEvent event) {
+Map<String, int> _machineSharesForEvent(
+  DirectionProductionHistoryRecord event,
+) {
   switch (event.compactadoraKey) {
     case 'c1':
       return <String, int>{'c1': event.quantity};
@@ -2326,7 +2387,11 @@ String _normalizeSearchText(String? raw) {
 }
 
 String _normalizeShiftKey(String? rawShift) {
-  return (rawShift ?? '').trim().toUpperCase() == 'NIGHT' ? 'NIGHT' : 'DAY';
+  return switch (_normalizeSearchText(rawShift)) {
+    'DAY' || 'DIA' => 'DAY',
+    'NIGHT' || 'NOCHE' => 'NIGHT',
+    _ => '',
+  };
 }
 
 bool _mentionsCompactor(String text) {

@@ -24,8 +24,13 @@ import 'contabilidad_trade_analysis_page.dart';
 
 class ContabilidadIncomeStatementPage extends StatefulWidget {
   final bool instantOpen;
+  final DateTimeRange? initialDateRange;
 
-  const ContabilidadIncomeStatementPage({super.key, this.instantOpen = false});
+  const ContabilidadIncomeStatementPage({
+    super.key,
+    this.instantOpen = false,
+    this.initialDateRange,
+  });
 
   @override
   State<ContabilidadIncomeStatementPage> createState() =>
@@ -52,6 +57,7 @@ class _ContabilidadIncomeStatementPageState
   @override
   void initState() {
     super.initState();
+    _customRange = widget.initialDateRange;
     unawaited(_load());
   }
 

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../mayoreo/mayoreo_sorting.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'compras_data_store.dart';
 
 const String _kComprasTicketsTable = 'compras_tickets';
@@ -427,11 +428,15 @@ class ComprasTicketsStore {
   static Future<List<ComprasProviderMovementRecord>>
   loadProviderMovements() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kComprasProviderMovementsTable)
-          .select()
-          .order('movement_date', ascending: false)
-          .order('created_at', ascending: false);
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kComprasProviderMovementsTable)
+            .select()
+            .order('movement_date', ascending: false)
+            .order('created_at', ascending: false)
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => ComprasProviderMovementRecord.fromRemoteRow(
@@ -447,11 +452,15 @@ class ComprasTicketsStore {
   static Future<List<ComprasTicketPaymentApplicationRecord>>
   loadTicketPaymentApplications() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kComprasTicketPaymentApplicationsTable)
-          .select()
-          .order('applied_at', ascending: false)
-          .order('created_at', ascending: false);
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kComprasTicketPaymentApplicationsTable)
+            .select()
+            .order('applied_at', ascending: false)
+            .order('created_at', ascending: false)
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => ComprasTicketPaymentApplicationRecord.fromRemoteRow(
@@ -467,13 +476,22 @@ class ComprasTicketsStore {
   static Future<void> createProviderMovementAndAutoApply({
     required ComprasProviderMovementRecord movement,
   }) async {
-    await _saveProviderMovementAndRebuildApplications(movement);
+    await saveProviderMovement(movement);
+    if (_isProviderPayment(movement.type)) {
+      await _rebuildProviderMovementApplications(movement.providerId);
+    }
   }
 
   static Future<void> updateProviderMovementAndAutoApply({
     required ComprasProviderMovementRecord movement,
+    required String previousType,
   }) async {
-    await _saveProviderMovementAndRebuildApplications(movement);
+    await saveProviderMovement(movement);
+    // Corrections change the account balance, not payments allocated to tickets.
+    // A conversion to/from a payment must still rebuild those allocations.
+    if (_isProviderPayment(movement.type) || _isProviderPayment(previousType)) {
+      await _rebuildProviderMovementApplications(movement.providerId);
+    }
   }
 
   static Future<void> deleteProviderMovementAndRebuildApplications({
@@ -483,16 +501,13 @@ class ComprasTicketsStore {
         .from(_kComprasProviderMovementsTable)
         .delete()
         .eq('id', movement.id);
-    await _rebuildProviderMovementApplications(movement.providerId);
+    if (_isProviderPayment(movement.type)) {
+      await _rebuildProviderMovementApplications(movement.providerId);
+    }
   }
 }
 
-Future<void> _saveProviderMovementAndRebuildApplications(
-  ComprasProviderMovementRecord movement,
-) async {
-  await ComprasTicketsStore.saveProviderMovement(movement);
-  await _rebuildProviderMovementApplications(movement.providerId);
-}
+bool _isProviderPayment(String type) => type == 'ABONO' || type == 'PAGO';
 
 Future<void> _rebuildProviderMovementApplications(String providerId) async {
   final tickets = await ComprasTicketsStore.loadTickets();

@@ -271,82 +271,85 @@ class _ContractDateRangePickerDialogState
           constraints: const BoxConstraints(maxWidth: 420, maxHeight: 540),
           padding: EdgeInsets.zero,
           child: _DatePickerShell(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DialogTitle(widget.title),
-                const SizedBox(height: 14),
-                _CalendarPanel(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _ContractCalendarHeader(
-                        displayMonth: _displayMonth,
-                        onPrevious: () => setState(
-                          () => _displayMonth = DateTime(
-                            _displayMonth.year,
-                            _displayMonth.month - 1,
-                            1,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogTitle(widget.title),
+                  const SizedBox(height: 14),
+                  _CalendarPanel(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ContractCalendarHeader(
+                          displayMonth: _displayMonth,
+                          onPrevious: () => setState(
+                            () => _displayMonth = DateTime(
+                              _displayMonth.year,
+                              _displayMonth.month - 1,
+                              1,
+                            ),
+                          ),
+                          onNext: () => setState(
+                            () => _displayMonth = DateTime(
+                              _displayMonth.year,
+                              _displayMonth.month + 1,
+                              1,
+                            ),
                           ),
                         ),
-                        onNext: () => setState(
-                          () => _displayMonth = DateTime(
-                            _displayMonth.year,
-                            _displayMonth.month + 1,
-                            1,
-                          ),
+                        const SizedBox(height: 10),
+                        _ContractMonthGrid(
+                          displayMonth: _displayMonth,
+                          firstDate: widget.firstDate,
+                          lastDate: widget.lastDate,
+                          selectedStart: _start,
+                          selectedEnd: _end,
+                          hoverDate: _hover,
+                          onHoverDate: (value) =>
+                              setState(() => _hover = value),
+                          onDayTap: (picked) {
+                            setState(() {
+                              if (_start == null || _end != null) {
+                                _start = picked;
+                                _end = null;
+                                _hover = null;
+                              } else {
+                                _end = picked;
+                                _hover = null;
+                              }
+                            });
+                          },
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      _ContractMonthGrid(
-                        displayMonth: _displayMonth,
-                        firstDate: widget.firstDate,
-                        lastDate: widget.lastDate,
-                        selectedStart: _start,
-                        selectedEnd: _end,
-                        hoverDate: _hover,
-                        onHoverDate: (value) => setState(() => _hover = value),
-                        onDayTap: (picked) {
-                          setState(() {
-                            if (_start == null || _end != null) {
-                              _start = picked;
-                              _end = null;
-                              _hover = null;
-                            } else {
-                              _end = picked;
-                              _hover = null;
-                            }
-                          });
-                        },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _start == null
-                      ? 'Selecciona fecha inicial'
-                      : _end == null
-                      ? 'Selecciona fecha final'
-                      : '${_formatDate(_start!)} - ${_formatDate(_end!)}',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: tokens.badgeText,
+                  const SizedBox(height: 12),
+                  Text(
+                    _start == null
+                        ? 'Selecciona fecha inicial'
+                        : _end == null
+                        ? 'Selecciona fecha final'
+                        : '${_formatDate(_start!)} - ${_formatDate(_end!)}',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: tokens.badgeText,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _DialogActions(
-                  confirmText: 'Aplicar',
-                  onCancel: () => Navigator.of(context).pop(),
-                  onConfirm: _start == null
-                      ? null
-                      : () => Navigator.of(
-                          context,
-                        ).pop(_orderedRange(_start!, _end ?? _start!)),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  _DialogActions(
+                    confirmText: 'Aplicar',
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm: _start == null
+                        ? null
+                        : () => Navigator.of(
+                            context,
+                          ).pop(_orderedRange(_start!, _end ?? _start!)),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -15,11 +15,17 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'direction_maintenance_page.dart';
 import 'direction_shipments_store.dart';
 import 'direction_theme.dart';
+import 'operating_program/operating_program_view.dart';
 
 class DirectionShipmentsPage extends StatefulWidget {
   final bool instantOpen;
+  final DateTime? initialWeekStartDate;
 
-  const DirectionShipmentsPage({super.key, this.instantOpen = false});
+  const DirectionShipmentsPage({
+    super.key,
+    this.instantOpen = false,
+    this.initialWeekStartDate,
+  });
 
   @override
   State<DirectionShipmentsPage> createState() => _DirectionShipmentsPageState();
@@ -29,6 +35,10 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   static const Duration _kSilentReloadInterval = Duration(seconds: 20);
 
   bool _menuOpen = false;
+  bool _programSelected = false;
+  GlobalKey<OperatingProgramViewState> _programKey =
+      GlobalKey<OperatingProgramViewState>();
+  bool _pendingReload = false;
   bool _loading = true;
   bool _refreshing = false;
   bool _runningMutation = false;
@@ -41,7 +51,10 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   @override
   void initState() {
     super.initState();
-    _visibleWeekStartDate = DirectionShipmentsStore.currentWeekStartDate();
+    _visibleWeekStartDate = DirectionShipmentsStore.normalizeWeekStartDate(
+      widget.initialWeekStartDate ??
+          DirectionShipmentsStore.currentWeekStartDate(),
+    );
     unawaited(_load());
     _reloadTimer = Timer.periodic(
       _kSilentReloadInterval,
@@ -49,6 +62,24 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
     );
     _channel = Supabase.instance.client
         .channel('direction-shipments-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_transformation_runs_v2',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_transformation_run_outputs_v2',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'production_runs',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -102,8 +133,12 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (_refreshing) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
     _refreshing = true;
+    final requestedWeek = _visibleWeekStartDate;
     if (!silent || _bundle == null) {
       setState(() {
         _loading = true;
@@ -111,10 +146,8 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
       });
     }
     try {
-      final bundle = await DirectionShipmentsStore.loadWeek(
-        _visibleWeekStartDate,
-      );
-      if (!mounted) return;
+      final bundle = await DirectionShipmentsStore.loadWeek(requestedWeek);
+      if (!mounted || requestedWeek != _visibleWeekStartDate) return;
       setState(() {
         _bundle = bundle;
         _loading = false;
@@ -130,10 +163,15 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
       }
     } finally {
       _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
   Future<void> _openDashboard() async {
+    if (await _programKey.currentState?.canLeave() == false) return;
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
@@ -178,7 +216,12 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
       nextWeekStartDate,
     );
     if (normalized == _visibleWeekStartDate) return;
-    setState(() => _visibleWeekStartDate = normalized);
+    if (await _programKey.currentState?.canLeave() == false || !mounted) return;
+    setState(() {
+      _visibleWeekStartDate = normalized;
+      _bundle = null;
+      _programKey = GlobalKey<OperatingProgramViewState>();
+    });
     await _load();
   }
 
@@ -946,7 +989,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
           ),
           centerBuilder: (_, contentAnim) => DirectionHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Embarques Dirección',
+            title: 'Embarques · Programa semanal',
           ),
           trailingBuilder: (_, _) => Row(
             mainAxisSize: MainAxisSize.min,
@@ -973,7 +1016,46 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                   constraints: const BoxConstraints(maxWidth: 1460),
                   child: Padding(
                     padding: const EdgeInsets.only(left: 56, right: 4),
-                    child: _buildBody(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: SegmentedButton<bool>(
+                            segments: const [
+                              ButtonSegment(
+                                value: false,
+                                label: Text('Embarques'),
+                                icon: Icon(Icons.local_shipping_outlined),
+                              ),
+                              ButtonSegment(
+                                value: true,
+                                label: Text('Programa operativo'),
+                                icon: Icon(Icons.calendar_view_week),
+                              ),
+                            ],
+                            selected: {_programSelected},
+                            onSelectionChanged: (v) =>
+                                setState(() => _programSelected = v.single),
+                          ),
+                        ),
+                        Expanded(
+                          child: _bundle == null
+                              ? _buildBody()
+                              : IndexedStack(
+                                  index: _programSelected ? 1 : 0,
+                                  children: [
+                                    _buildBody(),
+                                    OperatingProgramView(
+                                      key: _programKey,
+                                      bundle: _bundle!,
+                                      onWeekChanged: _changeVisibleWeek,
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1009,44 +1091,6 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              DirectionMetricCard(
-                icon: Icons.inventory_2_outlined,
-                title: 'PISO ACTUAL',
-                value: '${bundle.activeFloorMaterialCount} materiales',
-                detail: _floorCountMetricDetail(bundle),
-                accent: _freshnessColor(bundle.floorCountFreshness),
-              ),
-              DirectionMetricCard(
-                icon: Icons.trending_up_rounded,
-                title: 'PROY. FUTURA',
-                value: '${bundle.projectedMaterialCount} materiales',
-                detail: _projectionMetricDetail(bundle),
-                accent: kDirectionSuccess,
-              ),
-              DirectionMetricCard(
-                icon: Icons.local_shipping_rounded,
-                title: 'EMBARQUES',
-                value: '${bundle.pendingShipmentCount} renglones',
-                detail:
-                    '${bundle.highPriorityShipmentCount} alta · ${bundle.confirmedShipmentCount} confirmados',
-                accent: kDirectionGoldAccent,
-              ),
-              DirectionMetricCard(
-                icon: Icons.warning_amber_rounded,
-                title: 'RIESGO',
-                value: '${bundle.atRiskShipmentCount} rojo',
-                detail: '${bundle.tightShipmentCount} justo / amarillo',
-                accent: bundle.atRiskShipmentCount > 0
-                    ? kDirectionDanger
-                    : kDirectionWarning,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           DirectionToolbarPanel(
             child: Wrap(
               alignment: WrapAlignment.spaceBetween,
@@ -1057,7 +1101,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
                   child: Text(
-                    'La proyección cruza conteo de piso fresco + producción esperada futura por historial promedio - compromisos previos. En el día del embarque solo cuenta turno día para completar saldo; la noche no salva la carga del mismo día. Mezcla pacas y kg según el material; no usa inventario sistema.',
+                    'Captura o confirma los embarques y destinos de la semana. Después abre Programa operativo para calcular la producción de cartón de lunes a viernes a partir del patio inicial.',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w700,
@@ -1116,35 +1160,86 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
             ),
           ),
           const SizedBox(height: 14),
-          _ExpectedProductionStrip(bundle: bundle),
-          const SizedBox(height: 14),
-          _CapacityAlertsPanel(
-            bundle: bundle,
-            onEditImpact: _editImpact,
-            onDeleteImpact: _deleteImpact,
-            onCreateImpactFromAlert: (alert) {
-              final startDate = DateTime(
-                alert.requestedAt.year,
-                alert.requestedAt.month,
-                alert.requestedAt.day,
-              );
-              return _createImpact(
-                preset: _CapacityImpactDraft(
-                  machineKey: alert.machineKey,
-                  startDate: startDate,
-                  endDate: startDate.add(const Duration(days: 1)),
-                  impactPercent: 100,
-                  notes: alert.problemSummary,
-                  isActive: true,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 14),
           _ShipmentsGridPanel(
             bundle: bundle,
             onEditShipment: _editShipment,
             onDeleteShipment: _deleteShipment,
+          ),
+          const SizedBox(height: 14),
+          ExpansionTile(
+            title: const Text(
+              'Referencia histórica y afectaciones',
+              style: TextStyle(color: kDirectionSurfaceText),
+            ),
+            subtitle: const Text(
+              'Capacidad estimada y semáforos de referencia',
+              style: TextStyle(color: kDirectionMutedText),
+            ),
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  DirectionMetricCard(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'PISO ACTUAL',
+                    value: '${bundle.activeFloorMaterialCount} materiales',
+                    detail: _floorCountMetricDetail(bundle),
+                    accent: _freshnessColor(bundle.floorCountFreshness),
+                  ),
+                  DirectionMetricCard(
+                    icon: Icons.trending_up_rounded,
+                    title: 'PROY. FUTURA',
+                    value: '${bundle.projectedMaterialCount} materiales',
+                    detail: _projectionMetricDetail(bundle),
+                    accent: kDirectionSuccess,
+                  ),
+                  DirectionMetricCard(
+                    icon: Icons.local_shipping_rounded,
+                    title: 'EMBARQUES',
+                    value: '${bundle.pendingShipmentCount} renglones',
+                    detail:
+                        '${bundle.highPriorityShipmentCount} alta · ${bundle.confirmedShipmentCount} confirmados',
+                    accent: kDirectionGoldAccent,
+                  ),
+                  DirectionMetricCard(
+                    icon: Icons.warning_amber_rounded,
+                    title: 'RIESGO',
+                    value: '${bundle.atRiskShipmentCount} rojo',
+                    detail: '${bundle.tightShipmentCount} justo / amarillo',
+                    accent: bundle.atRiskShipmentCount > 0
+                        ? kDirectionDanger
+                        : kDirectionWarning,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _ExpectedProductionStrip(bundle: bundle),
+              const SizedBox(height: 14),
+              _CapacityAlertsPanel(
+                bundle: bundle,
+                onEditImpact: _editImpact,
+                onDeleteImpact: _deleteImpact,
+                onCreateImpactFromAlert: (alert) {
+                  final startDate = DateTime(
+                    alert.requestedAt.year,
+                    alert.requestedAt.month,
+                    alert.requestedAt.day,
+                  );
+                  return _createImpact(
+                    preset: _CapacityImpactDraft(
+                      machineKey: alert.machineKey,
+                      startDate: startDate,
+                      endDate: startDate.add(const Duration(days: 1)),
+                      impactPercent: 100,
+                      notes: alert.problemSummary,
+                      isActive: true,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+            ],
           ),
         ],
       ),
@@ -1174,7 +1269,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
               const DirectionModuleMenuEntry(
                 icon: Icons.local_shipping_rounded,
                 title: 'Embarques',
-                subtitle: 'Planeación semanal y semáforos',
+                subtitle: 'Embarques y programa operativo',
                 current: true,
               ),
               DirectionModuleMenuEntry(

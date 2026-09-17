@@ -2,7 +2,7 @@ name: dicsa_operacion
 description: "Sistema operativo Dicsa"
 publish_to: "none"
 
-version: 1.0.85+88
+version: 1.0.86+89
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -54,6 +54,9 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
+    - assets/fonts/Roboto-LICENSE.txt
     - assets/images/logo_dicsa.jpg
     - assets/images/logo_dicsa.svg
     - assets/images/logo_dicsa.png

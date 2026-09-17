@@ -1217,6 +1217,48 @@ class _HrNominaMetrics {
   }
 }
 
+/// Executive totals use exactly the same rows and delivery rules as Nómina.
+/// In particular, fiscal cheques belong to both fiscal origin and flow delivery;
+/// the total payable is deposit + flow, never fiscal + flow.
+class HrPayrollPeriodSummary {
+  final int employees, ready, published;
+  final double fiscal, deposit, cheque, flow;
+
+  const HrPayrollPeriodSummary({
+    required this.employees,
+    required this.ready,
+    required this.published,
+    required this.fiscal,
+    required this.deposit,
+    required this.cheque,
+    required this.flow,
+  });
+
+  factory HrPayrollPeriodSummary.fromRows({
+    required List<Map<String, dynamic>> drafts,
+    required String periodLabel,
+    Map<String, String> personalFiscalModes = const {},
+    bool isPeriodClosed = false,
+  }) {
+    final rows = _buildNominaRows(
+      draftRows: drafts.map(_HrNominaDraftRecord.fromRow).toList(),
+      activePeriodLabel: periodLabel,
+      personalFiscalModes: personalFiscalModes,
+      isPeriodClosed: isPeriodClosed,
+    );
+    final metrics = _HrNominaMetrics.fromRows(rows);
+    return HrPayrollPeriodSummary(
+      employees: rows.length,
+      ready: rows.where((r) => r.statusLabel == 'Listo').length,
+      published: rows.where((r) => r.isPublished).length,
+      fiscal: metrics.fiscal,
+      deposit: metrics.fiscalDeposited,
+      cheque: metrics.fiscalCash,
+      flow: metrics.total - metrics.fiscalDeposited,
+    );
+  }
+}
+
 List<String> _nominaPeriodOptions({
   required List<_HrNominaDraftRecord> drafts,
   required List<_HrNominaImportLotLite> lots,

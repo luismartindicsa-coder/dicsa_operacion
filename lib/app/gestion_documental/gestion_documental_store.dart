@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import 'gestion_documental_record_draft.dart';
 import 'gestion_documental_records.dart';
+import 'gestion_documental_overview.dart';
 
 class DocumentalSaveOperation {
   final String id;
@@ -32,8 +33,12 @@ class DocumentalSaveOperation {
 }
 
 abstract class DocumentalRepository {
-  Future<DocumentalContext> loadContext();
+  Future<DocumentalContext> loadContext({
+    DocumentalRecordKind kind = DocumentalRecordKind.legal,
+  });
   Future<DocumentalResultPage> loadPage(DocumentalQuery query);
+  Future<DocumentalDashboardData> loadDashboard();
+  Future<DocumentalCalendarData> loadCalendar(DocumentalCalendarQuery query);
   Future<DocumentalDetail> loadDetail(String id);
   Future<DocumentalDetail> save(DocumentalSaveOperation operation);
   Future<Uri> fileUrl(DocumentalFile file);
@@ -63,22 +68,37 @@ class SupabaseDocumentalStore implements DocumentalRepository {
   static final instance = SupabaseDocumentalStore(Supabase.instance.client);
 
   @override
-  Future<DocumentalContext> loadContext() async {
+  Future<DocumentalContext> loadContext({
+    DocumentalRecordKind kind = DocumentalRecordKind.legal,
+  }) async {
     final json = Map<String, dynamic>.from(
-      await client.rpc('documental_context') as Map,
+      await client.rpc(switch (kind) {
+            DocumentalRecordKind.safety => 'documental_safety_context',
+            DocumentalRecordKind.vehicles => 'documental_vehicle_context',
+            DocumentalRecordKind.personnel => 'documental_personnel_context',
+            _ => 'documental_context',
+          })
+          as Map,
     );
-    final people = [
-      for (final r in json['responsibles'] as List)
-        DocumentalResponsible(r['id'] as String, r['label'] as String),
-    ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    return DocumentalContext(
-      today: DateTime.parse(json['today'] as String),
-      untilMidnight: Duration(
-        seconds: (json['seconds_to_midnight'] as num).ceil() + 1,
-      ),
-      responsibles: people,
-    );
+    return DocumentalContext.fromJson(json);
   }
+
+  @override
+  Future<DocumentalDashboardData> loadDashboard() async =>
+      DocumentalDashboardData.fromJson(
+        Map<String, dynamic>.from(
+          await client.rpc('documental_dashboard') as Map,
+        ),
+      );
+
+  @override
+  Future<DocumentalCalendarData> loadCalendar(
+    DocumentalCalendarQuery query,
+  ) async => DocumentalCalendarData.fromJson(
+    Map<String, dynamic>.from(
+      await client.rpc('documental_calendar', params: query.toParams()) as Map,
+    ),
+  );
 
   @override
   Future<DocumentalResultPage> loadPage(DocumentalQuery query) async {

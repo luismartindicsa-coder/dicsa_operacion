@@ -142,7 +142,9 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
 }
 
 class LogisticsGasolinePage extends StatefulWidget {
-  const LogisticsGasolinePage({super.key});
+  final DateTimeRange? initialDateRange;
+
+  const LogisticsGasolinePage({super.key, this.initialDateRange});
 
   @override
   State<LogisticsGasolinePage> createState() => _LogisticsGasolinePageState();
@@ -188,6 +190,9 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialDateRange != null) {
+      _columnDateRangeFilters['fecha'] = widget.initialDateRange!;
+    }
     _litersFocusNode.addListener(_handleInlineFieldFocusChange);
     _notesFocusNode.addListener(_handleInlineFieldFocusChange);
     unawaited(_bootstrap());

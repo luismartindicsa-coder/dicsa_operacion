@@ -35,6 +35,7 @@ import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_payment_center_page.dart';
 import 'finanzas_provider_excel_templates.dart';
 import 'finanzas_provider_accounts_store.dart';
+import 'finanzas_provider_account_balance.dart';
 import 'finanzas_theme.dart';
 
 enum _ProviderAccountsTab {
@@ -465,9 +466,17 @@ class _FinanzasProviderAccountsPageState
                     ),
                   )
                   .toList(growable: false);
-              final payableSummary = _computeProviderPayableSummary(
+              final payableSummary = computeProviderAccountBalance(
+                tickets: rows,
                 invoices: providerInvoices,
-                movements: providerMovements,
+                invoicedTicketIds: providerInvoiceViews
+                    .expand((row) => row.tickets)
+                    .map((ticket) => ticket.id)
+                    .toSet(),
+                bankMovements: providerMovements,
+                directMovements: providerCashMovementRows,
+                applications: ticketApplications,
+                creditDays: company.creditDays,
               );
               final reconciledTicketStatuses = _buildReconciledTicketStatuses(
                 tickets: rows,
@@ -475,86 +484,57 @@ class _FinanzasProviderAccountsPageState
                 ticketApplicationsByTicketId: ticketApplicationsByTicketId,
               );
 
-              double total = 0;
-              double open = 0;
-              double facturado = 0;
-              double sinFactura = 0;
-              double pendienteFacturar = 0;
-              double pagado = 0;
+              double total = payableSummary.adjustmentAmount;
+              double pagado = payableSummary.unappliedPaymentAmount;
               double vencido = 0;
               var abiertos = 0;
-              DateTime? nextCommitment;
+              final invoicedTicketIds = providerInvoiceViews
+                  .expand((row) => row.tickets)
+                  .map((ticket) => ticket.id)
+                  .toSet();
               for (final ticket in rows) {
-                final resolved =
-                    reconciledTicketStatuses[ticket.id] ??
-                    _ProviderTicketStatusView(
-                      appliedAmount: 0,
-                      pagoStatus: ticket.pagoStatus,
-                      coverageStatus: ticket.coverageStatus,
-                    );
+                final resolved = reconciledTicketStatuses[ticket.id]!;
                 total += ticket.amount;
-                if (ticket.amount <= 0.009) {
-                  open += ticket.amount;
-                  if (ticket.facturaStatus == 'FACTURADO') {
-                    facturado += ticket.amount;
-                  } else if (ticket.facturaStatus == 'SIN_FACTURA') {
-                    sinFactura += ticket.amount;
-                  } else {
-                    pendienteFacturar += ticket.amount;
-                  }
+                if (ticket.amount <= 0.009) continue;
+                pagado += resolved.appliedAmount;
+                if (resolved.pagoStatus == 'PAGADO') continue;
+                abiertos += 1;
+                if (ticket.facturaStatus == 'FACTURADO' ||
+                    invoicedTicketIds.contains(ticket.id)) {
                   continue;
                 }
                 final dueDate = DateUtils.dateOnly(
                   ticket.date.add(Duration(days: company.creditDays)),
                 );
-                if (resolved.pagoStatus == 'PAGADO') {
-                  pagado += ticket.amount;
-                  continue;
-                }
-                abiertos += 1;
-                open += ticket.amount;
-                if (ticket.facturaStatus == 'FACTURADO') {
-                  facturado += ticket.amount;
-                } else if (ticket.facturaStatus == 'SIN_FACTURA') {
-                  sinFactura += ticket.amount;
-                } else {
-                  pendienteFacturar += ticket.amount;
-                }
-                if (company.creditDays > 0 &&
-                    (dueDate.isBefore(today) || dueDate == today)) {
-                  vencido += ticket.amount;
-                }
-                if (nextCommitment == null ||
-                    dueDate.isBefore(nextCommitment)) {
-                  nextCommitment = dueDate;
+                if (company.creditDays > 0 && !dueDate.isAfter(today)) {
+                  vencido += ticket.amount - resolved.appliedAmount;
                 }
               }
+              final appliedByInvoiceId = buildAppliedSupplierAmountByInvoiceId(
+                providerMovements,
+              );
               for (final invoiceRow in providerInvoiceViews) {
-                if (!_isManualSupplierInvoice(invoiceRow)) continue;
                 final invoice = invoiceRow.invoice;
-                total += invoice.totalAmount;
-                if (invoice.status == 'PAGADA') {
-                  pagado += invoice.totalAmount;
-                  continue;
+                final remaining = effectiveSupplierInvoiceBalance(
+                  invoice,
+                  appliedByInvoiceId,
+                );
+                if (_isManualSupplierInvoice(invoiceRow)) {
+                  total += invoice.totalAmount;
+                  pagado += invoice.totalAmount - remaining;
                 }
-                open += invoice.balanceAmount;
-                facturado += invoice.balanceAmount;
-                if (invoice.balanceAmount > 0.009 && invoice.dueDate != null) {
-                  final dueDate = DateUtils.dateOnly(invoice.dueDate!);
-                  if (dueDate.isBefore(today) || dueDate == today) {
-                    vencido += invoice.balanceAmount;
-                  }
-                }
-              }
-              for (final invoice in providerInvoices) {
-                if (invoice.status == 'PAGADA') continue;
-                final dueDate = invoice.dueDate;
-                if (dueDate == null) continue;
-                if (nextCommitment == null ||
-                    dueDate.isBefore(nextCommitment)) {
-                  nextCommitment = dueDate;
+                if (remaining > 0.009 &&
+                    invoice.dueDate != null &&
+                    !DateUtils.dateOnly(invoice.dueDate!).isAfter(today)) {
+                  vencido += remaining;
                 }
               }
+              final open = payableSummary.openAmount;
+              final facturado = payableSummary.facturadoAmount;
+              final sinFactura = payableSummary.sinFacturaAmount;
+              final pendienteFacturar = payableSummary.pendienteFacturarAmount;
+              final nextCommitment = payableSummary.nextDueDate;
+              vencido = math.min(vencido, payableSummary.payableAmount);
               final urgency = _buildUrgency(
                 paymentStage: company.paymentStage,
                 openAmount: open,
@@ -584,9 +564,7 @@ class _FinanzasProviderAccountsPageState
                 overdueAmount: vencido,
                 openTicketsCount: abiertos,
                 nextCommitmentDate: nextCommitment,
-                payableAmount: payableSummary.amount,
-                openInvoicesCount: payableSummary.openInvoicesCount,
-                nextPayableDate: payableSummary.nextDueDate,
+                balance: payableSummary,
                 urgencyLabel: urgency.$1,
                 urgencyTone: urgency.$2,
                 recommendation: recommendation,
@@ -2602,6 +2580,7 @@ class _FinanzasProviderAccountsPageState
     try {
       await ComprasTicketsStore.updateProviderMovementAndAutoApply(
         movement: updatedMovement,
+        previousType: movement.type,
       );
       await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
         providerId: account.company.companyId,
@@ -3898,11 +3877,11 @@ class _FinanzasProviderAccountsPageState
   List<_GlobalPendingInvoiceReportRow> _buildGlobalPendingInvoiceReportRows() {
     final byInvoiceId = <String, _GlobalPendingInvoiceReportRow>{};
     for (final account in _accounts) {
-      final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(
+      final appliedByInvoiceId = buildAppliedSupplierAmountByInvoiceId(
         account.movements,
       );
       for (final row in account.invoices) {
-        final pendingAmount = _effectiveSupplierInvoiceBalance(
+        final pendingAmount = effectiveSupplierInvoiceBalance(
           row.invoice,
           appliedByInvoiceId,
         );
@@ -3957,7 +3936,7 @@ class _FinanzasProviderAccountsPageState
         bucket.paidAmount += paidAmount;
       }
 
-      final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(
+      final appliedByInvoiceId = buildAppliedSupplierAmountByInvoiceId(
         account.movements,
       );
       for (final invoiceRow in account.invoices) {
@@ -3970,7 +3949,7 @@ class _FinanzasProviderAccountsPageState
           double.infinity,
         );
         if (totalAmount <= 0.009) continue;
-        final dueAmount = _effectiveSupplierInvoiceBalance(
+        final dueAmount = effectiveSupplierInvoiceBalance(
           invoiceRow.invoice,
           appliedByInvoiceId,
         );
@@ -4764,82 +4743,6 @@ String _providerMovementSourceLabelShared(String source) {
   }
 }
 
-class _ProviderPayableSummary {
-  final double amount;
-  final int openInvoicesCount;
-  final DateTime? nextDueDate;
-
-  const _ProviderPayableSummary({
-    required this.amount,
-    required this.openInvoicesCount,
-    required this.nextDueDate,
-  });
-}
-
-_ProviderPayableSummary _computeProviderPayableSummary({
-  required List<FinanzasSupplierInvoiceRecord> invoices,
-  required List<FinanzasBankMovementRecord> movements,
-}) {
-  final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(movements);
-
-  double payableAmount = 0;
-  var openInvoicesCount = 0;
-  DateTime? nextDueDate;
-  for (final invoice in invoices) {
-    final effectiveBalance = _effectiveSupplierInvoiceBalance(
-      invoice,
-      appliedByInvoiceId,
-    );
-    if (effectiveBalance <= 0.009) continue;
-    payableAmount += effectiveBalance;
-    openInvoicesCount += 1;
-    final dueDate = invoice.dueDate;
-    if (dueDate == null) continue;
-    if (nextDueDate == null || dueDate.isBefore(nextDueDate)) {
-      nextDueDate = dueDate;
-    }
-  }
-
-  return _ProviderPayableSummary(
-    amount: payableAmount,
-    openInvoicesCount: openInvoicesCount,
-    nextDueDate: nextDueDate,
-  );
-}
-
-Map<String, double> _buildAppliedSupplierAmountByInvoiceId(
-  Iterable<FinanzasBankMovementRecord> movements,
-) {
-  final appliedByInvoiceId = <String, double>{};
-  for (final movement in movements) {
-    final invoiceId = movement.linkedSupplierInvoiceId;
-    if (invoiceId == null || invoiceId.isEmpty) continue;
-    final applied = movement.effectiveSupplierAppliedAmount.clamp(
-      0.0,
-      double.infinity,
-    );
-    if (applied <= 0.009) continue;
-    appliedByInvoiceId.update(
-      invoiceId,
-      (sum) => sum + applied,
-      ifAbsent: () => applied,
-    );
-  }
-  return appliedByInvoiceId;
-}
-
-double _effectiveSupplierInvoiceBalance(
-  FinanzasSupplierInvoiceRecord invoice,
-  Map<String, double> appliedByInvoiceId,
-) {
-  final linkedPaid = appliedByInvoiceId[invoice.id];
-  return linkedPaid == null
-      ? invoice.balanceAmount.clamp(0.0, invoice.totalAmount).toDouble()
-      : (invoice.totalAmount - linkedPaid)
-            .clamp(0.0, invoice.totalAmount)
-            .toDouble();
-}
-
 class _ProviderAccountView {
   final FinanzasCompanyDirectoryRecord company;
   final List<ComprasTicketRecord> tickets;
@@ -4859,9 +4762,11 @@ class _ProviderAccountView {
   final double overdueAmount;
   final int openTicketsCount;
   final DateTime? nextCommitmentDate;
-  final double payableAmount;
-  final int openInvoicesCount;
-  final DateTime? nextPayableDate;
+  final ProviderAccountBalance balance;
+
+  double get payableAmount => balance.payableAmount;
+  int get openInvoicesCount => balance.openInvoicesCount;
+  DateTime? get nextPayableDate => balance.nextDueDate;
   final String urgencyLabel;
   final Color urgencyTone;
   final String recommendation;
@@ -4884,9 +4789,7 @@ class _ProviderAccountView {
     required this.overdueAmount,
     required this.openTicketsCount,
     required this.nextCommitmentDate,
-    required this.payableAmount,
-    required this.openInvoicesCount,
-    required this.nextPayableDate,
+    required this.balance,
     required this.urgencyLabel,
     required this.urgencyTone,
     required this.recommendation,
@@ -5040,93 +4943,16 @@ class _ProviderAccountMetricsView {
 _ProviderAccountMetricsView _computeProviderAccountMetrics(
   _ProviderAccountView account,
 ) {
-  final today = DateUtils.dateOnly(DateTime.now());
-  double total = 0;
-  double open = 0;
-  double facturado = 0;
-  double sinFactura = 0;
-  double pendienteFacturar = 0;
-  double pagado = 0;
-  double vencido = 0;
-  var abiertos = 0;
-  DateTime? nextCommitment;
-
-  for (final ticket in account.tickets) {
-    final resolved = _resolveProviderTicketStatus(account, ticket);
-    total += ticket.amount;
-    if (ticket.amount <= 0.009) {
-      open += ticket.amount;
-      if (ticket.facturaStatus == 'FACTURADO') {
-        facturado += ticket.amount;
-      } else if (ticket.facturaStatus == 'SIN_FACTURA') {
-        sinFactura += ticket.amount;
-      } else {
-        pendienteFacturar += ticket.amount;
-      }
-      continue;
-    }
-    final dueDate = DateUtils.dateOnly(
-      ticket.date.add(Duration(days: account.company.creditDays)),
-    );
-    if (resolved.pagoStatus == 'PAGADO') {
-      pagado += ticket.amount;
-      continue;
-    }
-    abiertos += 1;
-    open += ticket.amount;
-    if (ticket.facturaStatus == 'FACTURADO') {
-      facturado += ticket.amount;
-    } else if (ticket.facturaStatus == 'SIN_FACTURA') {
-      sinFactura += ticket.amount;
-    } else {
-      pendienteFacturar += ticket.amount;
-    }
-    if (account.company.creditDays > 0 &&
-        (dueDate.isBefore(today) || dueDate == today)) {
-      vencido += ticket.amount;
-    }
-    if (nextCommitment == null || dueDate.isBefore(nextCommitment)) {
-      nextCommitment = dueDate;
-    }
-  }
-
-  for (final invoiceRow in account.invoices) {
-    if (!_isManualSupplierInvoice(invoiceRow)) continue;
-    final invoice = invoiceRow.invoice;
-    total += invoice.totalAmount;
-    if (invoice.status == 'PAGADA') {
-      pagado += invoice.totalAmount;
-      continue;
-    }
-    open += invoice.balanceAmount;
-    facturado += invoice.balanceAmount;
-    if (invoice.balanceAmount > 0.009 && invoice.dueDate != null) {
-      final dueDate = DateUtils.dateOnly(invoice.dueDate!);
-      if (dueDate.isBefore(today) || dueDate == today) {
-        vencido += invoice.balanceAmount;
-      }
-    }
-  }
-
-  for (final invoice in account.invoices) {
-    if (invoice.invoice.status == 'PAGADA') continue;
-    final dueDate = invoice.invoice.dueDate;
-    if (dueDate == null) continue;
-    if (nextCommitment == null || dueDate.isBefore(nextCommitment)) {
-      nextCommitment = dueDate;
-    }
-  }
-
   return _ProviderAccountMetricsView(
-    totalAmount: total,
-    openAmount: open,
-    facturadoAmount: facturado,
-    sinFacturaAmount: sinFactura,
-    pendienteFacturarAmount: pendienteFacturar,
-    paidAmount: pagado,
-    overdueAmount: vencido,
-    openTicketsCount: abiertos,
-    nextCommitmentDate: nextCommitment,
+    totalAmount: account.totalAmount,
+    openAmount: account.openAmount,
+    facturadoAmount: account.facturadoAmount,
+    sinFacturaAmount: account.sinFacturaAmount,
+    pendienteFacturarAmount: account.pendienteFacturarAmount,
+    paidAmount: account.paidAmount,
+    overdueAmount: account.overdueAmount,
+    openTicketsCount: account.openTicketsCount,
+    nextCommitmentDate: account.nextCommitmentDate,
   );
 }
 
@@ -7065,10 +6891,10 @@ class _ProviderAccountsPaneTotals {
     required this.facturadoAmount,
     required this.pendienteFacturarAmount,
     required this.sinFacturaAmount,
+    required this.totalAmount,
   });
 
-  double get totalAmount =>
-      facturadoAmount + pendienteFacturarAmount + sinFacturaAmount;
+  final double totalAmount;
 }
 
 _ProviderAccountsPaneTotals _computeProviderAccountsPaneTotals(
@@ -7077,16 +6903,19 @@ _ProviderAccountsPaneTotals _computeProviderAccountsPaneTotals(
   double facturado = 0;
   double pendienteFacturar = 0;
   double sinFactura = 0;
+  double total = 0;
   for (final row in rows) {
     final metrics = _computeProviderAccountMetrics(row);
     facturado += metrics.facturadoAmount;
     pendienteFacturar += metrics.pendienteFacturarAmount;
     sinFactura += metrics.sinFacturaAmount;
+    total += metrics.openAmount;
   }
   return _ProviderAccountsPaneTotals(
     facturadoAmount: facturado,
     pendienteFacturarAmount: pendienteFacturar,
     sinFacturaAmount: sinFactura,
+    totalAmount: total,
   );
 }
 
@@ -7232,9 +7061,18 @@ class _ProviderAccountListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final supportingLabel = row.openInvoicesCount <= 0
-        ? 'Sin facturas abiertas'
-        : 'Facturas ${row.openInvoicesCount} · Próximo ${dateFormatter(row.nextPayableDate)}';
+    final pendingLabels = <String>[
+      if (row.openInvoicesCount > 0) 'Facturas ${row.openInvoicesCount}',
+      if (row.balance.openNonInvoiceTicketsCount > 0)
+        'Tickets sin facturar ${row.balance.openNonInvoiceTicketsCount}',
+      if (row.nextPayableDate != null)
+        'Próximo ${dateFormatter(row.nextPayableDate)}',
+    ];
+    final supportingLabel = pendingLabels.isNotEmpty
+        ? pendingLabels.join(' · ')
+        : row.payableAmount > 0.009
+        ? 'Saldo de movimientos'
+        : 'Sin saldo por pagar';
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(20),
       padding: EdgeInsets.zero,
@@ -7498,6 +7336,18 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 value: moneyFormatter(metrics.pendienteFacturarAmount),
                 icon: Icons.pending_actions_outlined,
               ),
+              if (account.balance.adjustmentAmount.abs() > 0.009)
+                _SummaryMetricCard(
+                  label: 'Ajustes y cargos',
+                  value: moneyFormatter(account.balance.adjustmentAmount),
+                  icon: Icons.tune_rounded,
+                ),
+              if (account.balance.unappliedPaymentAmount > 0.009)
+                _SummaryMetricCard(
+                  label: 'Abonos sin aplicar',
+                  value: moneyFormatter(account.balance.unappliedPaymentAmount),
+                  icon: Icons.payments_outlined,
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -8811,7 +8661,11 @@ class _ProviderAccountMovementsView extends StatelessWidget {
           0,
           (sum, row) =>
               sum +
-              ((row.type == 'ABONO' || row.type == 'PAGO') ? row.amount : 0),
+              ((row.type == 'ABONO' || row.type == 'PAGO')
+                  ? row.amount
+                  : row.type == 'AJUSTE' && row.amount < 0
+                  ? -row.amount
+                  : 0),
         );
     final totalDebit =
         account.movements.fold<double>(0, (sum, row) => sum + row.debitAmount) +
@@ -8819,7 +8673,9 @@ class _ProviderAccountMovementsView extends StatelessWidget {
           0,
           (sum, row) =>
               sum +
-              ((row.type == 'CARGO' || row.type == 'AJUSTE') ? row.amount : 0),
+              ((row.type == 'CARGO' || row.type == 'AJUSTE') && row.amount > 0
+                  ? row.amount
+                  : 0),
         );
     final net = totalCredit - totalDebit;
     final totalItems = timelineItems.length;
@@ -8840,7 +8696,7 @@ class _ProviderAccountMovementsView extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             _ActionPillButton(
-              label: 'Registrar abono',
+              label: 'Registrar movimiento',
               icon: Icons.payments_outlined,
               onTap: onRegisterCashMovement,
             ),
@@ -9389,7 +9245,9 @@ class _ProviderCashMovementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final positive = row.type == 'ABONO' || row.type == 'PAGO';
+    final positive = row.type == 'ABONO' ||
+        row.type == 'PAGO' ||
+        (row.type == 'AJUSTE' && row.amount < 0);
     final tone = positive ? kFinanzasSage : kFinanzasBurnt;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -11782,7 +11640,11 @@ class _RegisterProviderCashMovementDialogState
     return double.tryParse(cleaned) ?? 0;
   }
 
-  bool get _canSave => _parseAmount(_amountC.text) > 0;
+  bool get _canSave {
+    final amount = _parseAmount(_amountC.text);
+    return amount.isFinite &&
+        (_type == 'AJUSTE' ? amount.abs() >= 0.01 : amount >= 0.01);
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -11833,9 +11695,13 @@ class _RegisterProviderCashMovementDialogState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _DialogHeader(
-                    title: isEditing ? 'Editar movimiento' : 'Registrar abono',
-                    subtitle: isEditing
-                        ? '${widget.providerName} · Al guardar se recalculará la aplicación del movimiento en tickets abiertos.'
+                    title: isEditing
+                        ? 'Editar movimiento'
+                        : 'Registrar movimiento',
+                    subtitle: _type == 'AJUSTE'
+                        ? '${widget.providerName} · Positivo aumenta el saldo; negativo lo reduce.'
+                        : _type == 'CARGO'
+                        ? '${widget.providerName} · Aumenta el saldo del proveedor.'
                         : '${widget.providerName} · Se aplicará por antigüedad al saldo abierto del proveedor.',
                   ),
                   const SizedBox(height: 14),
@@ -11943,6 +11809,7 @@ class _RegisterProviderCashMovementDialogState
                           cursorColor: finanzasAreaTokens.primaryStrong,
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
+                            signed: true,
                           ),
                           decoration: contractGlassFieldDecoration(
                             context,

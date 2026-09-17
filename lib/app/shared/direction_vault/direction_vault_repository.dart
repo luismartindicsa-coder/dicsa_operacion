@@ -75,7 +75,9 @@ class DirectionVaultRepository {
 
   SupabaseClient get _supa => Supabase.instance.client;
 
-  Future<List<DirectionVaultVoucherRecord>> loadVouchers() async {
+  Future<List<DirectionVaultVoucherRecord>> loadVouchers({
+    bool migrateLegacy = true,
+  }) async {
     final remoteVouchers = await _loadRemoteVouchers();
     final legacyVouchers = await _loadLegacyVouchers();
     if (legacyVouchers.isEmpty) return remoteVouchers;
@@ -88,7 +90,7 @@ class DirectionVaultRepository {
         .where((row) => !remoteIds.contains(row.id.trim()))
         .toList(growable: false);
 
-    if (missingLegacy.isNotEmpty) {
+    if (migrateLegacy && missingLegacy.isNotEmpty) {
       for (final row in missingLegacy) {
         await upsertVoucher(row);
       }

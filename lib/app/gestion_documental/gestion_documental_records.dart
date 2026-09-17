@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 
 enum DocumentalRecordKind {
   legal('documentacion-legal'),
-  procedures('permisos-y-tramites');
+  procedures('permisos-y-tramites'),
+  safety('seguridad-e-higiene'),
+  environment('medio-ambiente'),
+  vehicles('vehiculos'),
+  personnel('personal'),
+  civilProtection('proteccion-civil'),
+  contracts('contratos'),
+  insurance('seguros'),
+  maintenance('mantenimiento'),
+  audits('auditorias');
 
   final String key;
   const DocumentalRecordKind(this.key);
+  bool get tracksProgress => this != legal;
 }
 
 String? documentalDateJson(DateTime? value) => value == null
@@ -52,15 +62,52 @@ class DocumentalResponsible {
   const DocumentalResponsible(this.id, this.label);
 }
 
+class DocumentalEmployee extends DocumentalResponsible {
+  final bool isActive;
+  const DocumentalEmployee(super.id, super.label, {this.isActive = true});
+}
+
 class DocumentalContext {
   final DateTime today;
   final Duration untilMidnight;
   final List<DocumentalResponsible> responsibles;
+  final List<DocumentalEmployee> employees;
+  final List<DocumentalResponsible> vehicles;
   const DocumentalContext({
     required this.today,
     required this.untilMidnight,
     required this.responsibles,
+    this.employees = const [],
+    this.vehicles = const [],
   });
+  factory DocumentalContext.fromJson(Map<String, dynamic> json) {
+    final people = [
+      for (final r in json['responsibles'] as List)
+        DocumentalResponsible(r['id'] as String, r['label'] as String),
+    ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return DocumentalContext(
+      today: DateTime.parse(json['today'] as String),
+      untilMidnight: Duration(
+        seconds: (json['seconds_to_midnight'] as num).ceil() + 1,
+      ),
+      responsibles: people,
+      employees: [
+        for (final employee in json['employees'] as List? ?? [])
+          DocumentalEmployee(
+            employee['id'] as String,
+            employee['label'] as String,
+            isActive: employee['is_active'] as bool? ?? true,
+          ),
+      ],
+      vehicles: [
+        for (final vehicle in json['vehicles'] as List? ?? [])
+          DocumentalResponsible(
+            vehicle['id'] as String,
+            vehicle['label'] as String,
+          ),
+      ],
+    );
+  }
   String responsibleName(String? id) =>
       responsibles.where((r) => r.id == id).map((r) => r.label).firstOrNull ??
       'Usuario no disponible';
@@ -74,6 +121,29 @@ class DocumentalRecord {
     (kind) => kind.key == (data['category'] ?? DocumentalRecordKind.legal.key),
   );
   String get authority => data['authority'] as String? ?? '';
+  String? get employeeId => data['related_employee_id'] as String?;
+  String get employeeName => data['related_employee_name'] as String? ?? '';
+  String get studyType => data['study_type'] as String? ?? '';
+  String get providerName => data['provider_name'] as String? ?? '';
+  String get periodicity => data['periodicity'] as String? ?? '';
+  String get authorizationNumber =>
+      data['authorization_number'] as String? ?? '';
+  String get installationName => data['installation_name'] as String? ?? '';
+  String? get vehicleId => data['vehicle_id'] as String?;
+  String get vehicleLabel => data['vehicle_label'] as String? ?? '';
+  String get counterpartyName => data['counterparty_name'] as String? ?? '';
+  DateTime? get signatureDate => date('signature_date');
+  String get renewalType => data['renewal_type'] as String? ?? '';
+  DateTime? get renewalDate => date('renewal_date');
+  String get renewalNotes => data['renewal_notes'] as String? ?? '';
+  String get insuredSubject => data['insured_subject'] as String? ?? '';
+  String get coverageDescription =>
+      data['coverage_description'] as String? ?? '';
+  String get maintenanceSubject => data['maintenance_subject'] as String? ?? '';
+  DateTime? get scheduledDate => date('scheduled_date');
+  DateTime? get performedDate => date('performed_date');
+  String get auditResult => data['audit_result'] as String? ?? '';
+  String get auditFindings => data['audit_findings'] as String? ?? '';
   int get progress => data['progress_percentage'] as int? ?? 0;
   String get title => data['title'] as String;
   String get type => data['document_type'] as String;

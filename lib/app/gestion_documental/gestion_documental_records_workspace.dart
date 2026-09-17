@@ -52,15 +52,65 @@ class _DocumentalRecordsWorkspaceState
   Timer? _searchTimer, _midnight;
   String? _error, _status, _type, _responsible, _urgency, _priority;
   bool get _isProcedure => widget.kind == DocumentalRecordKind.procedures;
+  bool get _isSafety => widget.kind == DocumentalRecordKind.safety;
+  bool get _isEnvironment => widget.kind == DocumentalRecordKind.environment;
+  bool get _isPersonnel => widget.kind == DocumentalRecordKind.personnel;
+  bool get _linksEmployee => _isSafety || _isPersonnel;
+  bool get _isCivilProtection =>
+      widget.kind == DocumentalRecordKind.civilProtection;
+  bool get _isAudit => widget.kind == DocumentalRecordKind.audits;
+  bool get _hasSchedule => _isMaintenance || _isAudit;
+  bool get _isMaintenance => widget.kind == DocumentalRecordKind.maintenance;
+  bool get _isInsurance => widget.kind == DocumentalRecordKind.insurance;
+  bool get _isContract => widget.kind == DocumentalRecordKind.contracts;
+  bool get _isVehicle => widget.kind == DocumentalRecordKind.vehicles;
+  bool get _tracksProgress => widget.kind.tracksProgress;
   DocumentalCategory get _category =>
       documentalCategories.firstWhere((c) => c.key == widget.kind.key);
-  List<(String, int)> get _columns => _isProcedure
+  List<(String, int)> get _columns => _tracksProgress
       ? [
-          ('Trámite', 22),
-          ('Dependencia', 16),
+          (
+            (_isSafety || _isCivilProtection || _isMaintenance)
+                ? 'Documento / actividad'
+                : _isPersonnel
+                ? 'Documento laboral'
+                : _isEnvironment
+                ? 'Documento ambiental'
+                : _isVehicle
+                ? 'Documento vehicular'
+                : _isContract
+                ? 'Contrato'
+                : _isInsurance
+                ? 'Póliza'
+                : _isAudit
+                ? 'Auditoría'
+                : 'Trámite',
+            22,
+          ),
+          (
+            _isMaintenance
+                ? 'Equipo / instalación'
+                : _linksEmployee
+                ? 'Trabajador / área'
+                : _isEnvironment
+                ? 'Instalación / autoridad'
+                : _isVehicle
+                ? 'Unidad'
+                : _isCivilProtection
+                ? 'Autoridad / área'
+                : _isContract
+                ? 'Contraparte'
+                : _isInsurance
+                ? 'Aseguradora'
+                : _isAudit
+                ? 'Organismo'
+                : 'Dependencia',
+            16,
+          ),
           ('Responsable', 18),
+          if (_hasSchedule) ('Programada', 13),
           ('Vencimiento', 13),
-          ('Días', 7),
+          (_isAudit ? 'Resultado' : 'Días', _isAudit ? 13 : 7),
           ('Prioridad', 8),
           ('Estado', 16),
           ('Avance', 8),
@@ -109,7 +159,7 @@ class _DocumentalRecordsWorkspaceState
     setState(() => _loading = true);
     try {
       final values = await Future.wait<Object>([
-        _repository!.loadContext(),
+        _repository!.loadContext(kind: widget.kind),
         _repository!.loadPage(
           DocumentalQuery(
             kind: widget.kind,
@@ -249,7 +299,7 @@ class _DocumentalRecordsWorkspaceState
           icon: Icons.open_in_new_rounded,
           enabled: _selection.selectedIds.length == 1,
         ),
-        if (_isProcedure)
+        if (_tracksProgress)
           ContractMenuEntry(
             value: 'followUp',
             label: 'Actualizar seguimiento',
@@ -352,6 +402,24 @@ class _DocumentalRecordsWorkspaceState
                           decoration: InputDecoration(
                             hintText: _isProcedure
                                 ? 'Buscar trámite, folio o dependencia…'
+                                : _isSafety
+                                ? 'Buscar documento, trabajador o proveedor…'
+                                : _isPersonnel
+                                ? 'Buscar documento, trabajador o folio…'
+                                : _isEnvironment
+                                ? 'Buscar documento, autorización o instalación…'
+                                : _isVehicle
+                                ? 'Buscar documento, unidad, placas o póliza…'
+                                : _isCivilProtection
+                                ? 'Buscar documento, folio, autoridad o área…'
+                                : _isContract
+                                ? 'Buscar contrato, contraparte o folio…'
+                                : _isAudit
+                                ? 'Buscar auditoría, organismo, hallazgos o acciones…'
+                                : _isMaintenance
+                                ? 'Buscar documento, equipo, proveedor o folio…'
+                                : _isInsurance
+                                ? 'Buscar póliza, aseguradora, asegurado o cobertura…'
                                 : 'Buscar documento, folio o autoridad…',
                             prefixIcon: const Icon(
                               Icons.search_rounded,
@@ -366,6 +434,18 @@ class _DocumentalRecordsWorkspaceState
                         () => _filter(
                           _isProcedure
                               ? 'Tipo de gestión'
+                              : _isContract
+                              ? 'Tipo de contrato'
+                              : _isAudit
+                              ? 'Tipo de auditoría'
+                              : _isInsurance
+                              ? 'Tipo de seguro'
+                              : (_isSafety ||
+                                    _isEnvironment ||
+                                    _isVehicle ||
+                                    _isPersonnel ||
+                                    _isCivilProtection)
+                              ? 'Tipo de registro'
                               : 'Tipo de documento',
                           _options(documentalTypesFor(widget.kind)),
                           _type,
@@ -415,7 +495,7 @@ class _DocumentalRecordsWorkspaceState
                           (v) => _urgency = v,
                         ),
                       ),
-                      if (_isProcedure)
+                      if (_tracksProgress)
                         _filterButton(
                           _priority ?? 'Prioridad',
                           Icons.flag_outlined,
@@ -492,6 +572,24 @@ class _DocumentalRecordsWorkspaceState
                         ? 'Ajusta los filtros para encontrar el expediente.'
                         : (_isProcedure
                               ? 'Registra el primer trámite con Nuevo y da seguimiento a su avance y vencimiento.'
+                              : _isSafety
+                              ? 'Registra una capacitación, DC3, estudio u obligación con Nuevo. Puedes relacionarla con un trabajador o un área.'
+                              : _isEnvironment
+                              ? 'Registra un permiso, licencia, estudio o manifiesto con Nuevo. Puedes indicar su autorización e instalación.'
+                              : _isVehicle
+                              ? 'Registra un seguro, tarjeta de circulación, verificación u otro documento con Nuevo. Puedes relacionarlo con una unidad o la flotilla.'
+                              : _isPersonnel
+                              ? 'Registra un contrato, identificación, licencia o constancia con Nuevo. Puedes relacionarlo con un trabajador de RH.'
+                              : _isCivilProtection
+                              ? 'Registra un visto bueno, programa interno, simulacro, brigada u otro documento con Nuevo.'
+                              : _isContract
+                              ? 'Registra un contrato, convenio o anexo con Nuevo. Indica contraparte, vigencia y renovación.'
+                              : _isAudit
+                              ? 'Registra una auditoría con Nuevo. Indica organismo, programación, resultado y hallazgos.'
+                              : _isMaintenance
+                              ? 'Registra contratos, certificados, programas, inspecciones y evidencias con Nuevo. Indica su alcance y programación.'
+                              : _isInsurance
+                              ? 'Registra una póliza, cobertura o endoso con Nuevo. Indica aseguradora, asegurado, vigencia y renovación.'
                               : 'Registra el primer documento legal con Nuevo. La fecha de vencimiento es opcional.'),
                   ),
                 if (_result.records.isNotEmpty && _metadata != null) ...[
@@ -507,6 +605,7 @@ class _DocumentalRecordsWorkspaceState
                         switch (_sort) {
                           'name' => 'Nombre A–Z',
                           'expiration' => 'Vencimiento',
+                          'scheduled' => 'Fecha programada',
                           _ => 'Más recientes',
                         },
                         Icons.sort_rounded,
@@ -516,7 +615,12 @@ class _DocumentalRecordsWorkspaceState
                                 context,
                                 title: 'Ordenar documentos',
                                 initialValue: _sort,
-                                options: const [
+                                options: [
+                                  if (_hasSchedule)
+                                    const SearchablePickerOption(
+                                      value: 'scheduled',
+                                      label: 'Fecha programada',
+                                    ),
                                   SearchablePickerOption(
                                     value: 'recent',
                                     label: 'Más recientes',
@@ -550,7 +654,8 @@ class _DocumentalRecordsWorkspaceState
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final compact =
-                            constraints.maxWidth < (_isProcedure ? 1100 : 850);
+                            constraints.maxWidth <
+                            (_tracksProgress ? 1100 : 850);
                         return Column(
                           children: [
                             if (!compact)
@@ -575,7 +680,7 @@ class _DocumentalRecordsWorkspaceState
                                           ),
                                         ),
                                       ),
-                                    SizedBox(width: _isProcedure ? 96 : 48),
+                                    SizedBox(width: _tracksProgress ? 96 : 48),
                                   ],
                                 ),
                               ),
@@ -662,12 +767,36 @@ class _DocumentalRecordsWorkspaceState
         : MaterialLocalizations.of(
             context,
           ).formatCompactDate(record.expiration!);
+    final scheduled = record.scheduledDate == null
+        ? 'Sin programar'
+        : MaterialLocalizations.of(
+            context,
+          ).formatCompactDate(record.scheduledDate!);
     final responsible = _metadata!.responsibleName(record.responsibleId);
     Widget textCell(String value) => Text(
       value.isEmpty ? '—' : value,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
     );
+    final displayReference =
+        _isEnvironment && record.authorizationNumber.isNotEmpty
+        ? record.authorizationNumber
+        : record.reference;
+    final employeeScope = [
+      record.employeeName,
+      record.data['department'] as String? ?? '',
+    ].where((s) => s.isNotEmpty).join(' · ');
+    final employeeLabel = _isPersonnel && employeeScope.isEmpty
+        ? 'Sin trabajador específico'
+        : employeeScope;
+    final civilScope = [
+      record.authority,
+      record.data['department'] as String? ?? '',
+    ].where((s) => s.isNotEmpty).join(' · ');
+    final environmentalScope = [
+      record.installationName,
+      record.authority,
+    ].where((v) => v.isNotEmpty).join(' · ');
     final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -679,19 +808,19 @@ class _DocumentalRecordsWorkspaceState
         ),
         const SizedBox(height: 4),
         Text(
-          _isProcedure && !compact
-              ? (record.reference.isEmpty
+          _tracksProgress && !compact
+              ? (displayReference.isEmpty
                     ? record.type
-                    : '${record.reference} · ${record.type}')
-              : (record.reference.isEmpty
+                    : '$displayReference · ${record.type}')
+              : (displayReference.isEmpty
                     ? record.status
-                    : '${record.reference} · ${record.status}'),
+                    : '$displayReference · ${record.status}'),
           style: TextStyle(fontSize: 12, color: t.primarySoft),
         ),
       ],
     );
     final action = SizedBox(
-      width: _isProcedure ? 96 : 48,
+      width: _tracksProgress ? 96 : 48,
       child: Row(
         children: [
           SizedBox(
@@ -702,7 +831,7 @@ class _DocumentalRecordsWorkspaceState
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
             ),
           ),
-          if (_isProcedure)
+          if (_tracksProgress)
             SizedBox(
               width: 48,
               child: IconButton(
@@ -714,13 +843,36 @@ class _DocumentalRecordsWorkspaceState
         ],
       ),
     );
-    final cells = _isProcedure
+    final cells = _tracksProgress
         ? <Widget>[
             title,
-            textCell(record.authority),
+            textCell(
+              _isMaintenance
+                  ? record.maintenanceSubject
+                  : _linksEmployee
+                  ? employeeLabel
+                  : _isEnvironment
+                  ? environmentalScope
+                  : _isVehicle
+                  ? (record.vehicleLabel.isEmpty
+                        ? 'Sin unidad específica'
+                        : record.vehicleLabel)
+                  : _isCivilProtection
+                  ? civilScope
+                  : _isContract
+                  ? record.counterpartyName
+                  : record.authority,
+            ),
             textCell(responsible),
+            if (_hasSchedule) textCell(scheduled),
             textCell(due),
-            textCell(days?.toString() ?? '—'),
+            textCell(
+              _isAudit
+                  ? (record.auditResult.isEmpty
+                        ? 'Sin resultado'
+                        : record.auditResult)
+                  : days?.toString() ?? '—',
+            ),
             textCell(record.priority),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,6 +891,7 @@ class _DocumentalRecordsWorkspaceState
             title,
             textCell(record.type),
             textCell(responsible),
+            if (_hasSchedule) textCell(scheduled),
             textCell(due),
             DocumentalUrgencyBadge(urgency),
           ];
@@ -772,9 +925,25 @@ class _DocumentalRecordsWorkspaceState
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (_isProcedure) ...[
+                      if (_tracksProgress) ...[
                         Text(
-                          'Dependencia: ${record.authority.isEmpty ? '—' : record.authority}',
+                          _isMaintenance
+                              ? 'Equipo / instalación: ${record.maintenanceSubject}'
+                              : _linksEmployee
+                              ? 'Trabajador / área: $employeeLabel'
+                              : _isEnvironment
+                              ? 'Instalación / autoridad: ${environmentalScope.isEmpty ? '—' : environmentalScope}'
+                              : _isVehicle
+                              ? 'Unidad: ${record.vehicleLabel.isEmpty ? 'Sin unidad específica' : record.vehicleLabel}'
+                              : _isCivilProtection
+                              ? 'Autoridad / área: ${civilScope.isEmpty ? '—' : civilScope}'
+                              : _isContract
+                              ? 'Contraparte: ${record.counterpartyName}'
+                              : _isAudit
+                              ? 'Organismo: ${record.authority}'
+                              : _isInsurance
+                              ? 'Aseguradora: ${record.authority} · Asegurado: ${record.insuredSubject}'
+                              : 'Dependencia: ${record.authority.isEmpty ? '—' : record.authority}',
                           style: TextStyle(color: t.primarySoft, fontSize: 12),
                         ),
                         const SizedBox(height: 4),
@@ -788,15 +957,23 @@ class _DocumentalRecordsWorkspaceState
                         spacing: 8,
                         runSpacing: 8,
                         children: [
+                          if (_hasSchedule)
+                            DocumentalBadge('Programada: $scheduled'),
+                          if (_isAudit)
+                            DocumentalBadge(
+                              record.auditResult.isEmpty
+                                  ? 'Sin resultado'
+                                  : record.auditResult,
+                            ),
                           DocumentalBadge(due),
-                          if (_isProcedure && days != null)
+                          if (_tracksProgress && days != null)
                             DocumentalBadge('$days días restantes'),
-                          if (_isProcedure)
+                          if (_tracksProgress)
                             DocumentalBadge('Prioridad ${record.priority}'),
                           DocumentalUrgencyBadge(urgency),
                         ],
                       ),
-                      if (_isProcedure) ...[
+                      if (_tracksProgress) ...[
                         const SizedBox(height: 12),
                         DocumentalProgress(record.progress),
                       ],

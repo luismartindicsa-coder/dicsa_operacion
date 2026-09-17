@@ -153,7 +153,9 @@ _DieselGridLayout _resolveDieselGridLayout(double availableWidth) {
 }
 
 class LogisticsDieselPage extends StatefulWidget {
-  const LogisticsDieselPage({super.key});
+  final DateTimeRange? initialDateRange;
+
+  const LogisticsDieselPage({super.key, this.initialDateRange});
 
   @override
   State<LogisticsDieselPage> createState() => _LogisticsDieselPageState();
@@ -203,6 +205,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialDateRange != null) {
+      _columnDateRangeFilters['fecha'] = widget.initialDateRange!;
+    }
     _purchasedFocusNode.addListener(_handleInlineFieldFocusChange);
     _requestedFocusNode.addListener(_handleInlineFieldFocusChange);
     unawaited(_bootstrap());

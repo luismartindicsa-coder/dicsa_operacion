@@ -33,6 +33,7 @@ Future<ManagementReportRunRecord?> exportManagementReportPdf({
     bytes: bytes,
     suggestedFileName: suggestedFileName,
     dialogTitle: 'Guardar reporte de supervisión como PDF',
+    throwOnPickerError: true,
   );
   if (savedPath == null || savedPath.trim().isEmpty) return null;
   final fileName = savedPath.split(RegExp(r'[\\/]')).last;

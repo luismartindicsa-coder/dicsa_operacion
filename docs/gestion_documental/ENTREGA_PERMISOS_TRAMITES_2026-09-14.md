@@ -1,5 +1,7 @@
 # Permisos y Trámites · implementación funcional
 
+Continuación: [Seguridad e Higiene funcional](ENTREGA_SEGURIDAD_HIGIENE_2026-09-14.md), con campos propios, relación con trabajadores y la misma infraestructura documental.
+
 Acceso posterior: [usuario gestion@dicsamx.com y rol documental](ACCESO_USUARIO_GESTION_2026-09-14.md), con entrada directa al dashboard y permisos para trabajar en las categorías habilitadas.
 
 Continúa la [entrega funcional de Documentación Legal](ENTREGA_LEGAL_FUNCIONAL_2026-09-14.md). Permisos y Trámites queda conectado al proyecto Supabase enlazado de DICSA, con captura, consulta, edición, archivos e historial. La migración `20260914210000_enable_documental_procedures.sql` está aplicada y registrada; su contenido remoto coincide exactamente con el archivo local.
