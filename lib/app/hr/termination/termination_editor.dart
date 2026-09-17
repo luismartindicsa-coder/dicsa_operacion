@@ -602,6 +602,18 @@ class _TerminationEditorState extends State<HrTerminationEditor> {
   List<Widget> _result(HrTerminationResult? result, String? error) => [
     if (error != null)
       _section('Completa los datos', [Text(error, style: _white)]),
+    if (result != null && result.pending.isNotEmpty)
+      _section('Pendientes para revisión', [
+        for (final p in result.pending)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('• $p', style: _white),
+          ),
+        const Text(
+          'Completa las referencias en Datos o Prestaciones y ajustes, y confirma la revisión en Antecedentes. Guardar revisado se habilita al completar los pendientes.',
+          style: TextStyle(color: _muted),
+        ),
+      ]),
     if (result != null)
       _section('Desglose del cálculo', [
         Row(
@@ -634,14 +646,6 @@ class _TerminationEditorState extends State<HrTerminationEditor> {
           const Text(
             'Neto pendiente de ISR oficial.',
             style: TextStyle(color: Colors.orangeAccent),
-          ),
-      ]),
-    if (result != null && result.pending.isNotEmpty)
-      _section('Pendientes para revisión', [
-        for (final p in result.pending)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text('• $p', style: _white),
           ),
       ]),
     if (result != null)
@@ -714,6 +718,12 @@ class _TerminationEditorState extends State<HrTerminationEditor> {
       widget.onDirty(false);
       _message(
         'Versión ${saved['revision'] ?? ''} guardada · ${status == 'revisado' ? 'Revisado' : 'Borrador'}',
+      );
+    } on PostgrestException catch (e) {
+      _message(
+        e.code == '42501'
+            ? 'Tu cuenta no tiene permiso para guardar finiquitos. Verifica el acceso de Recursos Humanos o Dirección. Tus datos siguen en pantalla.'
+            : 'No se guardó el cálculo: ${e.message}',
       );
     } catch (e) {
       _message('No se guardó el cálculo: $e');
@@ -1068,6 +1078,21 @@ class _TerminationEditorState extends State<HrTerminationEditor> {
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            if (error != null || result?.canReview == false)
+              TextButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () {
+                        setState(() => _tab = 3);
+                        if (_scroll.hasClients) _scroll.jumpTo(0);
+                      },
+                icon: const Icon(Icons.checklist),
+                label: Text(
+                  error != null
+                      ? 'Ver datos faltantes'
+                      : 'Ver pendientes (${result!.pending.length})',
+                ),
               ),
             OutlinedButton.icon(
               onPressed: _busy ? null : _history,

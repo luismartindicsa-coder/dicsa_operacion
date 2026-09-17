@@ -103,6 +103,14 @@ Validación en PostgreSQL real, mediante TLS con verificación de certificado y 
 
 Las 104 pruebas de la suite RH y el análisis de los archivos nuevos ya habían pasado antes de la activación. La prueba remota verifica persistencia y políticas; no equivale a ejecutar un pago ni a probar la navegación de la aplicación instalada.
 
+## Corrección de acceso y revisión · 17/09/2026
+
+- La cuenta oficial `rh@dicsamx.com` no tenía fila en `profiles`. La app permitía entrar por correo, pero la función de RLS exigía ese registro y rechazaba el guardado con `42501`. Dirección sí tenía un perfil activo. El rechazo dependía de la cuenta, no del sistema operativo.
+- Migración `20260917150000_fix_hr_termination_email_access.sql` aplicada en Supabase con autorización del usuario. La función resuelve el correo desde `auth.users` usando `auth.uid()`, reconoce las cuentas oficiales sin perfil y conserva el bloqueo de perfiles explícitamente inactivos y de usuarios ajenos a RH/Dirección. No cambia los permisos de modificación o eliminación del historial.
+- El editor ofrece **Ver pendientes** junto al guardado y muestra los requisitos al principio de Resultado. La referencia de ISR y la confirmación de antecedentes siguen siendo necesarias; capturar ISR cero no sustituye su referencia. Los errores de permisos conservan lo capturado y muestran una explicación legible.
+- Validación: 21 pruebas de cálculo/editor, incluyendo el recorrido para completar referencias y habilitar revisado con configuración Windows y macOS; pruebas SQL de acceso, historial inmutable, autor y revisión incompleta; análisis sin incidencias y compilación macOS correcta. Verificación remota con la identidad de RH de inserción/lectura de borrador y revisado dentro de una transacción revertida; consulta posterior confirmó cero registros de prueba. La migración guardada en Supabase coincide exactamente con el archivo local.
+- El permiso corregido funciona desde la instalación existente. La nueva ayuda visual requiere actualizar la app de Windows; no se generó un ejecutable Windows desde este entorno macOS.
+
 ## Referencias verificadas
 
 - LFT, artículos 79, 80, 87, 89 y 162; aplicación y bases de las indemnizaciones según el supuesto de separación: https://www.diputados.gob.mx/LeyesBiblio/pdf/LFT.pdf

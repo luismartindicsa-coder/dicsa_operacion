@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'human_resources_termination_calculation_test.dart' show fixture;
 
@@ -24,29 +25,40 @@ const employee = <String, dynamic>{
 };
 
 void main() {
+  final preview =
+      const bool.fromEnvironment('HR_TERMINATION_PREVIEW') ||
+      Platform.environment['HR_TERMINATION_PREVIEW'] == '1';
   setUpAll(() async {
-    if (Platform.environment['HR_TERMINATION_PREVIEW'] == '1') {
+    if (preview) {
       for (final family in ['Ahem', 'Roboto']) {
         final loader = FontLoader(family)
-          ..addFont(
-            File(
-              '/opt/homebrew/share/flutter/engine/src/flutter/txt/third_party/fonts/Roboto-Regular.ttf',
-            ).readAsBytes().then((b) => ByteData.sublistView(b)),
-          );
+          ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
         await loader.load();
       }
       final icons = FontLoader('MaterialIcons')
-        ..addFont(
-          File(
-            '/opt/homebrew/share/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-          ).readAsBytes().then((b) => ByteData.sublistView(b)),
-        );
+        ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
       await icons.load();
     }
   });
+
+  Future<void> capture(WidgetTester tester, String name) async {
+    if (!preview) return;
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey('capture')),
+    );
+    await tester.runAsync(() async {
+      final image = await boundary.toImage();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      await File(
+        '/private/tmp/$name.png',
+      ).writeAsBytes(bytes!.buffer.asUint8List());
+    });
+  }
+
   Future<void> mount(
     WidgetTester tester, {
     Size size = const Size(1200, 900),
+    TargetPlatform? platform,
     Map<String, dynamic>? inputs,
     Future<Map<String, dynamic>> Function(Map<String, dynamic>)? save,
     ValueChanged<bool>? dirty,
@@ -60,6 +72,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData.dark().copyWith(
+          platform: platform,
           textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Roboto'),
         ),
         home: Scaffold(
@@ -208,6 +221,130 @@ void main() {
     },
   );
 
+  for (final platform in [TargetPlatform.windows, TargetPlatform.macOS]) {
+    testWidgets(
+      '${platform.name}: completing the visible requirements enables reviewed save',
+      (tester) async {
+        final records = <Map<String, dynamic>>[];
+        await mount(
+          tester,
+          size: const Size(900, 760),
+          platform: platform,
+          inputs: {
+            ...fixture(),
+            'official_isr': '0',
+            'isr_reference': '',
+            'history_reviewed': false,
+          },
+          save: (record) async {
+            records.add(record);
+            return {...record, 'id': 'reviewed-example', 'revision': 1};
+          },
+        );
+        final reviewed = find.widgetWithText(FilledButton, 'Guardar revisado');
+        expect(tester.widget<FilledButton>(reviewed).onPressed, isNull);
+        await tester.tap(find.text('Ver pendientes (2)'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Pendientes para revisión').hitTestable(),
+          findsOneWidget,
+        );
+        expect(
+          find.text('• Registrar la referencia del ISR de CONTPAQ.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text('• Revisar nóminas y pagos previos de prestaciones.'),
+          findsOneWidget,
+        );
+        expect(records, isEmpty);
+        await capture(tester, 'hr_termination_pending_${platform.name}');
+
+        await tester.tap(
+          find.widgetWithText(ChoiceChip, 'Prestaciones y ajustes'),
+        );
+        await tester.pumpAndSettle();
+        final reference = find.byKey(
+          const ValueKey('termination_isr_reference'),
+        );
+        await tester.scrollUntilVisible(
+          reference,
+          400,
+          scrollable: find
+              .byWidgetPredicate(
+                (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+              )
+              .first,
+        );
+        await tester.enterText(reference, 'CONTPAQ: ISR confirmado en cero');
+        await tester.pumpAndSettle();
+        expect(find.text('Ver pendientes (1)'), findsOneWidget);
+        expect(tester.widget<FilledButton>(reviewed).onPressed, isNull);
+
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Antecedentes'));
+        await tester.pumpAndSettle();
+        final confirmation = find.byType(CheckboxListTile);
+        await tester.scrollUntilVisible(
+          confirmation,
+          300,
+          scrollable: find
+              .byWidgetPredicate(
+                (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+              )
+              .first,
+        );
+        await tester.tap(confirmation);
+        await tester.pumpAndSettle();
+        expect(tester.widget<FilledButton>(reviewed).onPressed, isNotNull);
+        expect(find.textContaining('Ver pendientes'), findsNothing);
+        await tester.tap(reviewed);
+        await tester.pumpAndSettle();
+        expect(records.single['status'], 'revisado');
+        expect(records.single['inputs']['official_isr'], '0');
+        expect(records.single['inputs']['history_reviewed'], true);
+        expect(records.single['result']['pending'], isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'permission failure explains access and preserves entered values',
+    (tester) async {
+      final dirtyStates = <bool>[];
+      await mount(
+        tester,
+        dirty: dirtyStates.add,
+        save: (_) async => throw const PostgrestException(
+          message: 'new row violates row-level security policy',
+          code: '42501',
+        ),
+      );
+      final flow = find.byKey(const ValueKey('termination_weekly_flow'));
+      await tester.ensureVisible(flow);
+      await tester.enterText(flow, '300');
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Guardar borrador'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          'Tu cuenta no tiene permiso para guardar finiquitos.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('PostgrestException'), findsNothing);
+      expect(tester.widget<TextField>(flow).controller!.text, '300');
+      expect(dirtyStates.last, true);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Guardar borrador'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
+
   testWidgets(
     'mode switching adds twelve days and requires integration for ninety',
     (tester) async {
@@ -295,18 +432,7 @@ void main() {
     await mount(tester, inputs: {...fixture(), 'weekly_flow': 2694.72});
     await tester.tap(find.widgetWithText(ChoiceChip, 'Resultado'));
     await tester.pumpAndSettle();
-    if (Platform.environment['HR_TERMINATION_PREVIEW'] == '1') {
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(const ValueKey('capture')),
-      );
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File(
-          '/private/tmp/hr_termination_preview.png',
-        ).writeAsBytes(bytes!.buffer.asUint8List());
-      });
-    }
+    await capture(tester, 'hr_termination_preview');
     expect(tester.takeException(), isNull);
   });
 }
