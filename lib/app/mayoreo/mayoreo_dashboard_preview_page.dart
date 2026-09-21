@@ -25,6 +25,7 @@ import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
+import 'mayoreo_expected_collections.dart';
 
 const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
 const String _kMayoreoAccountsTable = 'mayoreo_accounts';
@@ -2040,11 +2041,12 @@ _MayoreoDashboardSummary _buildDashboardSummary({
             .toDouble();
         final accountId = ((row['id'] as String?) ?? '').trim();
         final paidAmount = ((row['paidAmount'] as num?) ?? 0).toDouble();
-        final effectivePaidAmount = accountId.isEmpty
-            ? paidAmount
-            : (bankCreditsByAccountId[accountId] ?? paidAmount)
-                  .clamp(0, approvedAmount)
-                  .toDouble();
+        final effectivePaidAmount = mayoreoEffectivePaid(
+          accountId: accountId,
+          amount: approvedAmount,
+          paid: paidAmount,
+          bankCredits: bankCreditsByAccountId,
+        );
         final pendingAmount = (approvedAmount - paidAmount)
             .clamp(0, double.infinity)
             .toDouble();
@@ -2060,7 +2062,12 @@ _MayoreoDashboardSummary _buildDashboardSummary({
             status != 'cancelada' &&
             effectivePendingAmount > 0.009;
         if (!isOpen) continue;
-        if (operationType != 'cheque' &&
+        if (mayoreoCollectionIsOpen(
+              operationType: operationType,
+              status: status,
+              pending: effectivePendingAmount,
+              due: estimatedPaymentDate,
+            ) &&
             estimatedPaymentDate != null &&
             !_dateOnly(estimatedPaymentDate).isBefore(weekStart) &&
             !_dateOnly(estimatedPaymentDate).isAfter(weekEnd)) {

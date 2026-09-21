@@ -97,6 +97,40 @@ void main() {
   );
 
   test(
+    'one destination column consolidates daily loads and preserves each material',
+    () {
+      final data = OperatingProgramPrintData(
+        program(
+          demands: [
+            for (final (id, day, destination, material, quantity) in [
+              ('n1', 0, 'DESTINO A', 0, 20),
+              ('n2', 0, 'DESTINO A', 0, 5),
+              ('l1', 0, 'DESTINO A', 1, 7),
+              ('a1', 1, 'DESTINO B', 2, 11),
+            ])
+              ProgramDemand(
+                id: id,
+                date: f.week.add(Duration(days: day)),
+                destination: destination,
+                material: programMaterials[material],
+                quantity: quantity,
+              ),
+          ],
+        ),
+      );
+      expect(data.destinationColumns, ['DESTINO A', 'DESTINO B']);
+      expect(
+        data.destinationQuantities(0, 'DESTINO A'),
+        '25 Nacional\n7 Limpio',
+      );
+      expect(data.destinationQuantities(1, 'DESTINO B'), '11 Americano');
+      expect(data.destinationQuantities(1, 'DESTINO A'), '0');
+      expect(data.destinationQuantities(2, 'DESTINO B'), '0');
+      expect(data.shipmentTotals, [25, 7, 11]);
+    },
+  );
+
+  test(
     'subtracts only yard used, keeps materials and destinations separate',
     () {
       final p = program(
@@ -236,10 +270,10 @@ void main() {
   });
 
   test(
-    'refuses an unreadable one-page export instead of clipping destinations',
+    'nine destinations share one matrix without repeating weekday rows',
     () async {
       final demands = [
-        for (var i = 0; i < 75; i++)
+        for (var i = 0; i < 9; i++)
           ProgramDemand(
             id: '$i',
             destination:
@@ -249,16 +283,34 @@ void main() {
             quantity: 1,
           ),
       ];
-      await expectLater(
-        buildOperatingProgramPdf(program(demands: demands)),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'reason',
-            contains('no cabe legible'),
-          ),
-        ),
+      final p = program(demands: demands);
+      final before = OperatingProgramPrintData(p);
+      final bytes = await buildOperatingProgramPdf(p);
+      expect(
+        RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(bytes)),
+        hasLength(2),
       );
+      expect(before.shipmentTotals, [9, 0, 0]);
+      expect(before.productionTotals, [9, 0, 0]);
+      final path = Platform.environment['DICSA_OPERATOR_DETAIL_QA_PDF'];
+      if (path != null) await File(path).writeAsBytes(bytes);
     },
   );
+  test('long automatic explanations and observations do not add PDF pages', () async {
+    final notes = [
+      for (var i = 0; i < 12; i++)
+        'CLIENTE $i: Propuesta semanal. Demanda histórica 42 pacas aún por cubrir. '
+            'Carga habitual 42 pacas; 12 días con embarque realizado. Piso 6, '
+            'producción disponible antes de la carga 110. Depende de producir según historial, '
+            'entradas y turnos. Reserva mínima 5 pacas; compromisos posteriores protegidos.',
+      'INICIO NOTA EXTENSA ${List.filled(120, 'Se conserva la observación operativa completa.').join(' ')} FIN NOTA EXTENSA',
+    ];
+    final bytes = await buildOperatingProgramPdf(
+      program(),
+      operationalNotes: notes,
+    );
+    expectOneA4Page(bytes);
+    final path = Platform.environment['DICSA_OPERATOR_NOTES_QA_PDF'];
+    if (path != null) await File(path).writeAsBytes(bytes);
+  });
 }

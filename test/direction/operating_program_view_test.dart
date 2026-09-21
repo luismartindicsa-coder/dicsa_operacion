@@ -15,28 +15,32 @@ import 'package:flutter_test/flutter_test.dart';
 final week = DateTime(2026, 9, 14);
 DirectionShipmentPlanningBundle fixture({
   List<DirectionProductionHistoryRecord> productionHistory = const [],
+  List<DirectionShipmentPlanRecord>? shipments,
+  DirectionShipmentSuggestionReport? suggestionReport,
 }) => DirectionShipmentPlanningBundle(
   weekStartDate: week,
   weekEndDate: week.add(const Duration(days: 5)),
-  shipments: [
-    for (var d = 0; d < 5; d++)
-      DirectionShipmentPlanRecord.fromRow({
-        'id': 's$d',
-        'ship_date': programDate(week.add(Duration(days: d))),
-        'client_name': [
-          'SAN PABLO',
-          'EL PALOMAR',
-          'BIO PAPEL',
-          'SAN LUIS',
-          'QUERETANA',
-        ][d],
-        'planning_material_code': programMaterials[d % 3],
-        'quantity_unit': 'PACAS',
-        'planned_units': 30,
-        'priority': 'normal',
-        'status': 'confirmado',
-      }),
-  ],
+  shipments:
+      shipments ??
+      [
+        for (var d = 0; d < 5; d++)
+          DirectionShipmentPlanRecord.fromRow({
+            'id': 's$d',
+            'ship_date': programDate(week.add(Duration(days: d))),
+            'client_name': [
+              'SAN PABLO',
+              'EL PALOMAR',
+              'BIO PAPEL',
+              'SAN LUIS',
+              'QUERETANA',
+            ][d],
+            'planning_material_code': programMaterials[d % 3],
+            'quantity_unit': 'PACAS',
+            'planned_units': 30,
+            'priority': 'normal',
+            'status': 'confirmado',
+          }),
+      ],
   projections: [],
   suggestedShipments: [],
   floorCountByMaterial: {},
@@ -46,6 +50,7 @@ DirectionShipmentPlanningBundle fixture({
   impactSummaries: [],
   maintenanceAlerts: [],
   productionHistory: productionHistory,
+  suggestionReport: suggestionReport,
 );
 
 class TestPrograms extends OperatingProgramRepository {
@@ -103,6 +108,7 @@ Widget harness(
   TestPrograms repo, {
   GlobalKey? capture,
   DirectionShipmentPlanningBundle? bundle,
+  Future<DirectionShipmentPlanningBundle> Function()? refreshReference,
 }) => MaterialApp(
   theme: ThemeData.dark(),
   home: Scaffold(
@@ -116,6 +122,7 @@ Widget harness(
           child: OperatingProgramView(
             bundle: bundle ?? fixture(),
             repository: repo,
+            refreshReference: refreshReference,
             onWeekChanged: (_) async {},
           ),
         ),
@@ -210,6 +217,302 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  testWidgets(
+    'generation rereads final edited shipments before the next silent refresh',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1050));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = TestPrograms();
+      final edited = fixture(
+        shipments: [
+          DirectionShipmentPlanRecord.fromRow({
+            'id': 's0',
+            'ship_date': '2026-09-16',
+            'client_name': 'DESTINO AJUSTADO',
+            'planning_material_code': 'PACA_LIMPIA',
+            'quantity_unit': 'PACAS',
+            'planned_units': 42,
+            'priority': 'alta',
+            'status': 'confirmado',
+          }),
+          fixture().shipments[4],
+          for (final (id, status) in [
+            ('s2', 'cancelado'),
+            ('s3', 'embarcado'),
+            ('pending', 'planeado'),
+          ])
+            DirectionShipmentPlanRecord.fromRow({
+              'id': id,
+              'ship_date': '2026-09-17',
+              'client_name': 'EXCLUIDO',
+              'planning_material_code': 'PACA_NACIONAL',
+              'quantity_unit': 'PACAS',
+              'planned_units': 99,
+              'status': status,
+            }),
+        ],
+      );
+      var reads = 0;
+      await tester.pumpWidget(
+        harness(
+          repo,
+          refreshReference: () async {
+            reads++;
+            return edited;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await generate(tester);
+      expect(reads, 1);
+      final saved = repo.saved.single;
+      expect(saved.demands.map((d) => d.id).toSet(), {'s0', 's4'});
+      final changed = saved.demands.firstWhere((d) => d.id == 's0');
+      expect(changed.destination, 'DESTINO AJUSTADO');
+      expect(changed.material, 'PACA_LIMPIA');
+      expect(changed.date, DateTime(2026, 9, 16));
+      expect(changed.quantity, 42);
+      expect(changed.priority, 'alta');
+      expect(programQuantity(saved.lines), 72);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'edited accepted shipments create a new program without changing approved history',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1050));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = TestPrograms();
+      await tester.pumpWidget(harness(repo));
+      await tester.pumpAndSettle();
+      await generate(tester);
+      final original = await repo.approve('v1');
+      await tester.pumpWidget(const SizedBox.shrink());
+      final edited = fixture(
+        shipments: [
+          DirectionShipmentPlanRecord.fromRow({
+            'id': 's0',
+            'ship_date': '2026-09-18',
+            'client_name': 'DESTINO FINAL',
+            'planning_material_code': 'PACA_AMERICANA',
+            'quantity_unit': 'PACAS',
+            'planned_units': 25,
+            'status': 'confirmado',
+          }),
+        ],
+      );
+      await tester.pumpWidget(
+        harness(repo, bundle: edited, refreshReference: () async => edited),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('generate-operating-program')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        find.textContaining('La lista final de embarques confirmados cambió'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Iniciar ejecución'),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.ensureVisible(find.text('Crear nuevo borrador'));
+      await tester.tap(find.text('Crear nuevo borrador'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Generar programa semanal'));
+      await tester.pumpAndSettle();
+      expect(repo.saved, hasLength(2));
+      expect(repo.saved.last, same(original));
+      expect(repo.saved.last.status, 'approved');
+      expect(programQuantity(repo.saved.last.lines), 150);
+      expect(repo.saved.first.demands.single.destination, 'DESTINO FINAL');
+      expect(programQuantity(repo.saved.first.lines), 25);
+      expect(repo.saved.first.status, 'draft');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'failed final shipment read does not save a program using the old proposal',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1050));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = TestPrograms();
+      await tester.pumpWidget(
+        harness(
+          repo,
+          refreshReference: () async {
+            throw StateError('No se pudieron leer los embarques finales');
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await generate(tester);
+      expect(repo.saved, isEmpty);
+      expect(
+        find.textContaining('No se pudieron leer los embarques finales'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'weekly button distributes final shipments by material and shift after yard',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1050));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = TestPrograms();
+      final shipments = [
+        for (final (id, day, material, quantity) in [
+          ('n1', 0, 0, 30),
+          ('l1', 1, 1, 25),
+          ('n2', 4, 0, 40),
+          ('a1', 4, 2, 35),
+        ])
+          DirectionShipmentPlanRecord.fromRow({
+            'id': id,
+            'ship_date': programDate(week.add(Duration(days: day))),
+            'client_name': 'DESTINO $id',
+            'planning_material_code': programMaterials[material],
+            'quantity_unit': 'PACAS',
+            'planned_units': quantity,
+            'status': 'confirmado',
+          }),
+      ];
+      final reference = fixture(
+        shipments: shipments,
+        suggestionReport: DirectionShipmentSuggestionReport(
+          weekStart: week,
+          generatedAt: week,
+          suggestions: [],
+          coverage: [],
+          observations: [],
+          intakeFactor: 1,
+          operationHistoryCount: 0,
+          directionHistoryCount: 0,
+          productionRecordCount: 0,
+          sourceKey: 'mixed',
+          dailyCapacity: 60,
+          openingFloorByMaterial: {
+            'PACA_NACIONAL': 15,
+            'PACA_LIMPIA': 5,
+            'PACA_AMERICANA': 10,
+          },
+        ),
+      );
+      await tester.pumpWidget(
+        harness(
+          repo,
+          bundle: reference,
+          refreshReference: () async => reference,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final button = find.byKey(const ValueKey('generate-operating-program'));
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      final saved = repo.saved.single;
+      expect(saved.demands.map((d) => d.id).toSet(), {'n1', 'l1', 'n2', 'a1'});
+      expect(
+        [
+          for (final m in programMaterials)
+            programQuantity(saved.lines, material: m),
+        ],
+        [55, 20, 25],
+      );
+      expect(programQuantity(saved.lines, shift: 0), greaterThan(0));
+      expect(programQuantity(saved.lines, shift: 1), greaterThan(0));
+      expect(
+        evaluateOperatingProgram(
+          week,
+          saved.conditions,
+          saved.demands,
+          saved.lines,
+        ).valid,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  for (final edit in [false, true]) {
+    testWidgets(
+      'automatic yard and capacity generate directly; manual edits retained: $edit',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1440, 1050));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        DirectionShipmentSuggestionReport reference(int yard) =>
+            DirectionShipmentSuggestionReport(
+              weekStart: week,
+              generatedAt: week,
+              suggestions: [],
+              coverage: [],
+              observations: [],
+              intakeFactor: 1,
+              operationHistoryCount: 0,
+              directionHistoryCount: 0,
+              productionRecordCount: 30,
+              sourceKey: '$yard',
+              dailyCapacity: 80,
+              openingFloorByMaterial: {
+                for (final m in programMaterials) m: yard,
+              },
+            );
+        final repo = TestPrograms();
+        await tester.pumpWidget(
+          harness(
+            repo,
+            bundle: fixture(suggestionReport: reference(5)),
+            refreshReference: () async =>
+                fixture(suggestionReport: reference(10)),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+          isTrue,
+        );
+        if (edit) {
+          final yard = find.widgetWithText(TextFormField, 'Patio Nacional');
+          await tester.ensureVisible(yard);
+          await tester.enterText(yard, '20');
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pumpAndSettle();
+        }
+        final generateButton = find.byKey(
+          const ValueKey('generate-operating-program'),
+        );
+        await tester.ensureVisible(generateButton);
+        await tester.tap(generateButton);
+        await tester.pumpAndSettle();
+        expect(repo.saved, hasLength(1));
+        expect(repo.saved.single.conditions.dailyCapacity, 80);
+        expect(
+          repo.saved.single.conditions.yard[programMaterials.first],
+          edit ? 20 : 10,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
   testWidgets(
     'single click edits, instant validation, escape reverts and blocked data cannot save',
     (tester) async {

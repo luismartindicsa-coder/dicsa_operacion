@@ -18,8 +18,9 @@ Color documentalUrgencyColor(BuildContext context, DocumentalUrgency urgency) =>
     };
 
 // Area identity only. Glass, spacing and interaction come from DICSA's contract.
+const kDocumentalPink = Color(0xFFFF93C5);
 const documentalAreaTokens = ContractAreaTokens(
-  primary: Color(0xFFFF93C5),
+  primary: kDocumentalPink,
   primaryStrong: Color(0xFFAD326E),
   primarySoft: Color(0xFFFFD3E7),
   accent: Color(0xFFA82E66),

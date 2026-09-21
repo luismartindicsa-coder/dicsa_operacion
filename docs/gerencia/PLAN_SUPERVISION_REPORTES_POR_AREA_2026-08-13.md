@@ -519,8 +519,12 @@ Reportes:
 - `OTs diarias nuevas` - `Diario`
 - `Gastos en OTs` - `Viernes`
 - `Incidencias en patio` - `Viernes`
-- `KPIs de limpieza` - `Diario`
 - `Analisis de produccion` - `Viernes`
+
+Actualización 2026-09-17: se retira limpieza del alcance diario por decisión
+del usuario. El diario incluye únicamente OTs nuevas. El viernes incorpora
+seguimiento de OTs, costos acumulados, compras ligadas y producción;
+incidencias de patio continúa pendiente de captura formal.
 
 Fuentes probables ya existentes:
 
@@ -704,15 +708,17 @@ Valor gerencial real:
 
 - vigilar urgencia real contra mala planeacion
 
-## 8. Gestion
+## 8. Gestion Documental
 
 Frecuencia esperada:
 
 - viernes, salvo remisiones
 
-Estatus actual:
+Estatus actual (2026-09-17):
 
-- `PENDIENTE`
+- `CONECTADO`: PDF real de viernes desde las 11 categorías habilitadas de Gestión Documental.
+- Permisos, cursos/vencimientos y contratos listos; manifiestos con control documental parcial.
+- Acceso desde el dashboard al hub de Supervisión; generación y guardado por el flujo central.
 
 Reportes:
 
@@ -723,9 +729,20 @@ Reportes:
 - `Seguimiento a cursos, vencimientos y caducidades de documentos` - `Viernes`
 - `Resumenes de contratos` - `Viernes`
 
-Bloqueo actual:
+Fuentes conectadas:
 
-- falta aterrizar fuentes formales y catalogos documentales
+- `documental_dashboard`: acceso, fecha de negocio y control de integridad del total consultado.
+- `documental_records`: expedientes, responsables, avances, fechas y siguientes acciones; consulta completa paginada.
+- Las alertas excluyen completados, cancelados y no aplicables y respetan las ventanas de 5 y 15 días del dashboard.
+- El PDF muestra estado actual y agenda de 30 días; no reconstruye estados históricos de viernes.
+
+Pendientes:
+
+- Cantidad, material y destino de manifiestos (el expediente ambiental solo controla documentos).
+- Remisiones y Carta Porte diarios.
+- Registro formal de apoyos y subsidios.
+
+Detalle de entrega: `docs/gestion_documental/REPORTE_SUPERVISION_VIERNES_2026-09-17.md`.
 
 ## 9. Finanzas
 
@@ -735,19 +752,28 @@ Frecuencia esperada:
 
 Reportes:
 
-- `Presupuesto` - `Diario y Viernes`
-- `Avance de convenios` - `Viernes`
-- `Forecast de pagos` - `Viernes`
-- `Facturas vencidas` - `Viernes`
+- `Presupuesto` - `Diario`
+- `Presupuesto de la próxima semana` - `Viernes`
+- `Seguimiento de convenios` - `Viernes`
+- `Pagos fijos con fecha` - `Viernes`
+- `Facturas más atrasadas por empresa` - `Viernes`
 - `Pagos urgentes` - `Diario`
-- `Flujo bancario` - `Viernes`
+- `Historial de flujo semanal` - `Viernes`
 
 Fuentes ya existentes:
 
-- `finanzas_provider_accounts`
+- `finanzas_supplier_invoices`
 - `finanzas_bank_movements`
 - `finanzas_fixed_payments`
-- `finanzas_payment_center`
+- `finanzas_payment_center_reserves`
+- `finanzas_supplier_agreements`, cuotas y vínculos de facturas
+
+Estatus actual (2026-09-18):
+
+- `CONECTADO`: viernes genera un presupuesto propuesto del siguiente lunes a domingo, con facturas de proveedores y pagos fijos con fecha. Sin partidas separadas de nómina ni efectivo.
+- Tope global de $500,000 para facturas y pagos fijos: primero compromisos fijos, luego una factura completa por proveedor y adicionales por carga alta si queda margen. No depende del saldo bancario.
+- Muestra requerimientos, pendientes fuera del tope y flujo histórico solo como referencia. Convenios con calendario propio en anexo; fuentes paginadas y sin ejecutar pagos.
+- Detalle: `docs/finanzas/PRESUPUESTO_SEMANAL_VIERNES_2026-09-18.md`.
 
 Valor gerencial real:
 
@@ -799,51 +825,43 @@ Bloqueo actual:
 
 ## 12. Direccion General
 
-Frecuencia esperada:
+Alcance acordado e implementado (2026-09-17):
 
-- viernes
+- Un PDF de viernes como **resumen de todas las áreas de la app**.
+- 18 bloques: Operación/Producción, Báscula, Inventario, Almacén, Logística, Embarques, Menudeo, Compras Mayoreo, Ventas Mayoreo, Desarrollo Comercial, Finanzas, Bóveda, Gastos, Contabilidad, RH, Gestión Documental, Gerencia y Supervisión.
+- Panorama general, indicadores por área, comparativo cuando existe base equivalente, alertas, responsable y límites de cobertura.
+- Consulta directa de bases; no depende de que cada área haya generado su PDF.
 
-Reportes:
+Reglas:
 
-- `Analisis de produccion y embarques` - `Viernes`
-- `Horarios de embarques` - `Viernes`
-- `Cumplimiento de metas` - `Viernes`
-- `Reportes de supervision` - `Viernes`
-- `Avance en desarrollo de app` - `Viernes`
+- Lunes hasta el corte, máximo viernes; sábado/domingo conservan el viernes concluido. Comparativos con los mismos días anteriores.
+- Saldos, existencias y estados actuales identificados por separado. RH conserva su periodo y Gerencia la duración de su plan.
+- No sumar resultados entre áreas: el consolidado financiero corresponde a Contabilidad.
+- Una consulta fallida deja el área visible como `No disponible` y marca el consolidado incompleto. Si ninguna base empresarial responde, no se genera un PDF vacío.
+- El historial de Supervisión es local, no acredita entrega corporativa.
+- Pendientes de captura o de indicadores específicos se indican dentro del bloque del área; no se declaran como actividad cero.
 
-Fuentes probables:
-
-- `production_runs`
-- `inventory_movements_v2`
-- `gerencia`
-- historico de reportes generados
-- backlog o hitos de desarrollo si se formalizan
+Detalle: `docs/direccion/REPORTE_SUPERVISION_VIERNES_2026-09-17.md`.
 
 ## 13. Contabilidad
 
-Frecuencia esperada:
+Alcance acordado e implementado (2026-09-17):
 
-- viernes o mensual segun corte
+- `Resultado comercial · semana vs anterior` - `Viernes`
+- `Estado de resultados · semana vs anterior` - `Viernes`
 
-Reportes:
+Los dos comparativos forman un PDF conectado a las fuentes reales. El catálogo de Supervisión queda limitado a estos dos reportes; flujo general y balance no son reportes adicionales de este corte. Los gastos se desglosan dentro del estado de resultados.
 
-- `Resultado comercial`
-- `Flujo general`
-- `Analisis de gastos`
-- `Estado de resultados`
-- `Balance`
+Reglas:
 
-Fuentes ya encaminadas:
+- Lunes a viernes contra los mismos días de la semana anterior. Antes del viernes se declara corte parcial; sábado y domingo conservan el viernes de esa semana.
+- Variación absoluta y porcentual; base anterior cero se muestra como `Sin base`.
+- Resultado comercial desde `v_commercial_market_events`: compra/venta registrada, kg, materiales, canales y precios ponderados. Ventas menos compras es saldo comercial del periodo, no costo de ventas ni utilidad neta.
+- Estado de resultados con `ContabilidadIncomeStatementStore.loadSimplified`, igual que la pantalla contable: Bancos, Bóveda y Menudeo, conservando rubros y exclusiones de movimientos internos.
+- Consulta completa paginada. Se lee Bóveda legada sin migrarla; errores de cualquiera de las fuentes detienen la exportación.
+- Acceso desde Dashboard Contabilidad al hub central de Supervisión.
 
-- `contabilidad_dashboard_page.dart`
-- analisis de flujo
-- analisis comercial
-- estado de resultados
-- bancos, boveda, compras y ventas
-
-Nota:
-
-- aunque el consumo gerencial puede ser en viernes, algunos de estos reportes pueden requerir corte mensual como version formal
+Detalle: `docs/contabilidad/REPORTE_SUPERVISION_VIERNES_2026-09-17.md`.
 
 ## Priorizacion por fases
 

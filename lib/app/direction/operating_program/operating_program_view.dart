@@ -17,11 +17,16 @@ class OperatingProgramView extends StatefulWidget {
   final DirectionShipmentPlanningBundle bundle;
   final Future<void> Function(DateTime) onWeekChanged;
   final OperatingProgramRepository? repository;
+
+  /// Reads persisted shipments immediately before generation and updates the
+  /// parent's reference, so edits need not wait for the silent refresh timer.
+  final Future<DirectionShipmentPlanningBundle> Function()? refreshReference;
   const OperatingProgramView({
     super.key,
     required this.bundle,
     required this.onWeekChanged,
     this.repository,
+    this.refreshReference,
   });
   @override
   State<OperatingProgramView> createState() => OperatingProgramViewState();
@@ -36,7 +41,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   List<OperatingProgram> _versions = [];
   OperatingProgram? _selected;
   bool _loading = true, _busy = false, _dirty = false, _yardConfirmed = false;
-  bool _loadFailed = false;
+  bool _loadFailed = false, _conditionsEdited = false;
   final Set<String> _invalidFields = {};
   int _versionsRequest = 0;
   int _dayShareRevision = 0;
@@ -61,6 +66,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
     super.initState();
     _repository = widget.repository ?? OperatingProgramRepository();
     _conditions = ProgramConditions.fromReference(widget.bundle);
+    _yardConfirmed = widget.bundle.suggestionReport != null;
     _demands = ProgramDemand.fromShipments(_week, widget.bundle.shipments);
     unawaited(_loadVersions());
     unawaited(_loadActual());
@@ -85,7 +91,10 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
         _versions = versions;
         _loading = false;
         _loadFailed = false;
-        _error = null;
+        if (!silent ||
+            _error?.startsWith('No se pudo leer el historial') == true) {
+          _error = null;
+        }
         if (!_dirty && _selected == null && versions.isNotEmpty) {
           _select(
             versions.where((v) => v.operational).firstOrNull ?? versions.first,
@@ -128,6 +137,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   void _select(OperatingProgram program) {
     _selected = program;
     _conditions = program.conditions;
+    _conditionsEdited = true;
     _demands = program.demands;
     _lines = program.lines;
     _dirty = false;
@@ -165,13 +175,22 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   Future<void> _save({bool generate = false}) async {
     if (!_canSave) return;
     _versionsRequest++;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       if (generate) {
-        _syncProductionReference();
-        final fresh = ProgramDemand.fromShipments(
-          _week,
-          widget.bundle.shipments,
-        );
+        final reference =
+            await widget.refreshReference?.call() ?? widget.bundle;
+        if (!mounted) return;
+        if (reference.weekStartDate != _week) {
+          throw StateError(
+            'La referencia no corresponde a la semana del programa.',
+          );
+        }
+        _syncProductionReference(reference);
+        final fresh = ProgramDemand.fromShipments(_week, reference.shipments);
         final generated = generateOperatingProgram(_week, _conditions, fresh);
         setState(() {
           _demands = fresh;
@@ -179,10 +198,6 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
           _dirty = true;
         });
       }
-      setState(() {
-        _busy = true;
-        _error = null;
-      });
       final saved = await _repository.saveDraft(
         week: _week,
         expectedVersion: _versions.isEmpty ? 0 : _versions.first.version,
@@ -207,7 +222,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
 
   Future<void> _approve({bool execute = false}) async {
     final selected = _selected;
-    if (selected == null || _dirty || _busy) return;
+    if (selected == null || _dirty || _busy || _sourcesChanged) return;
     final ok = await showContractConfirmationDialog(
       context,
       title: execute
@@ -299,11 +314,18 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
 
   void _setCondition(ProgramConditions value) => setState(() {
     _conditions = value;
+    _conditionsEdited = true;
     _dirty = true;
   });
 
-  void _syncProductionReference() {
-    final fresh = ProgramConditions.fromReference(widget.bundle);
+  void _syncProductionReference(DirectionShipmentPlanningBundle reference) {
+    final fresh = ProgramConditions.fromReference(reference);
+    if (!_conditionsEdited &&
+        _selected == null &&
+        reference.suggestionReport != null) {
+      _conditions = fresh;
+      return;
+    }
     _conditions = _conditions.copyWith(
       history: fresh.history,
       days: [
@@ -599,7 +621,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
               if (_error != null) _notice(_error!, danger: true),
               if (_sourcesChanged)
                 _notice(
-                  'Los embarques confirmados cambiaron. Crea un nuevo borrador o vuelve a generar antes de aprobar.',
+                  'La lista final de embarques confirmados cambió. Crea un nuevo borrador o vuelve a generar para incorporar las ediciones antes de aprobar.',
                 ),
               if (outOfScope > 0 || unconfirmed > 0)
                 _notice(
@@ -694,8 +716,10 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text(
-                        'Confirmo el patio inicial del lunes por material',
+                      title: Text(
+                        widget.bundle.suggestionReport != null
+                            ? 'Usar el patio inicial calculado (puedes editarlo arriba)'
+                            : 'Confirmo el patio inicial del lunes por material',
                         style: TextStyle(
                           color: kDirectionSurfaceText,
                           fontSize: 12,
@@ -710,7 +734,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                           : null,
                     ),
                     const Text(
-                      'Día/Noche parte del historial y se puede ajustar. Bloquear un turno reduce capacidad; no la transfiere al otro. Maquinaria: participación nominal C1 50% y C2 50%.',
+                      'Patio y capacidad se precargan con la referencia disponible. Día/Noche parte del historial y se puede ajustar. Bloquear un turno reduce capacidad; no la transfiere al otro. Maquinaria: participación nominal C1 50% y C2 50%.',
                       style: TextStyle(color: kDirectionMutedText),
                     ),
                     const SizedBox(height: 8),
@@ -791,7 +815,9 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                   ),
                   if (_selected?.status == 'approved' && _selected!.operational)
                     FilledButton(
-                      onPressed: _busy ? null : () => _approve(execute: true),
+                      onPressed: _busy || _sourcesChanged
+                          ? null
+                          : () => _approve(execute: true),
                       child: const Text('Iniciar ejecución'),
                     ),
                   OutlinedButton.icon(

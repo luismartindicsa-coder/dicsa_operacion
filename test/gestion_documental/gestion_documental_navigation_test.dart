@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:dicsa_operacion/app/gestion_documental/gestion_documental_dashboard_page.dart';
 import 'package:dicsa_operacion/app/gestion_documental/gestion_documental_theme.dart';
+import 'package:dicsa_operacion/app/management_reports/management_supervision_page.dart';
 import 'package:dicsa_operacion/app/shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -132,6 +133,23 @@ void main() {
     );
   });
   tearDownAll(() => Supabase.instance.dispose());
+
+  testWidgets('documental dashboard opens the central supervision report hub', (
+    tester,
+  ) async {
+    await mount(tester, const Size(1280, 900));
+    final hub = find.widgetWithText(OutlinedButton, 'Hub');
+    await tester.ensureVisible(hub);
+    await tester.pumpAndSettle();
+    expect(find.text('Generar viernes'), findsNothing);
+    await capture(tester, 'supervision_access');
+    await tester.tap(hub);
+    await tester.pumpAndSettle();
+    expect(find.byType(ManagementSupervisionPage), findsOneWidget);
+    expect(find.text('Gestión Documental'), findsOneWidget);
+    expect(find.text('Generar viernes'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'live dashboard and calendar use server dates and open original records without interrupting edits',

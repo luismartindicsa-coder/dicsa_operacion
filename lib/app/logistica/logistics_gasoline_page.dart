@@ -26,6 +26,7 @@ import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_store.dart';
+import 'logistics_fuel_load_origin.dart';
 import 'logistics_performance_page.dart';
 import 'logistics_savings_page.dart';
 import 'logistics_theme.dart';
@@ -33,6 +34,7 @@ import 'logistics_theme.dart';
 const double _kGasolineDateColW = 108;
 const double _kGasolineOperatorColW = 220;
 const double _kGasolineVehicleColW = 176;
+const double _kGasolineOriginColW = 144;
 const double _kGasolineLitersColW = 150;
 const double _kGasolineCommentColW = 340;
 const double _kGasolineActionsGapW = 10;
@@ -42,6 +44,7 @@ const double _kGasolineTableContentW =
     _kGasolineDateColW +
     _kGasolineOperatorColW +
     _kGasolineVehicleColW +
+    _kGasolineOriginColW +
     _kGasolineLitersColW +
     _kGasolineCommentColW +
     _kGasolineActionsGapW +
@@ -51,6 +54,7 @@ class _GasolineGridLayout {
   final double dateWidth;
   final double operatorWidth;
   final double vehicleWidth;
+  final double originWidth;
   final double litersWidth;
   final double commentWidth;
   final double actionsGapWidth;
@@ -61,6 +65,7 @@ class _GasolineGridLayout {
     required this.dateWidth,
     required this.operatorWidth,
     required this.vehicleWidth,
+    required this.originWidth,
     required this.litersWidth,
     required this.commentWidth,
     required this.actionsGapWidth,
@@ -72,6 +77,7 @@ class _GasolineGridLayout {
       dateWidth +
       operatorWidth +
       vehicleWidth +
+      originWidth +
       litersWidth +
       commentWidth +
       actionsGapWidth +
@@ -84,6 +90,7 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
       dateWidth: _kGasolineDateColW,
       operatorWidth: _kGasolineOperatorColW,
       vehicleWidth: _kGasolineVehicleColW,
+      originWidth: _kGasolineOriginColW,
       litersWidth: _kGasolineLitersColW,
       commentWidth: _kGasolineCommentColW,
       actionsGapWidth: _kGasolineActionsGapW,
@@ -96,6 +103,7 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
   final scaledDate = _kGasolineDateColW * scale;
   final scaledOperator = _kGasolineOperatorColW * scale;
   final scaledVehicle = _kGasolineVehicleColW * scale;
+  final scaledOrigin = _kGasolineOriginColW * scale;
   final scaledLiters = _kGasolineLitersColW * scale;
   final scaledComment = _kGasolineCommentColW * scale;
   final scaledActionsGap = _kGasolineActionsGapW * scale;
@@ -106,6 +114,7 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
       dateWidth: scaledDate,
       operatorWidth: scaledOperator,
       vehicleWidth: scaledVehicle,
+      originWidth: scaledOrigin,
       litersWidth: scaledLiters,
       commentWidth: scaledComment,
       actionsGapWidth: scaledActionsGap,
@@ -118,12 +127,14 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
   const dateWeight = 0.45;
   const operatorWeight = 2.0;
   const vehicleWeight = 1.6;
+  const originWeight = 0.9;
   const litersWeight = 1.0;
   const commentWeight = 2.9;
   const totalWeight =
       dateWeight +
       operatorWeight +
       vehicleWeight +
+      originWeight +
       litersWeight +
       commentWeight;
 
@@ -133,6 +144,7 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
     dateWidth: scaledDate + share(dateWeight),
     operatorWidth: scaledOperator + share(operatorWeight),
     vehicleWidth: scaledVehicle + share(vehicleWeight),
+    originWidth: scaledOrigin + share(originWeight),
     litersWidth: scaledLiters + share(litersWeight),
     commentWidth: scaledComment + share(commentWeight),
     actionsGapWidth: scaledActionsGap,
@@ -182,6 +194,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
   DateTime _draftDate = DateUtils.dateOnly(DateTime.now());
   String? _draftOperatorId;
   String? _draftVehicleId;
+  bool _draftLoadedAtPatio = false;
   int _activeInsertColumn = 0;
 
   int _currentPage = 0;
@@ -623,6 +636,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
       _draftDate = DateUtils.dateOnly(record.entryDate);
       _draftOperatorId = record.operatorEmployeeId;
       _draftVehicleId = record.vehicleId;
+      _draftLoadedAtPatio = logisticsFuelIsLoadedAtPatio(record.loadOrigin);
       _activeInsertColumn = 0;
       _litersController.text = _formatLitersInput(record.litersLoaded);
       _notesController.text = record.notes;
@@ -645,6 +659,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
       _draftDate = DateUtils.dateOnly(DateTime.now());
       _draftOperatorId = null;
       _draftVehicleId = null;
+      _draftLoadedAtPatio = false;
       _activeInsertColumn = 0;
       _litersController.clear();
       _notesController.clear();
@@ -689,6 +704,9 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
         vehicleId: vehicleId,
         vehicleLabel: vehicleLabel,
         litersLoaded: litersValue,
+        loadOrigin: _draftLoadedAtPatio
+            ? kLogisticsFuelLoadOriginPatio
+            : kLogisticsFuelLoadOriginGasStation,
         notes: notes,
         createdAt: _editingRecord?.createdAt,
         updatedAt: _editingRecord?.updatedAt,
@@ -905,6 +923,8 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
         return row.operatorName;
       case 'unidad':
         return row.vehicleLabel;
+      case 'origen':
+        return logisticsFuelLoadOriginLabel(row.loadOrigin);
       case 'litros':
         return _fmtLiters(row.litersLoaded);
       case 'comentario':
@@ -953,18 +973,18 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
 
   void _setActiveInsertColumn(int column, {bool requestFocus = true}) {
     setState(() {
-      _activeInsertColumn = ((column % 6) + 6) % 6;
+      _activeInsertColumn = ((column % 7) + 7) % 7;
       _primarySelectedId = null;
       _selectedIds.clear();
     });
     if (requestFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (_activeInsertColumn == 3) {
+        if (_activeInsertColumn == 4) {
           _focusLitersField();
           return;
         }
-        if (_activeInsertColumn == 4) {
+        if (_activeInsertColumn == 5) {
           _focusNotesField();
           return;
         }
@@ -1005,11 +1025,11 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_activeInsertColumn == 3) {
+      if (_activeInsertColumn == 4) {
         _focusLitersField();
         return;
       }
-      if (_activeInsertColumn == 4) {
+      if (_activeInsertColumn == 5) {
         _focusNotesField();
         return;
       }
@@ -1157,12 +1177,15 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
         await _pickDraftVehicle();
         return;
       case 3:
-        _focusLitersField();
+        setState(() => _draftLoadedAtPatio = !_draftLoadedAtPatio);
         return;
       case 4:
-        _focusNotesField();
+        _focusLitersField();
         return;
       case 5:
+        _focusNotesField();
+        return;
+      case 6:
         await _saveDraft();
         return;
       default:
@@ -1183,9 +1206,12 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
           _draftVehicleId = null;
           break;
         case 3:
-          _litersController.clear();
+          _draftLoadedAtPatio = false;
           break;
         case 4:
+          _litersController.clear();
+          break;
+        case 5:
           _notesController.clear();
           break;
         default:
@@ -1348,13 +1374,16 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
 
   String _buildCsvContent(List<LogisticsGasolineControlRecord> rows) {
     final buffer = StringBuffer()
-      ..writeln('Fecha,Operador,Unidad o Vehiculo,Litros Cargados,Comentario');
+      ..writeln(
+        'Fecha,Operador,Unidad o Vehiculo,Origen,Litros Cargados,Comentario',
+      );
     for (final row in rows) {
       buffer.writeln(
         [
           _csvCell(_fmtUiDate(row.entryDate)),
           _csvCell(row.operatorName),
           _csvCell(row.vehicleLabel),
+          _csvCell(logisticsFuelLoadOriginLabel(row.loadOrigin)),
           _csvCell(_fmtLiters(row.litersLoaded)),
           _csvCell(row.notes),
         ].join(','),
@@ -1667,7 +1696,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
     Widget insertCellFrame(int columnIndex, Widget child) {
       final active = _activeInsertColumn == columnIndex;
       return Padding(
-        padding: EdgeInsets.only(right: columnIndex == 5 ? 0 : 8),
+        padding: EdgeInsets.only(right: columnIndex == 6 ? 0 : 8),
         child: DecoratedBox(
           position: DecorationPosition.background,
           decoration: BoxDecoration(
@@ -1819,29 +1848,33 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
                     ),
                     insertCellFrame(
                       3,
+                      _buildInlineLoadOriginCell(layout.originWidth),
+                    ),
+                    insertCellFrame(
+                      4,
                       _buildInlineNumberCell(
                         width: layout.litersWidth,
                         controller: _litersController,
                         focusNode: _litersFocusNode,
                         hintText: '0.00',
                         onTapStart: () =>
-                            _setActiveInsertColumn(3, requestFocus: false),
+                            _setActiveInsertColumn(4, requestFocus: false),
                       ),
                     ),
                     insertCellFrame(
-                      4,
+                      5,
                       _buildInlineTextCell(
                         width: layout.commentWidth,
                         controller: _notesController,
                         focusNode: _notesFocusNode,
                         hintText: 'Comentario opcional',
                         onTapStart: () =>
-                            _setActiveInsertColumn(4, requestFocus: false),
+                            _setActiveInsertColumn(5, requestFocus: false),
                       ),
                     ),
                     SizedBox(width: layout.actionsGapWidth),
                     insertCellFrame(
-                      5,
+                      6,
                       AnchoredActionSlot(
                         width: layout.actionsWidth,
                         trailingWidth: math.min(
@@ -1866,7 +1899,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
                             : const SizedBox.shrink(),
                         trailing: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTapDown: (_) => _setActiveInsertColumn(5),
+                          onTapDown: (_) => _setActiveInsertColumn(6),
                           child: _InsertActionButton(
                             saving: _saving,
                             editing: editing,
@@ -1935,6 +1968,49 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInlineLoadOriginCell(double width) {
+    final palette = ServicesVisualPalette.of(context);
+    final label = _draftLoadedAtPatio ? 'Patio' : 'Gasolinera';
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTapDown: (_) => _setActiveInsertColumn(3),
+        onTap: _saving
+            ? null
+            : () => setState(() => _draftLoadedAtPatio = !_draftLoadedAtPatio),
+        child: InputDecorator(
+          decoration: _glassFieldDecoration(context).copyWith(
+            fillColor: Colors.white.withValues(alpha: 0.88),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.2,
+                    fontWeight: FontWeight.w800,
+                    color: palette.textPrimary,
+                  ),
+                ),
+              ),
+              Switch.adaptive(
+                value: _draftLoadedAtPatio,
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _draftLoadedAtPatio = value),
+              ),
+            ],
           ),
         ),
       ),
@@ -2366,6 +2442,13 @@ class _DieselHeaderRow extends StatelessWidget {
                     onFilter: () => onOpenFilter('unidad', 'UNIDAD / VEHÍCULO'),
                   ),
                   _DieselHeaderCell(
+                    label: 'ORIGEN',
+                    width: layout.originWidth,
+                    style: textStyle,
+                    active: hasActiveFilter('origen'),
+                    onFilter: () => onOpenFilter('origen', 'ORIGEN'),
+                  ),
+                  _DieselHeaderCell(
                     label: 'LITROS CARGADOS',
                     width: layout.litersWidth,
                     style: textStyle,
@@ -2538,6 +2621,12 @@ class _DieselDataRowState extends State<_DieselDataRow> {
                         _DieselValueCell(
                           widget.record.vehicleLabel,
                           layout.vehicleWidth,
+                        ),
+                        _DieselValueCell(
+                          logisticsFuelLoadOriginLabel(
+                            widget.record.loadOrigin,
+                          ),
+                          layout.originWidth,
                         ),
                         _DieselValueCell(
                           '${_fmtLiters(widget.record.litersLoaded)} L',

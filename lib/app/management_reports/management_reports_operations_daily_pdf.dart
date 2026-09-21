@@ -19,10 +19,15 @@ import '../hr/human_resources_period_context.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'management_reports_registry.dart';
 import 'expenses_weekly_analysis.dart';
+import 'operations_weekly_analysis.dart';
+import 'operations_weekly_source.dart';
 import 'gerencia_weekly_analysis.dart';
 import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../shared/production_daily_summary_widget.dart';
 import 'menudeo_weighted_price_analysis.dart';
+import 'direction_weekly_summary.dart';
+
+part 'direction_weekly_existing_sources.dart';
 
 const String _kOperationsDailyOtFields =
     'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,'
@@ -59,12 +64,6 @@ const String _kMenudeoWeeklyPriceAdjustmentFields =
     'id,price_id,counterparty_name,material_label_snapshot,previous_price,'
     'new_price,reason,created_at,direction,event_kind,adjustment_mode,'
     'adjustment_value,applied_by';
-
-const String _kOperationsWeeklyOtFields =
-    'id,ot_folio,status,priority,type,category,impact,requested_at,updated_at,'
-    'area_label,equipment_label,requester_name,assigned_to_name,mechanic_name,'
-    'problem_description,diagnosis,work_summary,cost_estimated_total,'
-    'cost_actual_total';
 
 const String _kExpensesPurchaseOrderFields =
     'id,folio,order_date,target_label,quote_vendor_name,quote_vendor_type,'
@@ -151,8 +150,11 @@ Future<Uint8List> buildOperationsDailySupervisionPdfBytes({
   required ManagementAreaDefinition area,
   required DateTime generatedAt,
   required String generatedBy,
+  List<Map<String, dynamic>>? orders,
 }) async {
-  final rows = await _loadOperationsDailyOtRows(generatedAt);
+  final rows = orders == null
+      ? await _loadOperationsDailyOtRows(generatedAt)
+      : orders.map(_OperationsDailyOtRow.fromJson).toList();
   final insights = _buildOperationsDailyInsights(rows);
   final logoImage = await _tryLoadManagementReportLogo();
   final accentBase = area.accent;
@@ -170,7 +172,7 @@ Future<Uint8List> buildOperationsDailySupervisionPdfBytes({
     pw.MultiPage(
       pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
       build: (context) {
-        return <pw.Widget>[
+        final widgets = <pw.Widget>[
           _pdfHeader(
             logoImage: logoImage,
             eyebrow: 'REPORTE DE SEGUIMIENTO',
@@ -196,9 +198,6 @@ Future<Uint8List> buildOperationsDailySupervisionPdfBytes({
               children: <pw.Widget>[
                 _pdfBullet(
                   'Reporte real incluido hoy: OTs diarias nuevas desde maintenance_orders.',
-                ),
-                _pdfBullet(
-                  'El KPI diario de limpieza sigue pendiente porque todavia no existe una fuente homologada en la app.',
                 ),
                 _pdfBullet(
                   'Este PDF sirve para coordinar accion del dia, no para revisar OTs historicas abiertas.',
@@ -280,70 +279,67 @@ Future<Uint8List> buildOperationsDailySupervisionPdfBytes({
             ),
           ),
           pw.SizedBox(height: 14),
-          _pdfSection(
+          ..._pdfChunkedTableSections(
             title: 'Resumen por area',
             accent: accent,
-            child: _pdfSimpleTable(
-              headers: const <String>[
-                'Area',
-                'OTs nuevas',
-                'Altas',
-                'Con paro',
-                'Sin responsable',
-              ],
-              rows: insights.areaRows
-                  .map(
-                    (row) => <String>[
-                      row.areaLabel,
-                      '${row.total}',
-                      '${row.highPriority}',
-                      '${row.withParo}',
-                      '${row.withoutResponsible}',
-                    ],
-                  )
-                  .toList(growable: false),
-              emptyLabel: 'Sin OTs nuevas para resumir por area.',
-              headerColor: accent,
-            ),
+            headers: const <String>[
+              'Area',
+              'OTs nuevas',
+              'Altas',
+              'Con paro',
+              'Sin responsable',
+            ],
+            rows: insights.areaRows
+                .map(
+                  (row) => <String>[
+                    row.areaLabel,
+                    '${row.total}',
+                    '${row.highPriority}',
+                    '${row.withParo}',
+                    '${row.withoutResponsible}',
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel: 'Sin OTs nuevas para resumir por area.',
+            headerColor: accent,
+            maxRowsPerSection: 12,
           ),
           pw.NewPage(),
-          _pdfSection(
+          ..._pdfChunkedTableSections(
             title: 'Listado completo del dia',
             accent: accent,
-            child: _pdfSimpleTable(
-              headers: const <String>[
-                'OT',
-                'Hora',
-                'Area',
-                'Equipo',
-                'Estatus',
-                'Prioridad',
-                'Impacto',
-                'Solicitante',
-                'Responsable / Mecanico',
-                'Descripcion corta',
-              ],
-              rows: rows
-                  .map(
-                    (row) => <String>[
-                      row.folio,
-                      _formatHour(row.requestedAt),
-                      row.areaLabel,
-                      row.equipmentLabel,
-                      row.statusLabel,
-                      row.priorityLabel,
-                      row.impactLabel,
-                      row.requesterName,
-                      row.ownerAndMechanicLabel,
-                      row.shortDescription,
-                    ],
-                  )
-                  .toList(growable: false),
-              emptyLabel:
-                  'No se registraron OTs nuevas en el dia seleccionado.',
-              headerColor: accent,
-              compact: true,
-            ),
+            headers: const <String>[
+              'OT',
+              'Hora',
+              'Area',
+              'Equipo',
+              'Estatus',
+              'Prioridad',
+              'Impacto',
+              'Solicitante',
+              'Responsable / Mecanico',
+              'Descripcion corta',
+            ],
+            rows: rows
+                .map(
+                  (row) => <String>[
+                    row.folio,
+                    _formatHour(row.requestedAt),
+                    row.areaLabel,
+                    row.equipmentLabel,
+                    row.statusLabel,
+                    row.priorityLabel,
+                    row.impactLabel,
+                    row.requesterName,
+                    row.ownerAndMechanicLabel,
+                    row.shortDescription,
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel: 'No se registraron OTs nuevas en el dia seleccionado.',
+            headerColor: accent,
+            maxRowsPerSection: 12,
+            compact: true,
           ),
           pw.SizedBox(height: 14),
           _pdfSection(
@@ -352,6 +348,13 @@ Future<Uint8List> buildOperationsDailySupervisionPdfBytes({
             child: _pdfBulletList(insights.closeoutPrompts),
           ),
         ];
+        return widgets
+            .map(
+              (w) => w is pw.SizedBox || w is pw.NewPage || w is pw.Inseparable
+                  ? w
+                  : pw.Inseparable(child: w),
+            )
+            .toList();
       },
     ),
   );
@@ -363,9 +366,19 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
   required ManagementAreaDefinition area,
   required DateTime generatedAt,
   required String generatedBy,
+  OperationsWeeklySource? source,
 }) async {
   final cut = _resolveOperationsWeeklyCut(generatedAt);
-  final rows = await _loadOperationsWeeklyOtRows();
+  final data = OperationsWeeklyAnalysis(
+    source ?? await loadOperationsWeeklySource(generatedAt),
+    generatedAt,
+  );
+  final rows = data.source.orders
+      .map(_OperationsWeeklyOtRow.fromJson)
+      .where(
+        (r) => r.requestedAt == null || !r.requestedAt!.isAfter(cut.cutoffAt),
+      )
+      .toList();
   final insights = _buildOperationsWeeklyInsights(rows, cut);
   final logoImage = await _tryLoadManagementReportLogo();
   final accentBase = area.accent;
@@ -397,13 +410,13 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
       pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
       maxPages: 80,
       build: (context) {
-        return <pw.Widget>[
+        final widgets = <pw.Widget>[
           _pdfHeader(
             logoImage: logoImage,
             eyebrow: 'REPORTE DE SEGUIMIENTO',
-            title: 'Operaciones · Seguimiento semanal de OTs',
+            title: 'Operaciones · OTs, gastos y produccion',
             subtitle:
-                'Area Operaciones · corte ejecutivo para revisar abiertas, atrasadas, resueltas y pendientes de impulso antes de la junta.',
+                'Corte de viernes para coordinar mantenimiento, controlar costos y revisar el avance de produccion.',
             badges: <MapEntry<String, String>>[
               MapEntry('Area', area.title),
               MapEntry(
@@ -412,6 +425,7 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
               ),
               MapEntry('Responsable', area.ownerLabel),
               MapEntry('Generado', _formatDateTimeShort(generatedAt)),
+              MapEntry('Usuario', generatedBy),
             ],
             accent: accent,
             accentSoft: accentSoft,
@@ -425,13 +439,16 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: <pw.Widget>[
                 _pdfBullet(
-                  'Reporte real incluido hoy: Seguimiento de OTs desde maintenance_orders.',
+                  'Incluye seguimiento de OTs, compras ligadas y costos acumulados por OT, ademas de produccion por material, dia y turno.',
                 ),
                 _pdfBullet(
                   'El corte semanal activo va del ${_formatLongDateSpanish(cut.weekStart)} al ${_formatLongDateSpanish(cut.friday)} y esta acumulado unicamente hasta ${_formatDateTimeShort(cut.cutoffAt)}.',
                 ),
                 _pdfBullet(
                   'Atrasada = OT que sigue abierta y fue solicitada antes del ${_formatLongDateSpanish(cut.weekStart)} o ya supera 72 horas sin cerrar.',
+                ),
+                _pdfBullet(
+                  'Incidencias en patio: cobertura pendiente de captura formal. No se interpreta la ausencia de fuente como cero incidencias.',
                 ),
               ],
             ),
@@ -440,7 +457,11 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
           _pdfSection(
             title: 'Resumen ejecutivo',
             accent: accent,
-            child: _pdfBulletList(insights.executiveSummary),
+            child: _pdfBulletList([
+              ...insights.executiveSummary,
+              '${data.expenses.current.rows.length} OC(s) ligadas a OT compradas en el corte; ${data.expenses.current.withoutActual} sin importe real. Gasto registrado: ${_operationsPurchaseAmount(data.expenses.current)}.',
+              'Produccion registrada: ${_operationsProductionWeight(data.currentProduction)} kg en ${data.productionByMaterial().length} materiales; semana anterior al mismo avance: ${_operationsProductionWeight(data.previousProduction)} kg.',
+            ]),
           ),
           pw.SizedBox(height: 14),
           _pdfSection(
@@ -479,12 +500,13 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
               ],
             ),
           ),
-          if (insights.alerts.isNotEmpty) ...<pw.Widget>[
+          if (insights.alerts.isNotEmpty ||
+              data.warnings.isNotEmpty) ...<pw.Widget>[
             pw.SizedBox(height: 14),
             _pdfSection(
               title: 'Alertas automaticas',
               accent: accent,
-              child: _pdfBulletList(insights.alerts),
+              child: _pdfBulletList([...insights.alerts, ...data.warnings]),
             ),
           ],
           pw.SizedBox(height: 14),
@@ -554,39 +576,38 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
             ),
           ),
           pw.SizedBox(height: 14),
-          _pdfSection(
+          ..._pdfChunkedTableSections(
             title: 'Resumen por equipo',
             accent: accent,
-            child: _pdfTableWithOptionalNote(
-              note: hiddenEquipmentCount > 0
-                  ? 'Se muestran los ${visibleEquipmentRows.length} equipos con mayor presion abierta de ${insights.equipmentRows.length}.'
-                  : null,
-              child: _pdfSimpleTable(
-                headers: const <String>[
-                  'Equipo',
-                  'Area',
-                  'Abiertas',
-                  'Criticas',
-                  'Atrasadas',
-                  'Espera impulso',
-                ],
-                rows: visibleEquipmentRows
-                    .map(
-                      (row) => <String>[
-                        row.equipmentLabel,
-                        row.areaLabel,
-                        '${row.openCount}',
-                        '${row.criticalCount}',
-                        '${row.delayedCount}',
-                        '${row.waitingCount}',
-                      ],
-                    )
-                    .toList(growable: false),
-                emptyLabel: 'Sin equipos con OTs abiertas en este corte.',
-                headerColor: accent,
-              ),
-            ),
+            introNote: hiddenEquipmentCount > 0
+                ? 'Se muestran los ${visibleEquipmentRows.length} equipos con mayor presion abierta de ${insights.equipmentRows.length}.'
+                : null,
+            headers: const <String>[
+              'Equipo',
+              'Area',
+              'Abiertas',
+              'Criticas',
+              'Atrasadas',
+              'Espera impulso',
+            ],
+            rows: visibleEquipmentRows
+                .map(
+                  (row) => <String>[
+                    row.equipmentLabel,
+                    row.areaLabel,
+                    '${row.openCount}',
+                    '${row.criticalCount}',
+                    '${row.delayedCount}',
+                    '${row.waitingCount}',
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel: 'Sin equipos con OTs abiertas en este corte.',
+            headerColor: accent,
+            maxRowsPerSection: 8,
           ),
+          ..._operationsWeeklyCostSections(data, accent, accentSoft),
+          ..._operationsWeeklyProductionSections(data, accent, accentSoft),
           ..._pdfChunkedTableSections(
             title: 'Movimientos resueltos de la semana',
             accent: accent,
@@ -622,7 +643,7 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
                 : null,
           ),
           ..._pdfChunkedTableSections(
-            title: 'Listado completo abierto',
+            title: 'OTs abiertas priorizadas',
             accent: accent,
             headers: const <String>[
               'OT',
@@ -668,14 +689,364 @@ Future<Uint8List> buildOperationsWeeklySupervisionPdfBytes({
           _pdfSection(
             title: 'Cierre gerencial',
             accent: accent,
-            child: _pdfBulletList(insights.closeoutPrompts),
+            child: _pdfBulletList([
+              ...insights.closeoutPrompts,
+              'Asignar responsable y fecha para completar costos faltantes y explicar sobrecostos de las OTs.',
+              'Revisar los materiales que bajaron contra el mismo avance anterior y acordar la accion operativa; la diferencia no prueba por si sola una falla de capacidad.',
+            ]),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Fuentes y criterio del corte',
+            accent: accent,
+            child: _pdfBulletList([
+              'OTs y costos: maintenance_orders. Compras: maintenance_purchase_orders y sus renglones; fecha de compra para gasto semanal. Comprada no significa pagada.',
+              'Produccion: material_transformation_runs_v2 y sus salidas. production_runs se usa para pacas solo si no hay transformaciones de carton en el corte comparado. No se vuelven a sumar los movimientos de inventario generados por esas transformaciones.',
+              'La produccion se agrupa por fecha operativa hasta el dia observado; no tiene hora de produccion. Los estatus y montos son los vigentes al generar el PDF, no una reconstruccion historica. Los kilos son los pesos registrados en la fuente.',
+            ]),
           ),
         ];
+        return widgets
+            .map(
+              (w) => w is pw.SizedBox || w is pw.NewPage || w is pw.Inseparable
+                  ? w
+                  : pw.Inseparable(child: w),
+            )
+            .toList();
       },
     ),
   );
 
   return pdf.save();
+}
+
+String _operationsPurchaseAmount(ExpensesWeeklySummary s) =>
+    s.rows.isNotEmpty && s.withoutActual == s.rows.length
+    ? 'Sin dato'
+    : '${_formatCurrency(s.actual)}${s.withoutActual > 0 ? ' (parcial)' : ''}';
+
+String _operationsProductionWeight(OperationsProductionSummary s) =>
+    s.rows.isNotEmpty && !s.hasWeight
+    ? 'Sin dato'
+    : '${_formatQuantity(s.kg)}${s.missingWeight > 0 ? ' (parcial)' : ''}';
+
+List<pw.Widget> _operationsTable(
+  String title,
+  List<String> headers,
+  List<List<String>> rows,
+  PdfColor accent, {
+  String? note,
+}) =>
+    _pdfChunkedTableSections(
+          title: title,
+          accent: accent,
+          headers: headers,
+          rows: rows
+              .map(
+                (r) => r
+                    .map((cell) => _sanitizePdfText(_truncate(cell, 100)))
+                    .toList(),
+              )
+              .toList(),
+          emptyLabel: 'Sin registros en este corte.',
+          headerColor: accent,
+          compact: true,
+          maxRowsPerSection: 8,
+          introNote: note,
+        )
+        .map(
+          (w) => w is pw.SizedBox || w is pw.NewPage
+              ? w
+              : pw.Inseparable(child: w),
+        )
+        .toList();
+
+List<pw.Widget> _operationsWeeklyCostSections(
+  OperationsWeeklyAnalysis data,
+  PdfColor accent,
+  PdfColor soft,
+) {
+  final expenses = data.expenses;
+  final current = expenses.current;
+  String money(double? n) => n == null ? 'Sin dato' : _formatCurrency(n);
+  final costs = data.costs.take(24).toList();
+  final purchases = current.rows.take(32).toList();
+  final groups = <String, List<ExpensesWeeklyOrder>>{};
+  for (final c in data.costs) {
+    groups.putIfAbsent(c.area, () => []).addAll(c.purchases.rows);
+  }
+  final unresolved = data.unresolvedPurchases
+      .where((r) => current.rows.contains(r))
+      .toList();
+  if (unresolved.isNotEmpty) groups['OT sin resolver'] = unresolved;
+  final areas = groups.keys.where((k) => groups[k]!.isNotEmpty).toList()
+    ..sort();
+  return [
+    pw.NewPage(),
+    _pdfSection(
+      title: 'Gastos en OTs - compras de la semana',
+      accent: accent,
+      child: _pdfKpiGrid(
+        accent: accent,
+        accentSoft: soft,
+        items: [
+          _PdfKpiItem('Compras ligadas a OT', '${current.rows.length}'),
+          _PdfKpiItem('Real registrado', _operationsPurchaseAmount(current)),
+          _PdfKpiItem(
+            'Diferencia vs estimado',
+            money(current.variance),
+            note: '${current.comparable.length} OC(s) comparables',
+          ),
+          _PdfKpiItem('Compras sin importe real', '${current.withoutActual}'),
+          _PdfKpiItem(
+            'OTs con sobrecosto acumulado',
+            '${data.costs.where((c) => (c.variance ?? 0) > .009).length}',
+          ),
+          _PdfKpiItem(
+            'OCs abiertas ligadas',
+            '${expenses.pending.length}',
+            note: '${money(expenses.pendingEstimate)} estimados',
+          ),
+        ],
+      ),
+    ),
+    ..._operationsTable(
+      'Gasto semanal por area',
+      ['Area', 'OCs compradas', 'Real registrado', 'Sin real'],
+      [
+        for (final area in areas)
+          [
+            area,
+            '${groups[area]!.length}',
+            _operationsPurchaseAmount(ExpensesWeeklySummary(groups[area]!)),
+            '${ExpensesWeeklySummary(groups[area]!).withoutActual}',
+          ],
+      ],
+      accent,
+      note:
+          'Solo compras con fecha de compra dentro del corte. El real de la OT es acumulado y no se suma a estas compras: podria incluirlas.',
+    ),
+    ..._operationsTable(
+      'Costos acumulados por OT',
+      [
+        'OT',
+        'Area / equipo',
+        'Responsable',
+        'Estimado OT',
+        'Real OT',
+        'Diferencia OT',
+        'Compras semana',
+      ],
+      [
+        for (final c in costs)
+          [
+            c.folio,
+            '${c.area} / ${c.equipment}',
+            c.responsible,
+            money(c.estimated),
+            money(c.actual),
+            money(c.variance),
+            _operationsPurchaseAmount(c.purchases),
+          ],
+      ],
+      accent,
+      note:
+          'OTs abiertas, con movimiento de la semana o con compras en el corte. '
+          'Montos acumulados vigentes, no gasto exclusivo de la semana. '
+          'Diferencia = real - estimado solo con ambos importes positivos. '
+          'Se muestran ${costs.length} de ${data.costs.length} OTs, priorizadas por compras de la semana.',
+    ),
+    ..._operationsTable(
+      'Compras realizadas ligadas a OT',
+      [
+        'OC',
+        'Compra',
+        'OT',
+        'Proveedor / concepto',
+        'Estimado OC',
+        'Real OC',
+        'Diferencia',
+      ],
+      [
+        for (final r in purchases)
+          [
+            r.folio,
+            _formatShortDate(r.purchasedAt!),
+            r.ot,
+            _truncate('${r.vendor} / ${r.concept}', 100),
+            money(r.estimated),
+            money(r.actual),
+            money(r.variance),
+          ],
+      ],
+      accent,
+      note:
+          'Se muestran ${purchases.length} de ${current.rows.length} compras; los indicadores incluyen todas. '
+          'Una OC comprada sin real permanece como Sin dato; no se sustituye por su estimado.',
+    ),
+    if (expenses.pending.isNotEmpty)
+      ..._operationsTable(
+        'Compras abiertas para destrabar OTs',
+        ['OC', 'OT', 'Etapa', 'Fecha OC', 'Estimado', 'Destino'],
+        [
+          for (final r in expenses.pending.take(16))
+            [
+              r.folio,
+              r.ot,
+              r.stage,
+              _formatShortDate(r.orderDate),
+              money(r.estimated),
+              r.target,
+            ],
+        ],
+        accent,
+        note:
+            'Se muestran hasta 16 de ${expenses.pending.length} OCs abiertas. '
+            'Son compromisos estimados, no compras realizadas ni pagos.',
+      ),
+    if (expenses.undatedPurchases.isNotEmpty)
+      ..._operationsTable(
+        'Compras sin fecha - corregir fuente',
+        ['OC', 'OT', 'Proveedor', 'Real registrado'],
+        [
+          for (final r in expenses.undatedPurchases.take(16))
+            [r.folio, r.ot, r.vendor, money(r.actual)],
+        ],
+        accent,
+        note:
+            'Hasta 16 de ${expenses.undatedPurchases.length} casos. '
+            'Quedan fuera del total semanal hasta tener fecha de compra.',
+      ),
+  ];
+}
+
+List<pw.Widget> _operationsWeeklyProductionSections(
+  OperationsWeeklyAnalysis data,
+  PdfColor accent,
+  PdfColor soft,
+) {
+  final current = data.currentProduction;
+  final previous = data.previousProduction;
+  final nowGroups = data.productionByMaterial();
+  final oldGroups = data.productionByMaterial(previous: true);
+  final keys = {...nowGroups.keys, ...oldGroups.keys}.toList()..sort();
+  String units(OperationsProductionSummary s) =>
+      s.rows.isNotEmpty && !s.hasUnits
+      ? 'Sin dato'
+      : '${s.units}${s.missingUnits > 0 ? ' (parcial)' : ''}';
+  String comparison(
+    OperationsProductionSummary now,
+    OperationsProductionSummary old,
+  ) {
+    if (now.missingWeight > 0 || old.missingWeight > 0) {
+      return 'Peso no comparable';
+    }
+    if (old.kg <= 0) return now.kg > 0 ? 'Sin base anterior' : 'Sin movimiento';
+    return '${((now.kg - old.kg) / old.kg * 100).toStringAsFixed(1)}%';
+  }
+
+  final comparisonRows = <List<String>>[];
+  for (final k in keys) {
+    final now = OperationsProductionSummary(nowGroups[k] ?? []);
+    final old = OperationsProductionSummary(oldGroups[k] ?? []);
+    final label = [...now.rows, ...old.rows].first.material;
+    comparisonRows.add([
+      label,
+      _operationsProductionWeight(now),
+      units(now),
+      _operationsProductionWeight(old),
+      units(old),
+      comparison(now, old),
+    ]);
+  }
+  final days = <(DateTime, String), List<OperationsProductionRow>>{};
+  final materialsAndShifts =
+      <(String, String), List<OperationsProductionRow>>{};
+  for (final r in current.rows) {
+    days.putIfAbsent((r.date, r.shift), () => []).add(r);
+    materialsAndShifts.putIfAbsent((r.materialKey, r.shift), () => []).add(r);
+  }
+  final dayKeys = days.keys.toList()
+    ..sort((a, b) {
+      final d = a.$1.compareTo(b.$1);
+      return d != 0 ? d : a.$2.compareTo(b.$2);
+    });
+  final shiftKeys = materialsAndShifts.keys.toList()
+    ..sort((a, b) => '${a.$1} ${a.$2}'.compareTo('${b.$1} ${b.$2}'));
+  return [
+    pw.NewPage(),
+    _pdfSection(
+      title: 'Produccion - avance de la semana',
+      accent: accent,
+      child: _pdfKpiGrid(
+        accent: accent,
+        accentSoft: soft,
+        items: [
+          _PdfKpiItem('KG registrados', _operationsProductionWeight(current)),
+          _PdfKpiItem(
+            'KG avance anterior',
+            _operationsProductionWeight(previous),
+          ),
+          _PdfKpiItem('Variacion en KG', comparison(current, previous)),
+          _PdfKpiItem('Materiales producidos', '${nowGroups.length}'),
+          _PdfKpiItem(
+            'Dias con produccion',
+            '${current.rows.map((r) => r.date).toSet().length}',
+          ),
+          _PdfKpiItem('Salidas sin peso', '${current.missingWeight}'),
+        ],
+      ),
+    ),
+    ..._operationsTable(
+      'Produccion por material - comparacion semanal',
+      [
+        'Material',
+        'KG actuales',
+        'Unid. actuales',
+        'KG anteriores',
+        'Unid. anteriores',
+        'Variacion KG',
+      ],
+      comparisonRows,
+      accent,
+      note:
+          'Actual: ${_formatShortDate(data.cut.start)} a ${_formatShortDate(data.cut.end)}. '
+          'Anterior al mismo avance: ${_formatShortDate(data.cut.previousStart)} a ${_formatShortDate(data.cut.previousEnd)}. '
+          'Unidades segun cada material; no se suman unidades de distintos materiales como si todas fueran pacas. '
+          'La comparacion mide cambio de volumen, no cumplimiento de una meta.',
+    ),
+    ..._operationsTable(
+      'Produccion por dia y turno',
+      ['Fecha', 'Turno', 'KG registrados', 'Materiales', 'Salidas sin peso'],
+      [
+        for (final k in dayKeys)
+          [
+            _formatShortDate(k.$1),
+            k.$2,
+            _operationsProductionWeight(OperationsProductionSummary(days[k]!)),
+            '${days[k]!.map((r) => r.materialKey).toSet().length}',
+            '${OperationsProductionSummary(days[k]!).missingWeight}',
+          ],
+      ],
+      accent,
+    ),
+    ..._operationsTable(
+      'Detalle por material y turno',
+      ['Material', 'Turno', 'KG registrados', 'Unidades'],
+      [
+        for (final k in shiftKeys)
+          [
+            materialsAndShifts[k]!.first.material,
+            k.$2,
+            _operationsProductionWeight(
+              OperationsProductionSummary(materialsAndShifts[k]!),
+            ),
+            units(OperationsProductionSummary(materialsAndShifts[k]!)),
+          ],
+      ],
+      accent,
+    ),
+  ];
 }
 
 Future<Uint8List> buildFinanceDailySupervisionPdfBytes({
@@ -8325,8 +8696,9 @@ _SalesWeeklyCut _resolveSalesWeeklyCut(DateTime generatedAt) {
 }
 
 Future<List<_SalesCollectionAccountRow>> _loadSalesCollectionAccountRows(
-  _SalesWeeklyCut cut,
-) async {
+  _SalesWeeklyCut cut, {
+  bool strictBankRead = false,
+}) async {
   final results = await Future.wait<dynamic>([
     fetchAllSupabaseRows(
       (from, to) => Supabase.instance.client
@@ -8337,7 +8709,9 @@ Future<List<_SalesCollectionAccountRow>> _loadSalesCollectionAccountRows(
           .order('id', ascending: true)
           .range(from, to),
     ),
-    FinanzasBankAccountsStore.loadMovements(),
+    strictBankRead
+        ? FinanzasBankAccountsStore.loadMovementsStrict()
+        : FinanzasBankAccountsStore.loadMovements(),
   ]);
   final rawRows = (results[0] as List<Map<String, dynamic>>)
       .map((row) => _SalesCollectionAccountRow.fromJson(row))
@@ -8452,46 +8826,12 @@ Future<List<_OperationsDailyOtRow>> _loadOperationsDailyOtRows(
 }
 
 _OperationsWeeklyCut _resolveOperationsWeeklyCut(DateTime generatedAt) {
-  final friday = _nextOrSameFriday(generatedAt);
-  final weekStart = friday.subtract(const Duration(days: 4));
-  final fridayEnd = DateTime(
-    friday.year,
-    friday.month,
-    friday.day,
-    23,
-    59,
-    59,
-    999,
-  );
-  final cutoffAt = generatedAt.isBefore(fridayEnd) ? generatedAt : fridayEnd;
+  final cut = ExpensesWeeklyCut(generatedAt);
   return _OperationsWeeklyCut(
-    weekStart: weekStart,
-    friday: friday,
-    cutoffAt: cutoffAt,
+    weekStart: cut.start,
+    friday: cut.friday,
+    cutoffAt: cut.end,
   );
-}
-
-Future<List<_OperationsWeeklyOtRow>> _loadOperationsWeeklyOtRows() async {
-  final raw = await fetchAllSupabaseRows(
-    (from, to) => Supabase.instance.client
-        .from('maintenance_orders')
-        .select(_kOperationsWeeklyOtFields)
-        .order('updated_at', ascending: true)
-        .order('id', ascending: true)
-        .range(from, to),
-  );
-  final rows = raw
-      .map(
-        (row) =>
-            _OperationsWeeklyOtRow.fromJson(Map<String, dynamic>.from(row)),
-      )
-      .toList(growable: false);
-  rows.sort((a, b) {
-    final left = a.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-    final right = b.requestedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-    return left.compareTo(right);
-  });
-  return rows;
 }
 
 _OperationsWeeklyInsights _buildOperationsWeeklyInsights(
@@ -8802,10 +9142,6 @@ _OperationsDailyInsights _buildOperationsDailyInsights(
       );
     }
   }
-  executiveSummary.add(
-    'El KPI diario de limpieza no se incluye todavia porque su fuente sigue pendiente de homologacion.',
-  );
-
   final alerts = <String>[];
   for (final areaRow in areaRows.where((row) => row.total >= 3)) {
     alerts.add(
@@ -8849,7 +9185,6 @@ _OperationsDailyInsights _buildOperationsDailyInsights(
     'Gerencia debe pedir accion concreta para las OTs marcadas en foco del dia, no solo explicacion.',
     if (quoteOrApprovalCount > 0)
       '$quoteOrApprovalCount OTs nuevas ya estan en cotizacion o autorizacion; validar si la planeacion llego tarde.',
-    'El KPI de limpieza sigue fuera de este corte hasta definir captura formal y fuente homologada.',
   ];
 
   return _OperationsDailyInsights(

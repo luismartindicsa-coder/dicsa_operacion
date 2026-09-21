@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
 import '../mayoreo/mayoreo_financial_status.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'finanzas_company_identity.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_fixed_payments_store.dart';
@@ -310,11 +311,16 @@ class FinanzasBankAccountsStore {
   }
 
   static Future<List<FinanzasBankMovementRecord>> loadMovementsStrict() async {
-    final rows = await Supabase.instance.client
-        .from(_kFinBankMovementsTable)
-        .select()
-        .order('movement_date', ascending: false)
-        .order('created_at', ascending: false);
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kFinBankMovementsTable)
+          .select()
+          .order('movement_date', ascending: false)
+          .order('created_at', ascending: false)
+          .order('id', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    );
     return (rows as List)
         .map(
           (row) => FinanzasBankMovementRecord.fromRemoteRow(

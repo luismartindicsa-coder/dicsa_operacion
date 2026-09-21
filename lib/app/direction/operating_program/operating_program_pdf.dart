@@ -199,6 +199,27 @@ class OperatingProgramPrintData {
         .join('; ');
   }
 
+  /// One stable column per destination, with all same-day loads consolidated.
+  List<String> get destinationColumns =>
+      program.demands.map((s) => s.destination).toSet().toList()..sort();
+
+  String destinationQuantities(int day, String destination) {
+    final shipments = shipmentsOn(
+      day,
+    ).where((s) => s.destination == destination);
+    final quantities = [
+      for (final material in programMaterials)
+        shipments
+            .where((s) => s.material == material)
+            .fold(0, (sum, s) => sum + s.quantity),
+    ];
+    final labels = [
+      for (var m = 0; m < 3; m++)
+        if (quantities[m] > 0) '${quantities[m]} ${programMaterialNames[m]}',
+    ];
+    return labels.isEmpty ? '0' : labels.join('\n');
+  }
+
   List<String> get alerts => [
     for (final shortfall in evaluation.shortfalls)
       '${_date(shortfall.shipment.date)}: faltan ${shortfall.quantity} '
@@ -213,8 +234,8 @@ class OperatingProgramPrintData {
   ].join('  |  ');
 }
 
-/// Always A4 landscape. Measure content at readable sizes before painting.
-/// Never clip destinations, omit alerts, shrink text or silently switch to A3.
+/// Five weekday rows with destination columns, followed by production by shift.
+/// Long observation text is intentionally excluded from the operator's PDF.
 Future<Uint8List> buildOperatingProgramPdf(
   OperatingProgram program, {
   List<String> operationalNotes = const [],
@@ -239,7 +260,7 @@ Future<Uint8List> buildOperatingProgramPdf(
   } on FlutterError {
     // Asset not yet bundled; standard PDF fonts need no asset or network fetch.
   }
-  final document = pw.Document(
+  pw.Document newDocument() => pw.Document(
     title: 'Programa operativo de cartón - ${programDate(program.week)}',
     author: 'DICSA',
     theme: pw.ThemeData.withFont(base: regularFont, bold: boldFont),
@@ -249,8 +270,10 @@ Future<Uint8List> buildOperatingProgramPdf(
     double size = 11,
     bool bold = false,
     PdfColor color = _ink,
+    bool span = false,
   }) => pw.Text(
     value,
+    overflow: span ? pw.TextOverflow.span : pw.TextOverflow.visible,
     style: pw.TextStyle(
       fontSize: size,
       color: color,
@@ -287,6 +310,7 @@ Future<Uint8List> buildOperatingProgramPdf(
     bool total = false,
     bool shipments = false,
   }) => pw.TableRow(
+    repeat: heading,
     decoration: pw.BoxDecoration(
       color: total
           ? _green
@@ -323,118 +347,127 @@ Future<Uint8List> buildOperatingProgramPdf(
       ? 'Fuente Día/Noche: histórico de Producción, ${_date(history!.start)} al ${_date(history.end)} '
             '(${history.observedWeeks.length} semanas con registros).'
       : 'Fuente Día/Noche: capacidad configurada; sin referencia histórica guardada.';
-  final body = pw.Column(
+  pw.Widget header() => pw.Container(
+    color: _navy,
+    padding: const pw.EdgeInsets.all(8),
+    child: pw.Row(
+      children: [
+        pw.Image(
+          pw.MemoryImage(
+            logo.buffer.asUint8List(logo.offsetInBytes, logo.lengthInBytes),
+          ),
+          width: 50,
+          height: 50,
+        ),
+        pw.SizedBox(width: 14),
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              text(
+                'PROGRAMA OPERATIVO DE CARTÓN',
+                size: 20,
+                bold: true,
+                color: PdfColors.white,
+              ),
+              pw.SizedBox(height: 3),
+              text(
+                'EMBARQUES, DESTINOS Y PRODUCCIÓN POR TURNOS',
+                size: 11,
+                bold: true,
+                color: PdfColors.white,
+              ),
+              pw.SizedBox(height: 5),
+              text(
+                'Semana del ${_date(program.week)} al ${_date(program.week.add(const Duration(days: 4)))}'
+                '   |   ${program.statusLabel.toUpperCase()} v${program.version}',
+                size: 11,
+                color: PdfColors.white,
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+  pw.Widget patioSummary() => pw.Container(
+    color: _yellow,
+    padding: const pw.EdgeInsets.all(8),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        text(
+          'AMANECEN EN PATIO:  ${[for (var m = 0; m < 3; m++) '${programMaterialNames[m]} ${program.conditions.yard[programMaterials[m]] ?? 0}'].join('  |  ')}'
+          '     Producción requerida: ${data.evaluation.requiredTotal} pacas',
+          bold: true,
+        ),
+        if (data.alerts.isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          text('ATENCIÓN: ${data.alerts.join('; ')}.', size: 10.5, bold: true),
+        ],
+      ],
+    ),
+  );
+  final destinations = data.destinationColumns;
+  pw.Table shipmentMatrix(List<String> columns) => pw.Table(
+    border: pw.TableBorder.all(color: _line, width: .5),
+    columnWidths: {
+      0: const pw.FixedColumnWidth(81),
+      for (var i = 0; i < math.max(1, columns.length); i++)
+        i + 1: const pw.FlexColumnWidth(1),
+      math.max(1, columns.length) + 1: const pw.FixedColumnWidth(64),
+    },
+    children: [
+      pw.TableRow(
+        repeat: true,
+        decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xfff1f5f8)),
+        children: [
+          cell('DÍA', heading: true, left: true),
+          if (columns.isEmpty)
+            cell('DESTINOS', heading: true)
+          else
+            for (final destination in columns) cell(destination, heading: true),
+          cell('TOTAL', heading: true),
+        ],
+      ),
+      for (var d = 0; d < 5; d++)
+        pw.TableRow(
+          decoration: pw.BoxDecoration(
+            color: !program.conditions.days[d].working
+                ? _yellow
+                : d.isEven
+                ? _lightGreen
+                : PdfColors.white,
+          ),
+          verticalAlignment: pw.TableCellVerticalAlignment.middle,
+          children: [
+            cell(
+              '${programDayNames[d]} ${program.week.add(Duration(days: d)).day}',
+              left: true,
+            ),
+            if (columns.isEmpty)
+              cell('SIN EMBARQUE')
+            else
+              for (final destination in columns)
+                cell(data.destinationQuantities(d, destination)),
+            cell(
+              '${data.shipmentsOn(d).where((s) => columns.contains(s.destination)).fold(0, (n, s) => n + s.quantity)}',
+              numeric: true,
+            ),
+          ],
+        ),
+    ],
+  );
+  pw.Widget shipmentTotals() => text(
+    'EMBARQUES: ${[for (var m = 0; m < 3; m++) '${programMaterialNames[m]} ${data.shipmentTotals[m]}'].join(' | ')}'
+    '    TOTAL SEMANAL: $totalShipments pacas',
+    size: 10,
+    bold: true,
+  );
+  pw.Widget productionSchedule() => pw.Column(
     mainAxisSize: pw.MainAxisSize.min,
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
-      pw.Container(
-        color: _navy,
-        padding: const pw.EdgeInsets.all(8),
-        child: pw.Row(
-          children: [
-            pw.Image(
-              pw.MemoryImage(
-                logo.buffer.asUint8List(logo.offsetInBytes, logo.lengthInBytes),
-              ),
-              width: 50,
-              height: 50,
-            ),
-            pw.SizedBox(width: 14),
-            pw.Expanded(
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  text(
-                    'PROGRAMA OPERATIVO DE CARTÓN',
-                    size: 20,
-                    bold: true,
-                    color: PdfColors.white,
-                  ),
-                  pw.SizedBox(height: 3),
-                  text(
-                    'EMBARQUES, DESTINOS Y PRODUCCIÓN POR TURNOS',
-                    size: 11,
-                    bold: true,
-                    color: PdfColors.white,
-                  ),
-                  pw.SizedBox(height: 5),
-                  text(
-                    'Semana del ${_date(program.week)} al ${_date(program.week.add(const Duration(days: 4)))}'
-                    '   |   ${program.statusLabel.toUpperCase()} v${program.version}',
-                    size: 11,
-                    color: PdfColors.white,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      pw.SizedBox(height: 4),
-      pw.Container(
-        color: _yellow,
-        padding: const pw.EdgeInsets.all(8),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            text(
-              'AMANECEN EN PATIO:  ${[for (var m = 0; m < 3; m++) '${programMaterialNames[m]} ${program.conditions.yard[programMaterials[m]] ?? 0}'].join('  |  ')}'
-              '     Producción requerida: ${data.evaluation.requiredTotal} pacas',
-              bold: true,
-            ),
-            pw.SizedBox(height: 3),
-            text('${data.notes.join('. ')}.', size: 10),
-            if (data.alerts.isNotEmpty) ...[
-              pw.SizedBox(height: 4),
-              text(
-                'ATENCIÓN: ${data.alerts.join('; ')}.',
-                size: 10.5,
-                bold: true,
-              ),
-            ],
-          ],
-        ),
-      ),
-      pw.SizedBox(height: 4),
-      section('EMBARQUES ESPERADOS Y DESTINO'),
-      pw.Table(
-        border: pw.TableBorder.all(color: _line, width: .5),
-        columnWidths: {
-          0: const pw.FixedColumnWidth(81),
-          1: const pw.FlexColumnWidth(4.8),
-          for (var i = 2; i < 6; i++) i: const pw.FlexColumnWidth(1),
-        },
-        children: [
-          row(
-            ['DÍA', 'A QUIÉN', 'NACIONAL', 'LIMPIO', 'AMERICANO', 'TOTAL'],
-            heading: true,
-            shipments: true,
-          ),
-          for (var d = 0; d < 5; d++)
-            row(
-              [
-                '${programDayNames[d]} ${program.week.add(Duration(days: d)).day}',
-                data.destinations(d),
-                for (final material in programMaterials)
-                  '${data.shipmentsOn(d).where((s) => s.material == material).fold<int>(0, (sum, s) => sum + s.quantity)}',
-                '${data.shipmentsOn(d).fold<int>(0, (sum, s) => sum + s.quantity)}',
-              ],
-              day: d,
-              shipments: true,
-            ),
-          row(
-            [
-              'TOTAL',
-              'EMBARQUES (PACAS)',
-              ...data.shipmentTotals.map((q) => '$q'),
-              '$totalShipments',
-            ],
-            total: true,
-            shipments: true,
-          ),
-        ],
-      ),
-      pw.SizedBox(height: 4),
       section('PRODUCCIÓN ESPERADA POR TURNO'),
       pw.Table(
         border: pw.TableBorder.all(color: _line, width: .5),
@@ -505,19 +538,104 @@ Future<Uint8List> buildOperatingProgramPdf(
       ),
     ],
   );
+  final compact = newDocument();
+  try {
+    compact.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(20),
+        build: (_) => _OnePageContent(
+          child: pw.Column(
+            mainAxisSize: pw.MainAxisSize.min,
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              header(),
+              pw.SizedBox(height: 4),
+              patioSummary(),
+              pw.SizedBox(height: 4),
+              section('EMBARQUES ESPERADOS Y DESTINO'),
+              shipmentMatrix(destinations),
+              pw.SizedBox(height: 4),
+              shipmentTotals(),
+              pw.SizedBox(height: 4),
+              productionSchedule(),
+            ],
+          ),
+        ),
+      ),
+    );
+    return await compact.save();
+  } on _NeedsPagination {
+    // Only layout overflow retries with pagination. Data validation and other
+    // export failures retain their original error and never discard content.
+  }
+  final document = newDocument();
   document.addPage(
-    pw.Page(
+    pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(20),
-      build: (_) => _OnePageContent(child: body),
+      maxPages: 1000,
+      header: (_) => pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 8),
+        child: pw.SizedBox(
+          height: 80,
+          width: PdfPageFormat.a4.landscape.width - 40,
+          child: header(),
+        ),
+      ),
+      footer: (context) => pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 6),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            text(
+              'DICSA · ${_date(program.week)} · ${program.statusLabel} v${program.version}',
+              size: 9,
+            ),
+            text(
+              'Página ${context.pageNumber} de ${context.pagesCount}',
+              size: 9,
+            ),
+          ],
+        ),
+      ),
+      build: (_) => [
+        pw.Container(
+          color: _yellow,
+          padding: const pw.EdgeInsets.all(8),
+          child: text(
+            'PATIO INICIAL: ${[for (var m = 0; m < 3; m++) '${programMaterialNames[m]} ${program.conditions.yard[programMaterials[m]] ?? 0}'].join(' | ')}'
+            '    Requerido: ${data.evaluation.requiredTotal} pacas'
+            '    Máximo: ${program.conditions.dailyCapacity} pacas/día'
+            '${data.evaluation.missingTotal > 0 ? '    ATENCIÓN: faltan ${data.evaluation.missingTotal} pacas; ver alertas.' : ''}',
+            size: 10,
+            bold: true,
+          ),
+        ),
+        pw.SizedBox(height: 6),
+        productionSchedule(),
+        pw.SizedBox(height: 8),
+        pw.NewPage(),
+        section('EMBARQUES ESPERADOS Y DESTINO'),
+        shipmentMatrix(destinations),
+        pw.SizedBox(height: 4),
+        shipmentTotals(),
+        if (data.alerts.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          section('ALERTAS POR FECHA Y MATERIAL'),
+          for (final alert in data.alerts)
+            text(alert, size: 10.5, bold: true, span: true),
+        ],
+      ],
     ),
   );
   return document.save();
 }
 
+class _NeedsPagination implements Exception {}
+
 class _OnePageContent extends pw.SingleChildWidget {
   _OnePageContent({required super.child});
-
   @override
   void layout(
     pw.Context context,
@@ -529,12 +647,7 @@ class _OnePageContent extends pw.SingleChildWidget {
       pw.BoxConstraints(maxWidth: constraints.maxWidth),
       parentUsesSize: parentUsesSize,
     );
-    if (box!.height > constraints.maxHeight + .01) {
-      throw StateError(
-        'El detalle no cabe legible en una página A4 horizontal. '
-        'Abreviar destinos u observaciones antes de exportar; no se omitió ningún dato.',
-      );
-    }
+    if (box!.height > constraints.maxHeight + .01) throw _NeedsPagination();
   }
 
   @override

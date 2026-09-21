@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/app_error_reporter.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 
 const String _kGerenciaBaleTypeCatalogTable = 'gerencia_bale_type_catalog';
 const String _kGerenciaBaleWeeklyPlansTable = 'gerencia_bale_weekly_plans';
@@ -386,34 +387,52 @@ class GerenciaBaleWeeklyTrackingStore {
 
       final transformationRows = cartonGeneralRow == null
           ? const <dynamic>[]
-          : await _supa
-                .from('material_transformation_runs_v2')
-                .select(
-                  'op_date,'
-                  'outputs:material_transformation_run_outputs_v2('
-                  'output_unit_count,'
-                  'commercial_material:commercial_material_id(code,name)'
-                  ')',
-                )
-                .eq('source_general_material_id', cartonGeneralRow['id'])
-                .gte('op_date', _fmtDate(normalizedWeekStart))
-                .lte('op_date', _fmtDate(weekEndDate));
+          : await fetchAllSupabaseRows(
+              (from, to) => _supa
+                  .from('material_transformation_runs_v2')
+                  .select(
+                    'op_date,'
+                    'outputs:material_transformation_run_outputs_v2('
+                    'output_unit_count,'
+                    'commercial_material:commercial_material_id(code,name)'
+                    ')',
+                  )
+                  .eq('source_general_material_id', cartonGeneralRow['id'])
+                  .gte('op_date', _fmtDate(normalizedWeekStart))
+                  .lte('op_date', _fmtDate(weekEndDate))
+                  .order('op_date')
+                  .order('id')
+                  .range(from, to),
+              pageSize: 500,
+            );
 
-      final legacyProductionRows = await _supa
-          .from('production_runs')
-          .select('op_date,bale_material,bale_count')
-          .gte('op_date', _fmtDate(normalizedWeekStart))
-          .lte('op_date', _fmtDate(weekEndDate));
+      final legacyProductionRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('production_runs')
+            .select('op_date,bale_material,bale_count')
+            .gte('op_date', _fmtDate(normalizedWeekStart))
+            .lte('op_date', _fmtDate(weekEndDate))
+            .order('op_date')
+            .order('id')
+            .range(from, to),
+        pageSize: 500,
+      );
 
-      final shipmentRows = await _supa
-          .from('inventory_movements_v2')
-          .select(
-            'op_date,unit_count,commercial_material:commercial_material_id(code,name)',
-          )
-          .eq('flow', 'OUT')
-          .eq('inventory_level', 'COMMERCIAL')
-          .gte('op_date', _fmtDate(normalizedWeekStart))
-          .lte('op_date', _fmtDate(weekEndDate));
+      final shipmentRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('inventory_movements_v2')
+            .select(
+              'op_date,unit_count,commercial_material:commercial_material_id(code,name)',
+            )
+            .eq('flow', 'OUT')
+            .eq('inventory_level', 'COMMERCIAL')
+            .gte('op_date', _fmtDate(normalizedWeekStart))
+            .lte('op_date', _fmtDate(weekEndDate))
+            .order('op_date')
+            .order('id')
+            .range(from, to),
+        pageSize: 500,
+      );
 
       final productionByType = <String, int>{};
       final shipmentByType = <String, int>{};

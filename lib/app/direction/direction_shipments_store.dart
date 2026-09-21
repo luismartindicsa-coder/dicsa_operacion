@@ -1,10 +1,15 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../maintenance/maintenance_statuses.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
+
+part 'direction_shipment_suggestions.dart';
+part 'direction_shipment_inventory.dart';
 
 const String _kDirectionShipmentPlansTable = 'direction_shipment_plans';
 const String _kDirectionCapacityImpactsTable =
@@ -398,6 +403,7 @@ class DirectionShipmentPlanProjection {
 
 class DirectionSuggestedShipmentRecord {
   final DateTime suggestedDate;
+  final int proposalIndex;
   final String clientName;
   final String materialCode;
   final DirectionShipmentMaterialScope materialScope;
@@ -407,17 +413,17 @@ class DirectionSuggestedShipmentRecord {
   final int projectedRemainingAfterQuantity;
   final int expectedFutureQuantity;
   final int currentFloorQuantity;
-  final int remainingGerenciaTargetQuantity;
+  final int remainingHistoricalDemandQuantity;
   final int historicalAverageQuantity;
   final int historicalShipmentCount;
   final DateTime? lastShipmentDate;
   final DirectionShipmentRisk risk;
   final String gerenciaBaleTypeKey;
   final String explanation;
-  final bool noteMatched;
 
   const DirectionSuggestedShipmentRecord({
     required this.suggestedDate,
+    this.proposalIndex = 0,
     required this.clientName,
     required this.materialCode,
     required this.materialScope,
@@ -427,14 +433,13 @@ class DirectionSuggestedShipmentRecord {
     required this.projectedRemainingAfterQuantity,
     required this.expectedFutureQuantity,
     required this.currentFloorQuantity,
-    required this.remainingGerenciaTargetQuantity,
+    required this.remainingHistoricalDemandQuantity,
     required this.historicalAverageQuantity,
     required this.historicalShipmentCount,
     required this.lastShipmentDate,
     required this.risk,
     required this.gerenciaBaleTypeKey,
     required this.explanation,
-    required this.noteMatched,
   });
 }
 
@@ -451,6 +456,8 @@ class DirectionShipmentPlanningBundle {
   final List<DirectionCapacityImpactSummary> impactSummaries;
   final List<DirectionCompactorMaintenanceAlert> maintenanceAlerts;
   final List<DirectionProductionHistoryRecord> productionHistory;
+  final DirectionShipmentSuggestionReport? suggestionReport;
+  final Map<String, dynamic>? savedProgramConditions;
 
   const DirectionShipmentPlanningBundle({
     required this.weekStartDate,
@@ -465,6 +472,8 @@ class DirectionShipmentPlanningBundle {
     required this.impactSummaries,
     required this.maintenanceAlerts,
     this.productionHistory = const [],
+    this.suggestionReport,
+    this.savedProgramConditions,
   });
 
   int get activeFloorMaterialCount =>
@@ -555,7 +564,8 @@ class DirectionShipmentsStore {
   ) async {
     final weekStart = _weekStartMonday(weekStartDate);
     final weekEnd = weekStart.add(const Duration(days: 5));
-    final historyStart = weekStart.subtract(const Duration(days: 42));
+    final historyStart = weekStart.subtract(const Duration(days: 112));
+    final asOf = DateTime.now();
     try {
       final results = await Future.wait<dynamic>([
         _loadShipmentRows(weekStart, weekEnd),
@@ -563,8 +573,12 @@ class DirectionShipmentsStore {
         _loadFloorCounts(),
         _loadProductionEvents(historyStart, weekEnd),
         _loadMaintenanceAlerts(weekStart),
-        _loadGerenciaShipmentTargets(weekStart),
-        _loadShipmentHistory(
+        _loadSavedProgramConditions(weekStart),
+        _loadSuggestionMovements(
+          weekStart.subtract(const Duration(days: 112)),
+          weekEnd,
+        ),
+        _loadShipmentRows(
           weekStart.subtract(const Duration(days: 112)),
           weekEnd,
         ),
@@ -577,8 +591,9 @@ class DirectionShipmentsStore {
       final events = results[3] as List<DirectionProductionHistoryRecord>;
       final maintenanceAlerts =
           results[4] as List<DirectionCompactorMaintenanceAlert>;
-      final gerenciaTargets = results[5] as List<_GerenciaShipmentTargetLine>;
-      final shipmentHistory = results[6] as List<_ShipmentHistoryEvent>;
+      final savedConditions = results[5] as Map<String, dynamic>?;
+      final movements = results[6] as List<DirectionShipmentMovement>;
+      final directionHistory = results[7] as List<DirectionShipmentPlanRecord>;
 
       final quantityByDateMaterial = _buildQuantityByDateMaterial(events);
       final quantityByDateMaterialShift = _buildQuantityByDateMaterialShift(
@@ -616,19 +631,26 @@ class DirectionShipmentsStore {
           )
           .toList(growable: false);
 
+      final suggestionReport = buildDirectionShipmentSuggestions(
+        weekStart: weekStart,
+        asOf: asOf,
+        shipments: directionHistory,
+        floorCounts: floorData.countsByMaterial,
+        floorCountedAt: floorData.countedAtByMaterial,
+        production: events,
+        impacts: impacts,
+        savedProgramConditions: savedConditions,
+        movements: movements,
+      );
+
       final projections = _buildProjections(
         shipments: shipments,
-        floorCounts: floorData.countsByMaterial,
+        floorCounts: {
+          ...floorData.countsByMaterial,
+          ...suggestionReport.currentFloorByMaterial,
+        },
         expectedDays: expectedDays,
-      );
-      final suggestedShipments = _buildSuggestedShipments(
-        weekStart: weekStart,
-        weekEnd: weekEnd,
-        shipments: shipments,
-        floorCounts: floorData.countsByMaterial,
-        expectedDays: expectedDays,
-        gerenciaTargets: gerenciaTargets,
-        shipmentHistory: shipmentHistory,
+        suggestionReport: suggestionReport,
       );
 
       return DirectionShipmentPlanningBundle(
@@ -636,7 +658,9 @@ class DirectionShipmentsStore {
         weekEndDate: weekEnd,
         shipments: shipments,
         projections: projections,
-        suggestedShipments: suggestedShipments,
+        suggestedShipments: suggestionReport.suggestions,
+        suggestionReport: suggestionReport,
+        savedProgramConditions: savedConditions,
         floorCountByMaterial: floorData.countsByMaterial,
         floorCountUpdatedAt: floorData.latestUpdatedAt,
         expectedDays: expectedDays,
@@ -805,28 +829,17 @@ class DirectionShipmentsStore {
         .toList(growable: false);
   }
 
-  static Future<List<_GerenciaShipmentTargetLine>> _loadGerenciaShipmentTargets(
+  static Future<Map<String, dynamic>?> _loadSavedProgramConditions(
     DateTime weekStart,
   ) async {
-    final planRow = await _supa
-        .from('gerencia_bale_weekly_plans')
-        .select('id')
-        .eq('week_start_date', _fmtDate(weekStart))
-        .maybeSingle();
-    if (planRow == null) {
-      return const <_GerenciaShipmentTargetLine>[];
-    }
-    final lineRows = await _supa
-        .from('gerencia_bale_weekly_plan_lines')
-        .select('bale_type_key,sort_order,shipment_target_bales,notes')
-        .eq('plan_id', planRow['id'].toString())
-        .order('sort_order', ascending: true)
-        .order('bale_type_key', ascending: true);
-    return (lineRows as List<dynamic>)
-        .cast<Map<String, dynamic>>()
-        .map(_GerenciaShipmentTargetLine.fromRow)
-        .where((line) => line.shipmentTargetBales > 0)
-        .toList(growable: false);
+    final rows = await _supa
+        .from('direction_operating_programs')
+        .select('conditions')
+        .eq('week_start', _fmtDate(weekStart))
+        .order('version', ascending: false)
+        .limit(1);
+    if (rows.isEmpty || rows.first['conditions'] is! Map) return null;
+    return Map<String, dynamic>.from(rows.first['conditions'] as Map);
   }
 
   static Future<_FloorCountLoad> _loadFloorCounts() async {
@@ -837,6 +850,7 @@ class DirectionShipmentsStore {
             'source_kind,material,commercial_material_code,count_units,weight_kg,'
             'counted_at,updated_at',
           )
+          .eq('site', 'DICSA_CELAYA')
           .inFilter('source_kind', const [
             'commercial_material',
             'operational_material',
@@ -864,6 +878,8 @@ class DirectionShipmentsStore {
     }
 
     final countsByMaterial = <String, int>{};
+    final countedAtByMaterial = <String, DateTime>{};
+    final undatedMaterials = <String>{};
     DateTime? latestUpdatedAt;
     for (final row in rows.cast<Map<String, dynamic>>()) {
       final sourceKind = (row['source_kind'] ?? '').toString().trim();
@@ -918,6 +934,12 @@ class DirectionShipmentsStore {
         ifAbsent: () => quantity,
       );
       final countedAt = _tryParseDateTime(row['counted_at']);
+      if (countedAt == null) {
+        undatedMaterials.add(materialCode);
+      } else if (!countedAtByMaterial.containsKey(materialCode) ||
+          countedAt.isBefore(countedAtByMaterial[materialCode]!)) {
+        countedAtByMaterial[materialCode] = countedAt;
+      }
       final updatedAt = _tryParseDateTime(row['updated_at']);
       final candidate = updatedAt == null
           ? countedAt
@@ -932,10 +954,12 @@ class DirectionShipmentsStore {
     return _FloorCountLoad(
       countsByMaterial: countsByMaterial,
       latestUpdatedAt: latestUpdatedAt,
+      countedAtByMaterial: countedAtByMaterial
+        ..removeWhere((key, _) => undatedMaterials.contains(key)),
     );
   }
 
-  static Future<List<_ShipmentHistoryEvent>> _loadShipmentHistory(
+  static Future<List<DirectionShipmentMovement>> _loadSuggestionMovements(
     DateTime historyStart,
     DateTime weekEnd,
   ) async {
@@ -943,48 +967,74 @@ class DirectionShipmentsStore {
       (from, to) => _supa
           .from('inventory_movements_v2')
           .select(
-            'op_date,unit_count,counterparty,'
+            'id,op_date,created_at,flow,inventory_level,origin_type,unit_count,weight_kg,net_kg,counterparty,'
+            'general_material:general_material_id(code),'
             'commercial_material:commercial_material_id(code)',
           )
-          .eq('flow', 'OUT')
-          .eq('inventory_level', 'COMMERCIAL')
           .gte('op_date', _fmtDate(historyStart))
           .lte('op_date', _fmtDate(weekEnd))
-          .order('op_date', ascending: true)
+          .order('op_date')
+          .order('id')
           .range(from, to),
     );
+    return rows.map(DirectionShipmentMovement.fromRow).toList();
+  }
 
-    final history = <_ShipmentHistoryEvent>[];
-    for (final row in rows) {
-      final quantity = ((row['unit_count'] as num?) ?? 0).toInt();
-      if (quantity <= 0) continue;
-      final clientName = _canonicalPriorityClientName(
-        row['counterparty']?.toString(),
-      );
-      if (clientName == null) continue;
-      final commercial = (row['commercial_material'] as Map?)
-          ?.cast<String, dynamic>();
-      final materialCode = _normalizePlanningMaterialCode(
-        commercial?['code']?.toString(),
-      );
-      final option = materialCode == null
-          ? null
-          : directionShipmentMaterialByCode(materialCode);
-      final baleTypeKey = materialCode == null
-          ? null
-          : _gerenciaBaleTypeKeyForMaterial(materialCode);
-      if (option == null || !option.isPacked || baleTypeKey == null) continue;
-      history.add(
-        _ShipmentHistoryEvent(
-          date: _parseDate(row['op_date']),
-          clientName: clientName,
-          materialCode: option.code,
-          baleTypeKey: baleTypeKey,
-          quantity: quantity,
-        ),
+  /// One atomic insert; stable IDs also make retries of the same review safe.
+  static Future<void> acceptSuggestedShipments({
+    required DirectionShipmentSuggestionReport reviewed,
+    required List<DirectionSuggestedShipmentRecord> selected,
+    required bool confirmForProgram,
+  }) async {
+    if (selected.isEmpty) return;
+    final fresh = (await loadWeek(reviewed.weekStart)).suggestionReport!;
+    final rows = prepareSuggestedShipmentRows(
+      reviewed: reviewed,
+      fresh: fresh,
+      selected: selected,
+      confirmForProgram: confirmForProgram,
+    );
+    await _supa
+        .from(_kDirectionShipmentPlansTable)
+        .upsert(rows, onConflict: 'id', ignoreDuplicates: true);
+  }
+
+  static List<Map<String, dynamic>> prepareSuggestedShipmentRows({
+    required DirectionShipmentSuggestionReport reviewed,
+    required DirectionShipmentSuggestionReport fresh,
+    required List<DirectionSuggestedShipmentRecord> selected,
+    required bool confirmForProgram,
+  }) {
+    final allowed = fresh.suggestions.map(directionSuggestionKey).toSet();
+    if (fresh.sourceKey != reviewed.sourceKey ||
+        selected.any((row) => !allowed.contains(directionSuggestionKey(row)))) {
+      throw StateError(
+        'Los datos de la semana cambiaron. Abre Embarques sugeridos para revisar la propuesta actualizada.',
       );
     }
-    return history;
+    final rows = <String, Map<String, dynamic>>{};
+    for (final suggestion in selected) {
+      final key = directionSuggestionKey(suggestion);
+      final id = const Uuid().v5(
+        '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
+        'dicsa-suggested:${reviewed.sourceKey}:$key',
+      );
+      rows[id] = {
+        'id': id,
+        'ship_date': _fmtDate(suggestion.suggestedDate),
+        'client_name': suggestion.clientName,
+        'commercial_material_code': suggestion.materialCode,
+        'planning_material_code': suggestion.materialCode,
+        'material_scope': 'commercial',
+        'quantity_unit': 'PACAS',
+        'planned_units': suggestion.suggestedQuantity,
+        'priority': 'normal',
+        'status': confirmForProgram ? 'confirmado' : 'planeado',
+        'notes':
+            'Propuesta semanal ${_fmtDate(reviewed.weekStart)}. ${suggestion.explanation}',
+      };
+    }
+    return rows.values.toList();
   }
 
   static Future<List<DirectionProductionHistoryRecord>> _loadProductionEvents(
@@ -995,7 +1045,7 @@ class DirectionShipmentsStore {
       (from, to) => _supa
           .from('material_transformation_run_outputs_v2')
           .select(
-            'id,output_weight_kg,output_unit_count,notes,'
+            'id,created_at,output_weight_kg,output_unit_count,notes,'
             'commercial_material:commercial_material_id('
             'code,general_material:general_material_id(code)'
             '),'
@@ -1042,6 +1092,7 @@ class DirectionShipmentsStore {
             date: opDate,
             materialCode: commercialOption.code,
             quantity: outputUnits,
+            recordedAt: _tryParseDateTime(row['created_at']),
             shiftKey: shiftKey,
             compactadoraKey: machineKey,
           ),
@@ -1081,7 +1132,7 @@ class DirectionShipmentsStore {
     final legacyRows = await fetchAllSupabaseRows(
       (from, to) => _supa
           .from('production_runs')
-          .select('op_date,shift,bale_material,bale_count,notes')
+          .select('op_date,created_at,shift,bale_material,bale_count,notes')
           .gte('op_date', _fmtDate(historyStart))
           .lte('op_date', _fmtDate(weekEnd))
           .order('op_date', ascending: true)
@@ -1112,6 +1163,7 @@ class DirectionShipmentsStore {
           date: _parseDate(row['op_date']),
           materialCode: option.code,
           quantity: count,
+          recordedAt: _tryParseDateTime(row['created_at']),
           shiftKey: _normalizeShiftKey(row['shift']?.toString()),
           compactadoraKey: _compactadoraKeyFromText(row['notes']?.toString()),
           source: 'production_runs',
@@ -1360,6 +1412,7 @@ class DirectionShipmentsStore {
     required List<DirectionShipmentPlanRecord> shipments,
     required Map<String, int> floorCounts,
     required List<DirectionProductionExpectationDay> expectedDays,
+    DirectionShipmentSuggestionReport? suggestionReport,
   }) {
     final today = _dateOnly(DateTime.now());
     final sorted = shipments.toList(growable: false)
@@ -1409,28 +1462,37 @@ class DirectionShipmentsStore {
         continue;
       }
 
-      final expectedFuture = expectedDays
-          .where(
-            (day) =>
-                !day.date.isBefore(today) && !day.date.isAfter(plan.shipDate),
-          )
-          .fold<int>(
-            0,
-            (sum, day) =>
-                sum +
-                _expectedShipmentUsableQuantityForDay(
-                  day: day,
-                  materialCode: materialCode,
-                  shipDate: plan.shipDate,
-                ),
-          );
+      final expectedFuture =
+          suggestionReport != null &&
+              _suggestionMaterials.contains(materialCode)
+          ? suggestionReport.productionThrough(materialCode, plan.shipDate)
+          : expectedDays
+                .where(
+                  (day) =>
+                      !day.date.isBefore(today) &&
+                      !day.date.isAfter(plan.shipDate),
+                )
+                .fold<int>(
+                  0,
+                  (sum, day) =>
+                      sum +
+                      _expectedShipmentUsableQuantityForDay(
+                        day: day,
+                        materialCode: materialCode,
+                        shipDate: plan.shipDate,
+                      ),
+                );
       final projectedBefore = baseFloor + expectedFuture - priorCommitted;
       final projectedAfter = projectedBefore - plan.plannedQuantity;
-      final risk = _riskForPlan(
-        plan: plan,
-        projectedAfter: projectedAfter,
-        floorCounts: floorCounts,
-      );
+      final risk =
+          suggestionReport?.estimatedFloorMaterials.contains(materialCode) ==
+              true
+          ? DirectionShipmentRisk.unknown
+          : _riskForPlan(
+              plan: plan,
+              projectedAfter: projectedAfter,
+              floorCounts: floorCounts,
+            );
       projections.add(
         DirectionShipmentPlanProjection(
           plan: plan,
@@ -1445,172 +1507,6 @@ class DirectionShipmentsStore {
           priorCommitted + plan.plannedQuantity;
     }
     return projections;
-  }
-
-  static List<DirectionSuggestedShipmentRecord> _buildSuggestedShipments({
-    required DateTime weekStart,
-    required DateTime weekEnd,
-    required List<DirectionShipmentPlanRecord> shipments,
-    required Map<String, int> floorCounts,
-    required List<DirectionProductionExpectationDay> expectedDays,
-    required List<_GerenciaShipmentTargetLine> gerenciaTargets,
-    required List<_ShipmentHistoryEvent> shipmentHistory,
-  }) {
-    final today = _dateOnly(DateTime.now());
-    if (weekEnd.isBefore(today) || gerenciaTargets.isEmpty) {
-      return const <DirectionSuggestedShipmentRecord>[];
-    }
-
-    final candidateDates = <DateTime>[
-      for (
-        var day = today.isAfter(weekStart) ? today : weekStart;
-        !day.isAfter(weekEnd);
-        day = day.add(const Duration(days: 1))
-      )
-        day,
-    ];
-    if (candidateDates.isEmpty) {
-      return const <DirectionSuggestedShipmentRecord>[];
-    }
-
-    final actualByType = <String, int>{};
-    for (final event in shipmentHistory) {
-      if (event.date.isBefore(weekStart) || event.date.isAfter(weekEnd)) {
-        continue;
-      }
-      actualByType.update(
-        event.baleTypeKey,
-        (value) => value + event.quantity,
-        ifAbsent: () => event.quantity,
-      );
-    }
-
-    final activeShipments = shipments
-        .where((plan) => plan.isActive)
-        .toList(growable: false);
-    final plannedByType = <String, int>{};
-    for (final plan in activeShipments) {
-      final baleTypeKey = _gerenciaBaleTypeKeyForMaterial(plan.materialCode);
-      if (baleTypeKey == null) continue;
-      plannedByType.update(
-        baleTypeKey,
-        (value) => value + plan.plannedQuantity,
-        ifAbsent: () => plan.plannedQuantity,
-      );
-    }
-
-    final materialStats = _buildShipmentHistoryStatsByMaterial(shipmentHistory);
-    final typeStats = _buildShipmentHistoryStatsByType(shipmentHistory);
-    final suggestions = <DirectionSuggestedShipmentRecord>[];
-
-    for (final target in gerenciaTargets) {
-      var remainingTarget = math.max(
-        0,
-        target.shipmentTargetBales -
-            (actualByType[target.baleTypeKey] ?? 0) -
-            (plannedByType[target.baleTypeKey] ?? 0),
-      );
-      if (remainingTarget <= 0) continue;
-      final materialChoices = _candidateMaterialsForGerenciaType(
-        target.baleTypeKey,
-      );
-      if (materialChoices.isEmpty) continue;
-
-      final candidates = _buildSuggestionCandidates(
-        baleTypeKey: target.baleTypeKey,
-        targetNotes: target.notes,
-        materialChoices: materialChoices,
-        floorCounts: floorCounts,
-        expectedDays: expectedDays,
-        materialStats: materialStats,
-        typeStats: typeStats,
-      );
-      if (candidates.isEmpty) continue;
-
-      for (var pass = 0; pass < 2 && remainingTarget > 0; pass++) {
-        for (final candidate in candidates) {
-          if (remainingTarget <= 0 || suggestions.length >= 8) {
-            break;
-          }
-          final desiredQuantity = _desiredSuggestedBaleQuantity(
-            remainingTarget: remainingTarget,
-            historicalAverageQuantity: candidate.historicalAverageQuantity,
-          );
-          final dateFit = _selectSuggestionDateFit(
-            materialCode: candidate.materialCode,
-            quantityUnit: DirectionShipmentQuantityUnit.bales,
-            desiredQuantity: desiredQuantity,
-            candidateDates: candidateDates,
-            floorCounts: floorCounts,
-            expectedDays: expectedDays,
-            activeShipments: activeShipments,
-            acceptedSuggestions: suggestions,
-          );
-          if (dateFit == null) continue;
-          final suggestedQuantity = math.min(
-            remainingTarget,
-            dateFit.maxRecommendedQuantity > 0
-                ? math.min(desiredQuantity, dateFit.maxRecommendedQuantity)
-                : math.min(desiredQuantity, dateFit.maxPossibleQuantity),
-          );
-          if (suggestedQuantity < 8) continue;
-          final projectedAfter =
-              dateFit.projectedAvailableBeforeQuantity - suggestedQuantity;
-          final risk = _riskForSuggestedQuantity(
-            materialCode: candidate.materialCode,
-            quantityUnit: DirectionShipmentQuantityUnit.bales,
-            plannedQuantity: suggestedQuantity,
-            shipDate: dateFit.date,
-            projectedAfter: projectedAfter,
-            floorCounts: floorCounts,
-          );
-          suggestions.add(
-            DirectionSuggestedShipmentRecord(
-              suggestedDate: dateFit.date,
-              clientName: candidate.clientName,
-              materialCode: candidate.materialCode,
-              materialScope: DirectionShipmentMaterialScope.commercial,
-              quantityUnit: DirectionShipmentQuantityUnit.bales,
-              suggestedQuantity: suggestedQuantity,
-              projectedAvailableBeforeQuantity:
-                  dateFit.projectedAvailableBeforeQuantity,
-              projectedRemainingAfterQuantity: projectedAfter,
-              expectedFutureQuantity: dateFit.expectedFutureQuantity,
-              currentFloorQuantity: floorCounts[candidate.materialCode] ?? 0,
-              remainingGerenciaTargetQuantity: remainingTarget,
-              historicalAverageQuantity: candidate.historicalAverageQuantity,
-              historicalShipmentCount: candidate.historicalShipmentCount,
-              lastShipmentDate: candidate.lastShipmentDate,
-              risk: risk,
-              gerenciaBaleTypeKey: target.baleTypeKey,
-              explanation: _buildSuggestionExplanation(
-                targetBaleTypeKey: target.baleTypeKey,
-                noteMatched: candidate.noteMatched,
-                historicalShipmentCount: candidate.historicalShipmentCount,
-                expectedFutureQuantity: dateFit.expectedFutureQuantity,
-                projectedBeforeQuantity:
-                    dateFit.projectedAvailableBeforeQuantity,
-              ),
-              noteMatched: candidate.noteMatched,
-            ),
-          );
-          remainingTarget -= suggestedQuantity;
-        }
-      }
-    }
-
-    suggestions.sort((a, b) {
-      final dateCompare = a.suggestedDate.compareTo(b.suggestedDate);
-      if (dateCompare != 0) return dateCompare;
-      final clientCompare = _priorityClientRank(
-        a.clientName,
-      ).compareTo(_priorityClientRank(b.clientName));
-      if (clientCompare != 0) return clientCompare;
-      return _materialSortOrder(
-        a.materialCode,
-      ).compareTo(_materialSortOrder(b.materialCode));
-    });
-    return suggestions;
   }
 
   static Map<String, List<DirectionProductionCapacityImpactRecord>>
@@ -1651,31 +1547,37 @@ class DirectionShipmentsStore {
 class _FloorCountLoad {
   final Map<String, int> countsByMaterial;
   final DateTime? latestUpdatedAt;
+  final Map<String, DateTime> countedAtByMaterial;
 
   const _FloorCountLoad({
     required this.countsByMaterial,
     required this.latestUpdatedAt,
+    required this.countedAtByMaterial,
   });
 }
 
-class _GerenciaShipmentTargetLine {
+class DirectionShipmentTarget {
   final String baleTypeKey;
   final int sortOrder;
   final int shipmentTargetBales;
+  final int productionTargetBales;
   final String notes;
 
-  const _GerenciaShipmentTargetLine({
+  const DirectionShipmentTarget({
     required this.baleTypeKey,
     required this.sortOrder,
     required this.shipmentTargetBales,
+    required this.productionTargetBales,
     required this.notes,
   });
 
-  factory _GerenciaShipmentTargetLine.fromRow(Map<String, dynamic> row) {
-    return _GerenciaShipmentTargetLine(
+  factory DirectionShipmentTarget.fromRow(Map<String, dynamic> row) {
+    return DirectionShipmentTarget(
       baleTypeKey: (row['bale_type_key'] ?? '').toString().trim(),
       sortOrder: (row['sort_order'] as num?)?.toInt() ?? 100,
       shipmentTargetBales: (row['shipment_target_bales'] as num?)?.toInt() ?? 0,
+      productionTargetBales:
+          (row['production_target_bales'] as num?)?.toInt() ?? 0,
       notes: (row['notes'] ?? '').toString().trim(),
     );
   }
@@ -1684,6 +1586,7 @@ class _GerenciaShipmentTargetLine {
 /// A dated output recorded by Operación, with its original unit and source.
 class DirectionProductionHistoryRecord {
   final DateTime date;
+  final DateTime? recordedAt;
   final String materialCode;
   final int quantity;
   final String shiftKey;
@@ -1692,84 +1595,12 @@ class DirectionProductionHistoryRecord {
 
   const DirectionProductionHistoryRecord({
     required this.date,
+    this.recordedAt,
     required this.materialCode,
     required this.quantity,
     required this.shiftKey,
     this.compactadoraKey,
     this.source = 'material_transformation_runs_v2',
-  });
-}
-
-class _ShipmentHistoryEvent {
-  final DateTime date;
-  final String clientName;
-  final String materialCode;
-  final String baleTypeKey;
-  final int quantity;
-
-  const _ShipmentHistoryEvent({
-    required this.date,
-    required this.clientName,
-    required this.materialCode,
-    required this.baleTypeKey,
-    required this.quantity,
-  });
-}
-
-class _ShipmentHistoryStats {
-  final String clientName;
-  final String key;
-  final int shipmentCount;
-  final int totalQuantity;
-  final DateTime? lastShipmentDate;
-  final Map<int, int> weekdayCounts;
-
-  const _ShipmentHistoryStats({
-    required this.clientName,
-    required this.key,
-    required this.shipmentCount,
-    required this.totalQuantity,
-    required this.lastShipmentDate,
-    required this.weekdayCounts,
-  });
-
-  int get averageQuantity =>
-      shipmentCount <= 0 ? 0 : (totalQuantity / shipmentCount).round();
-}
-
-class _SuggestionCandidate {
-  final String clientName;
-  final String materialCode;
-  final int historicalAverageQuantity;
-  final int historicalShipmentCount;
-  final DateTime? lastShipmentDate;
-  final bool noteMatched;
-  final double score;
-
-  const _SuggestionCandidate({
-    required this.clientName,
-    required this.materialCode,
-    required this.historicalAverageQuantity,
-    required this.historicalShipmentCount,
-    required this.lastShipmentDate,
-    required this.noteMatched,
-    required this.score,
-  });
-}
-
-class _SuggestionDateFit {
-  final DateTime date;
-  final int projectedAvailableBeforeQuantity;
-  final int expectedFutureQuantity;
-  final int maxRecommendedQuantity;
-  final int maxPossibleQuantity;
-
-  const _SuggestionDateFit({
-    required this.date,
-    required this.projectedAvailableBeforeQuantity,
-    required this.expectedFutureQuantity,
-    required this.maxRecommendedQuantity,
-    required this.maxPossibleQuantity,
   });
 }
 
@@ -1984,337 +1815,6 @@ int _expectedShipmentUsableQuantityForDay({
       : day.expectedForMaterial(materialCode);
 }
 
-Map<String, _ShipmentHistoryStats> _buildShipmentHistoryStatsByMaterial(
-  List<_ShipmentHistoryEvent> history,
-) {
-  final totals = <String, int>{};
-  final counts = <String, int>{};
-  final lastDates = <String, DateTime>{};
-  final weekdayCounts = <String, Map<int, int>>{};
-  final clientNames = <String, String>{};
-  for (final event in history) {
-    final key = '${event.clientName}|${event.materialCode}';
-    totals.update(
-      key,
-      (value) => value + event.quantity,
-      ifAbsent: () => event.quantity,
-    );
-    counts.update(key, (value) => value + 1, ifAbsent: () => 1);
-    clientNames[key] = event.clientName;
-    final lastDate = lastDates[key];
-    if (lastDate == null || event.date.isAfter(lastDate)) {
-      lastDates[key] = event.date;
-    }
-    final weekdayBucket = weekdayCounts.putIfAbsent(key, () => <int, int>{});
-    weekdayBucket.update(
-      event.date.weekday,
-      (value) => value + 1,
-      ifAbsent: () => 1,
-    );
-  }
-  return {
-    for (final key in counts.keys)
-      key: _ShipmentHistoryStats(
-        clientName: clientNames[key] ?? '',
-        key: key,
-        shipmentCount: counts[key] ?? 0,
-        totalQuantity: totals[key] ?? 0,
-        lastShipmentDate: lastDates[key],
-        weekdayCounts: Map<int, int>.unmodifiable(
-          weekdayCounts[key] ?? const {},
-        ),
-      ),
-  };
-}
-
-Map<String, _ShipmentHistoryStats> _buildShipmentHistoryStatsByType(
-  List<_ShipmentHistoryEvent> history,
-) {
-  final totals = <String, int>{};
-  final counts = <String, int>{};
-  final lastDates = <String, DateTime>{};
-  final weekdayCounts = <String, Map<int, int>>{};
-  final clientNames = <String, String>{};
-  for (final event in history) {
-    final key = '${event.clientName}|${event.baleTypeKey}';
-    totals.update(
-      key,
-      (value) => value + event.quantity,
-      ifAbsent: () => event.quantity,
-    );
-    counts.update(key, (value) => value + 1, ifAbsent: () => 1);
-    clientNames[key] = event.clientName;
-    final lastDate = lastDates[key];
-    if (lastDate == null || event.date.isAfter(lastDate)) {
-      lastDates[key] = event.date;
-    }
-    final weekdayBucket = weekdayCounts.putIfAbsent(key, () => <int, int>{});
-    weekdayBucket.update(
-      event.date.weekday,
-      (value) => value + 1,
-      ifAbsent: () => 1,
-    );
-  }
-  return {
-    for (final key in counts.keys)
-      key: _ShipmentHistoryStats(
-        clientName: clientNames[key] ?? '',
-        key: key,
-        shipmentCount: counts[key] ?? 0,
-        totalQuantity: totals[key] ?? 0,
-        lastShipmentDate: lastDates[key],
-        weekdayCounts: Map<int, int>.unmodifiable(
-          weekdayCounts[key] ?? const {},
-        ),
-      ),
-  };
-}
-
-List<_SuggestionCandidate> _buildSuggestionCandidates({
-  required String baleTypeKey,
-  required String targetNotes,
-  required List<String> materialChoices,
-  required Map<String, int> floorCounts,
-  required List<DirectionProductionExpectationDay> expectedDays,
-  required Map<String, _ShipmentHistoryStats> materialStats,
-  required Map<String, _ShipmentHistoryStats> typeStats,
-}) {
-  final candidates = <_SuggestionCandidate>[];
-  for (final clientName in _kPriorityShipmentClients) {
-    final noteMatched = _notesMentionClient(targetNotes, clientName);
-    _SuggestionCandidate? bestCandidate;
-    for (final materialCode in materialChoices) {
-      final directStats = materialStats['$clientName|$materialCode'];
-      final familyStats = typeStats['$clientName|$baleTypeKey'];
-      if (directStats == null && familyStats == null && !noteMatched) {
-        continue;
-      }
-      final projectedAtWeekEnd = _expectedFutureQuantityThroughDate(
-        expectedDays: expectedDays,
-        materialCode: materialCode,
-        shipDate: expectedDays.isEmpty
-            ? _dateOnly(DateTime.now())
-            : expectedDays.last.date,
-      );
-      final historyCount =
-          directStats?.shipmentCount ?? familyStats?.shipmentCount ?? 0;
-      final historyAverage =
-          directStats?.averageQuantity ?? familyStats?.averageQuantity ?? 0;
-      final lastShipmentDate =
-          directStats?.lastShipmentDate ?? familyStats?.lastShipmentDate;
-      final availability =
-          (floorCounts[materialCode] ?? 0) + projectedAtWeekEnd;
-      final score =
-          (_kPriorityShipmentClients.length - _priorityClientRank(clientName)) *
-              100 +
-          (noteMatched ? 40 : 0) +
-          (historyCount * 6) +
-          historyAverage +
-          availability;
-      final candidate = _SuggestionCandidate(
-        clientName: clientName,
-        materialCode: materialCode,
-        historicalAverageQuantity: historyAverage,
-        historicalShipmentCount: historyCount,
-        lastShipmentDate: lastShipmentDate,
-        noteMatched: noteMatched,
-        score: score.toDouble(),
-      );
-      if (bestCandidate == null || candidate.score > bestCandidate.score) {
-        bestCandidate = candidate;
-      }
-    }
-    if (bestCandidate != null) {
-      candidates.add(bestCandidate);
-    }
-  }
-  candidates.sort((a, b) {
-    final clientCompare = _priorityClientRank(
-      a.clientName,
-    ).compareTo(_priorityClientRank(b.clientName));
-    if (clientCompare != 0) return clientCompare;
-    return b.score.compareTo(a.score);
-  });
-  return candidates;
-}
-
-_SuggestionDateFit? _selectSuggestionDateFit({
-  required String materialCode,
-  required DirectionShipmentQuantityUnit quantityUnit,
-  required int desiredQuantity,
-  required List<DateTime> candidateDates,
-  required Map<String, int> floorCounts,
-  required List<DirectionProductionExpectationDay> expectedDays,
-  required List<DirectionShipmentPlanRecord> activeShipments,
-  required List<DirectionSuggestedShipmentRecord> acceptedSuggestions,
-}) {
-  _SuggestionDateFit? bestFit;
-  for (final date in candidateDates) {
-    final priorCommitted = _committedQuantityThroughDate(
-      materialCode: materialCode,
-      shipDate: date,
-      activeShipments: activeShipments,
-      acceptedSuggestions: acceptedSuggestions,
-    );
-    final expectedFuture = _expectedFutureQuantityThroughDate(
-      expectedDays: expectedDays,
-      materialCode: materialCode,
-      shipDate: date,
-    );
-    final projectedBefore =
-        (floorCounts[materialCode] ?? 0) + expectedFuture - priorCommitted;
-    final maxPossible = math.max(0, projectedBefore);
-    final safetyMargin = quantityUnit == DirectionShipmentQuantityUnit.kilograms
-        ? 250
-        : 5;
-    final maxRecommended = math.max(0, projectedBefore - safetyMargin);
-    final fit = _SuggestionDateFit(
-      date: date,
-      projectedAvailableBeforeQuantity: projectedBefore,
-      expectedFutureQuantity: expectedFuture,
-      maxRecommendedQuantity: maxRecommended,
-      maxPossibleQuantity: maxPossible,
-    );
-    if (maxRecommended >= desiredQuantity) {
-      return fit;
-    }
-    if (bestFit == null ||
-        fit.maxRecommendedQuantity > bestFit.maxRecommendedQuantity ||
-        (fit.maxRecommendedQuantity == bestFit.maxRecommendedQuantity &&
-            fit.maxPossibleQuantity > bestFit.maxPossibleQuantity) ||
-        (fit.maxRecommendedQuantity == bestFit.maxRecommendedQuantity &&
-            fit.maxPossibleQuantity == bestFit.maxPossibleQuantity &&
-            fit.date.isBefore(bestFit.date))) {
-      bestFit = fit;
-    }
-  }
-  if (bestFit == null || bestFit.maxPossibleQuantity <= 0) {
-    return null;
-  }
-  return bestFit;
-}
-
-int _committedQuantityThroughDate({
-  required String materialCode,
-  required DateTime shipDate,
-  required List<DirectionShipmentPlanRecord> activeShipments,
-  required List<DirectionSuggestedShipmentRecord> acceptedSuggestions,
-}) {
-  var committed = 0;
-  for (final plan in activeShipments) {
-    if (plan.materialCode != materialCode || plan.shipDate.isAfter(shipDate)) {
-      continue;
-    }
-    committed += plan.plannedQuantity;
-  }
-  for (final suggestion in acceptedSuggestions) {
-    if (suggestion.materialCode != materialCode ||
-        suggestion.suggestedDate.isAfter(shipDate)) {
-      continue;
-    }
-    committed += suggestion.suggestedQuantity;
-  }
-  return committed;
-}
-
-int _expectedFutureQuantityThroughDate({
-  required List<DirectionProductionExpectationDay> expectedDays,
-  required String materialCode,
-  required DateTime shipDate,
-}) {
-  final today = _dateOnly(DateTime.now());
-  return expectedDays
-      .where((day) => !day.date.isBefore(today) && !day.date.isAfter(shipDate))
-      .fold<int>(
-        0,
-        (sum, day) =>
-            sum +
-            _expectedShipmentUsableQuantityForDay(
-              day: day,
-              materialCode: materialCode,
-              shipDate: shipDate,
-            ),
-      );
-}
-
-int _desiredSuggestedBaleQuantity({
-  required int remainingTarget,
-  required int historicalAverageQuantity,
-}) {
-  if (remainingTarget <= 0) return 0;
-  if (historicalAverageQuantity > 0) {
-    return math.max(8, math.min(remainingTarget, historicalAverageQuantity));
-  }
-  if (remainingTarget >= 34) return 36;
-  if (remainingTarget >= 17) return 18;
-  return math.max(8, remainingTarget);
-}
-
-DirectionShipmentRisk _riskForSuggestedQuantity({
-  required String materialCode,
-  required DirectionShipmentQuantityUnit quantityUnit,
-  required int plannedQuantity,
-  required DateTime shipDate,
-  required int projectedAfter,
-  required Map<String, int> floorCounts,
-}) {
-  final today = _dateOnly(DateTime.now());
-  if (!floorCounts.containsKey(materialCode)) {
-    return DirectionShipmentRisk.unknown;
-  }
-  if (shipDate.isBefore(today)) {
-    return projectedAfter < 0
-        ? DirectionShipmentRisk.atRisk
-        : DirectionShipmentRisk.overdue;
-  }
-  if (projectedAfter < 0) {
-    return DirectionShipmentRisk.atRisk;
-  }
-  final margin = quantityUnit == DirectionShipmentQuantityUnit.kilograms
-      ? math.max(250, (plannedQuantity * 0.12).round())
-      : math.max(5, (plannedQuantity * 0.15).round());
-  if (projectedAfter < margin) {
-    return DirectionShipmentRisk.tight;
-  }
-  return DirectionShipmentRisk.good;
-}
-
-List<String> _candidateMaterialsForGerenciaType(String baleTypeKey) {
-  switch (baleTypeKey.trim().toLowerCase()) {
-    case 'limpio':
-      return const <String>['PACA_LIMPIA'];
-    case 'americano':
-      return const <String>['PACA_AMERICANA'];
-    case 'revuelto':
-      return const <String>['PACA_NACIONAL', 'PACA_BASURA'];
-    default:
-      return const <String>[];
-  }
-}
-
-String _buildSuggestionExplanation({
-  required String targetBaleTypeKey,
-  required bool noteMatched,
-  required int historicalShipmentCount,
-  required int expectedFutureQuantity,
-  required int projectedBeforeQuantity,
-}) {
-  final parts = <String>[
-    'Meta ${_gerenciaBaleTypeLabel(targetBaleTypeKey)} pendiente',
-    'proyección ${projectedBeforeQuantity.toString()} pacas',
-  ];
-  if (expectedFutureQuantity > 0) {
-    parts.add('+${expectedFutureQuantity.toString()} pacas futuras');
-  }
-  if (historicalShipmentCount > 0) {
-    parts.add('$historicalShipmentCount salidas históricas');
-  }
-  if (noteMatched) {
-    parts.add('mencionado en nota de Gerencia');
-  }
-  return parts.join(' · ');
-}
-
 String _gerenciaBaleTypeLabel(String baleTypeKey) {
   switch (baleTypeKey.trim().toLowerCase()) {
     case 'limpio':
@@ -2348,21 +1848,12 @@ int _priorityClientRank(String clientName) {
   return index == -1 ? _kPriorityShipmentClients.length + 1 : index;
 }
 
-bool _notesMentionClient(String notes, String clientName) {
-  final normalizedNotes = _normalizeSearchText(notes);
-  if (normalizedNotes.isEmpty) return false;
-  final aliases = _kPriorityShipmentClientAliases[clientName] ?? <String>[];
-  return aliases.any(
-    (alias) => normalizedNotes.contains(_normalizeSearchText(alias)),
-  );
-}
-
 String? _canonicalPriorityClientName(String? rawClientName) {
   final normalized = _normalizeSearchText(rawClientName);
   if (normalized.isEmpty) return null;
   for (final entry in _kPriorityShipmentClientAliases.entries) {
     for (final alias in entry.value) {
-      if (normalized.contains(_normalizeSearchText(alias))) {
+      if (normalized == _normalizeSearchText(alias)) {
         return entry.key;
       }
     }
@@ -2530,4 +2021,33 @@ String _fmtDate(DateTime date) {
   final mm = normalized.month.toString().padLeft(2, '0');
   final dd = normalized.day.toString().padLeft(2, '0');
   return '${normalized.year}-$mm-$dd';
+}
+
+DirectionShipmentRisk _riskForSuggestedQuantity({
+  required String materialCode,
+  required DirectionShipmentQuantityUnit quantityUnit,
+  required int plannedQuantity,
+  required DateTime shipDate,
+  required int projectedAfter,
+  required Map<String, int> floorCounts,
+}) {
+  final today = _dateOnly(DateTime.now());
+  if (!floorCounts.containsKey(materialCode)) {
+    return DirectionShipmentRisk.unknown;
+  }
+  if (shipDate.isBefore(today)) {
+    return projectedAfter < 0
+        ? DirectionShipmentRisk.atRisk
+        : DirectionShipmentRisk.overdue;
+  }
+  if (projectedAfter < 0) {
+    return DirectionShipmentRisk.atRisk;
+  }
+  final margin = quantityUnit == DirectionShipmentQuantityUnit.kilograms
+      ? math.max(250, (plannedQuantity * 0.12).round())
+      : math.max(5, (plannedQuantity * 0.15).round());
+  if (projectedAfter < margin) {
+    return DirectionShipmentRisk.tight;
+  }
+  return DirectionShipmentRisk.good;
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
+import '../management_reports/management_supervision_page.dart';
 import 'contabilidad_area_chrome.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
@@ -228,6 +231,19 @@ class _ContabilidadDashboardWorkspace extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _ContabilidadHeroPanel(width: width),
+        const SizedBox(height: 16),
+        ManagementAreaReportPanel(
+          areaKey: ManagementAreaKey.contabilidad,
+          showOpenHubButton: true,
+          showReportActions: false,
+          onOpenSupervisionHub: () async {
+            await Navigator.of(context).push<void>(
+              appPageRoute<void>(
+                page: const ManagementSupervisionPage(instantOpen: true),
+              ),
+            );
+          },
+        ),
         const SizedBox(height: 16),
         if (isCompact) ...[
           const _ContabilidadReadOnlyCard(),

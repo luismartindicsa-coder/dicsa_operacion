@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../cash_taxonomy/cash_taxonomy_repository.dart';
+import '../utils/fetch_all_supabase_rows.dart';
 
 const String _kDirectionVaultVouchersTable = 'direction_vault_vouchers';
 const String _kDirectionVaultVoucherLinesTable =
@@ -77,9 +78,10 @@ class DirectionVaultRepository {
 
   Future<List<DirectionVaultVoucherRecord>> loadVouchers({
     bool migrateLegacy = true,
+    bool strictLegacyRead = false,
   }) async {
     final remoteVouchers = await _loadRemoteVouchers();
-    final legacyVouchers = await _loadLegacyVouchers();
+    final legacyVouchers = await _loadLegacyVouchers(strict: strictLegacyRead);
     if (legacyVouchers.isEmpty) return remoteVouchers;
 
     final remoteIds = remoteVouchers
@@ -175,11 +177,16 @@ class DirectionVaultRepository {
       DateTime(value.year, value.month, value.day);
 
   Future<List<DirectionVaultVoucherRecord>> _loadRemoteVouchers() async {
-    final voucherRows = await _supa
-        .from(_kDirectionVaultVouchersTable)
-        .select()
-        .order('voucher_date', ascending: false)
-        .order('created_at', ascending: false);
+    final voucherRows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from(_kDirectionVaultVouchersTable)
+          .select()
+          .order('voucher_date', ascending: false)
+          .order('created_at', ascending: false)
+          .order('id', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    );
     final vouchers = (voucherRows as List)
         .map((row) => Map<String, dynamic>.from(row as Map))
         .toList(growable: false);
@@ -199,12 +206,17 @@ class DirectionVaultRepository {
     ) {
       final end = (start + _kVoucherLineLoadBatchSize).clamp(0, ids.length);
       final batch = ids.sublist(start, end);
-      final batchRows = await _supa
-          .from(_kDirectionVaultVoucherLinesTable)
-          .select()
-          .inFilter('voucher_id', batch)
-          .order('line_order', ascending: true)
-          .order('created_at', ascending: true);
+      final batchRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from(_kDirectionVaultVoucherLinesTable)
+            .select()
+            .inFilter('voucher_id', batch)
+            .order('line_order', ascending: true)
+            .order('created_at', ascending: true)
+            .order('id', ascending: true)
+            .range(from, to),
+        pageSize: 500,
+      );
       lineRows.addAll(batchRows as List);
     }
     final linesByVoucher = <String, List<DirectionVaultVoucherLineRecord>>{};
@@ -238,9 +250,12 @@ class DirectionVaultRepository {
         .toList(growable: false);
   }
 
-  Future<List<DirectionVaultVoucherRecord>> _loadLegacyVouchers() async {
+  Future<List<DirectionVaultVoucherRecord>> _loadLegacyVouchers({
+    bool strict = false,
+  }) async {
     final payload = await CashTaxonomyRepository.instance.loadArea(
       _kLegacyDirectionVaultArea,
+      strict: strict,
     );
     final rows = payload?['rows'];
     if (rows is! List) return const <DirectionVaultVoucherRecord>[];

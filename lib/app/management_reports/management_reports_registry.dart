@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../finanzas/finanzas_theme.dart';
+import '../contabilidad/contabilidad_theme.dart';
+import '../gestion_documental/gestion_documental_theme.dart';
+import '../direction/direction_theme.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 
 enum ManagementAreaKey {
@@ -114,8 +117,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'operations_ot_costs',
         title: 'Gastos en OTs',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'maintenance_orders + compras OT',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Costos acumulados OT + compras ligadas de la semana',
         followUpPrompt:
             'Dónde se fue el dinero, qué OT se desvió y qué acción de control toca.',
       ),
@@ -129,20 +132,12 @@ managementAreaCatalog = <ManagementAreaDefinition>[
             'Qué se repitió en patio, cuál fue la causa raíz y quién queda asignado.',
       ),
       ManagementReportDefinition(
-        key: 'operations_cleanliness_daily',
-        title: 'KPIs de limpieza',
-        frequency: ManagementReportFrequency.daily,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Captura pendiente',
-        followUpPrompt:
-            'Qué estándar no se cumplió hoy y qué corrección inmediata toca.',
-      ),
-      ManagementReportDefinition(
         key: 'operations_production_weekly',
         title: 'Análisis de producción',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'production_runs',
+        sourceLabel:
+            'Transformaciones de producción + respaldo histórico de pacas',
         followUpPrompt:
             'Qué material avanzó, cuál quedó abajo y qué cuello de botella apareció.',
       ),
@@ -585,19 +580,19 @@ managementAreaCatalog = <ManagementAreaDefinition>[
   ),
   ManagementAreaDefinition(
     key: ManagementAreaKey.gestion,
-    title: 'Gestión',
-    ownerLabel: 'Responsable de Gestión',
+    title: 'Gestión Documental',
+    ownerLabel: 'Responsable de Gestión Documental',
     subtitle:
-        'Permisos, manifiestos, documentos y subsidios aún pendientes de aterrizar en flujo formal.',
-    accent: Color(0xFF7B8A8B),
+        'Permisos, vencimientos, contratos y agenda de las 11 categorías documentales. Manifiestos con control documental; análisis de movimientos y subsidios pendientes.',
+    accent: kDocumentalPink,
     icon: Icons.assignment_turned_in_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(
         key: 'management_permissions',
         title: 'Seguimiento de permisos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Gestión Documental · Permisos y Trámites',
         followUpPrompt:
             'Qué permiso sigue pendiente, quién lo mueve y qué riesgo genera.',
       ),
@@ -605,8 +600,9 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'management_manifests',
         title: 'Análisis de cantidad, material y destino de manifiestos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        dataStatus: ManagementReportDataStatus.partial,
+        sourceLabel:
+            'Medio Ambiente · expedientes; cantidad, material y destino pendientes',
         followUpPrompt:
             'Qué manifiesto concentra riesgo y qué patrón debemos supervisar.',
       ),
@@ -615,7 +611,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         title: 'Reporte de remisiones y carta porte',
         frequency: ManagementReportFrequency.daily,
         dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        sourceLabel: 'Pendiente: flujo de remisiones y Carta Porte',
         followUpPrompt:
             'Qué documento diario falta y qué salida queda en riesgo.',
       ),
@@ -624,7 +620,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         title: 'Seguimiento a apoyos y subsidios del gobierno',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        sourceLabel: 'Pendiente: registro formal de apoyos y subsidios',
         followUpPrompt:
             'Qué apoyo sí avanza y qué trámite está detenido sin responsable claro.',
       ),
@@ -632,8 +628,9 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'management_expirations',
         title: 'Seguimiento a cursos, vencimientos y caducidades de documentos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel:
+            'Gestión Documental · vigencias, seguridad e higiene y agenda',
         followUpPrompt:
             'Qué documento está por vencer y cómo evitamos depender de urgencia.',
       ),
@@ -641,8 +638,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'management_contracts',
         title: 'Resúmenes de contratos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Fuente pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Gestión Documental · Contratos y renovaciones',
         followUpPrompt:
             'Qué contrato requiere atención y qué compromiso operativo activa.',
       ),
@@ -668,34 +665,34 @@ managementAreaCatalog = <ManagementAreaDefinition>[
       ),
       ManagementReportDefinition(
         key: 'finance_budget_weekly',
-        title: 'Presupuesto',
+        title: 'Presupuesto de la próxima semana',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Centro de pagos',
+        sourceLabel: 'Facturas proveedor + pagos fijos + bancos',
         followUpPrompt:
-            'Qué presión semanal quedó, qué reserva falta y dónde está el hueco real.',
+            r'Qué facturas y pagos fijos se requieren dentro del tope semanal de $500,000 y qué queda pendiente.',
       ),
       ManagementReportDefinition(
         key: 'finance_agreements',
-        title: 'Avance de convenios',
+        title: 'Seguimiento de convenios',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.partial,
         sourceLabel: 'Convenios proveedor',
         followUpPrompt:
-            'Qué convenio avanzó, cuál se atoró y qué negociación necesita escalarse.',
+            'Qué facturas conservan calendario de convenio y necesitan revisión separada.',
       ),
       ManagementReportDefinition(
         key: 'finance_forecast',
-        title: 'Forecast de pagos',
+        title: 'Pagos fijos con fecha',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Pagos + vencimientos',
+        sourceLabel: 'Pagos fijos pendientes y vencidos',
         followUpPrompt:
-            'Qué pagos se vienen y qué tensión se forma en la semana siguiente.',
+            'Qué pagos tienen fecha en la próxima semana y qué arrastre requiere cobertura.',
       ),
       ManagementReportDefinition(
         key: 'finance_overdue',
-        title: 'Facturas vencidas',
+        title: 'Facturas más atrasadas por empresa',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
         sourceLabel: 'Cuentas por proveedor',
@@ -713,12 +710,12 @@ managementAreaCatalog = <ManagementAreaDefinition>[
       ),
       ManagementReportDefinition(
         key: 'finance_bank_flow',
-        title: 'Flujo bancario',
+        title: 'Historial de flujo semanal',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
         sourceLabel: 'Movimientos bancarios',
         followUpPrompt:
-            'Cómo entró y salió el dinero esta semana y qué decisión toca tomar.',
+            'Cómo se compara el requerimiento de pagos con el flujo de las últimas ocho semanas completas.',
       ),
     ],
   ),
@@ -813,54 +810,48 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     title: 'Dirección General',
     ownerLabel: 'Dirección General',
     subtitle:
-        'Producción, embarques, metas, supervisión y avance de app para la junta ejecutiva semanal.',
-    accent: Color(0xFFD8E38A),
+        'Resumen ejecutivo de todas las áreas y módulos de la app: resultados, operación, riesgos y cobertura para la junta semanal.',
+    accent: kDirectionOliveGlow,
     icon: Icons.home_work_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(
-        key: 'direction_production_shipments',
-        title: 'Análisis de producción y embarques',
+        key: 'direction_all_areas',
+        title: 'Resumen ejecutivo de todas las áreas',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Producción + embarques',
+        sourceLabel:
+            'Bases operativas, comerciales, financieras y administrativas',
         followUpPrompt:
-            'Qué salió contra lo producido y dónde está el desbalance real.',
+            'Cómo cerró cada área y qué decisiones necesita Dirección.',
       ),
       ManagementReportDefinition(
-        key: 'direction_shipment_times',
-        title: 'Horarios de embarques',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Embarques',
-        followUpPrompt:
-            'Qué horario se volvió cuello de botella y qué ajuste operativo toca.',
-      ),
-      ManagementReportDefinition(
-        key: 'direction_goals',
-        title: 'Cumplimiento de metas',
+        key: 'direction_results',
+        title: 'Resultados y comparativo semanal',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Gerencia + dirección',
+        sourceLabel:
+            'Contabilidad, Compras, Ventas, Menudeo, Operación y Bancos',
         followUpPrompt:
-            'Qué meta de la semana sí cerró y qué meta sigue vulnerable.',
+            'Qué cambió frente a los mismos días de la semana anterior.',
       ),
       ManagementReportDefinition(
-        key: 'direction_supervision',
-        title: 'Reportes de supervisión',
+        key: 'direction_risks_goals',
+        title: 'Metas y alertas por área',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Supervisión por áreas',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel:
+            'Gerencia, cobranza, inventarios, RH, documental y mantenimiento',
         followUpPrompt:
-            'Qué áreas llegaron preparadas y dónde sigue faltando sistema.',
+            'Qué desvíos y pendientes requieren seguimiento del responsable.',
       ),
       ManagementReportDefinition(
-        key: 'direction_app_progress',
-        title: 'Avance en desarrollo de app',
+        key: 'direction_coverage',
+        title: 'Cobertura y generación de reportes',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Hitos de desarrollo',
+        sourceLabel: 'Consultas por área e historial local de Supervisión',
         followUpPrompt:
-            'Qué se entregó, qué sigue y qué bloqueo requiere decisión de dirección.',
+            'Qué base no estuvo disponible y qué captura sigue pendiente, sin confundirlo con cero actividad.',
       ),
     ],
   ),
@@ -869,53 +860,27 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     title: 'Contabilidad',
     ownerLabel: 'Responsable de Contabilidad',
     subtitle:
-        'Resultado comercial, flujo, gastos, estado de resultados y balance desde capa de lectura.',
-    accent: Color(0xFF67D2D8),
+        'Resultado comercial y estado de resultados: semana del corte contra los mismos días de la semana anterior.',
+    accent: kContabilidadGlow,
     icon: Icons.account_balance_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(
         key: 'accounting_trade_result',
-        title: 'Resultado comercial',
+        title: 'Resultado comercial · semana vs anterior',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Contabilidad comercial',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Resultado Comercial · Menudeo, Compras y Ventas Mayoreo',
         followUpPrompt:
             'Qué se compró, qué se vendió y cómo se abrió o cerró el margen.',
       ),
       ManagementReportDefinition(
-        key: 'accounting_flow',
-        title: 'Flujo general',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Flujo general',
-        followUpPrompt:
-            'Qué dinero entró, salió y cuánto del gasto fue realmente operativo.',
-      ),
-      ManagementReportDefinition(
-        key: 'accounting_expense_analysis',
-        title: 'Análisis de gastos',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Gastos homologados',
-        followUpPrompt:
-            'Qué categoría creció y cuál necesita control o explicación.',
-      ),
-      ManagementReportDefinition(
         key: 'accounting_income_statement',
-        title: 'Estado de resultados',
+        title: 'Estado de resultados · semana vs anterior',
         frequency: ManagementReportFrequency.weeklyFriday,
         dataStatus: ManagementReportDataStatus.ready,
-        sourceLabel: 'Estado de resultados',
-        followUpPrompt: 'Si el negocio ganó o perdió en el corte y por qué.',
-      ),
-      ManagementReportDefinition(
-        key: 'accounting_balance',
-        title: 'Balance',
-        frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Balance contable',
+        sourceLabel: 'Estado de Resultados · Bancos, Bóveda y Menudeo',
         followUpPrompt:
-            'Cómo quedan pasivos vs activos y qué tensión patrimonial destaca.',
+            'Cómo cambió el resultado frente a la semana anterior y qué rubros explican la variación.',
       ),
     ],
   ),

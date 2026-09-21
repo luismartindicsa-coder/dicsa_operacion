@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
+import '../management_reports/management_supervision_page.dart';
+import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
@@ -185,6 +189,21 @@ class _DocumentalDashboardWorkspaceState
                 ],
               ],
             ),
+          ),
+          const SizedBox(height: 22),
+          ManagementAreaReportPanel(
+            areaKey: ManagementAreaKey.gestion,
+            showOpenHubButton: true,
+            showReportActions: false,
+            subtitleOverride:
+                'Consulta el reporte de viernes con permisos, vigencias, contratos, responsables y próximas fechas desde Supervisión por Áreas.',
+            onOpenSupervisionHub: () async {
+              await Navigator.of(context).push<void>(
+                appPageRoute<void>(
+                  page: const ManagementSupervisionPage(instantOpen: true),
+                ),
+              );
+            },
           ),
         ],
       ),

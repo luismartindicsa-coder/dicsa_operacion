@@ -8,7 +8,10 @@ class CashTaxonomyRepository {
 
   SupabaseClient get _supa => Supabase.instance.client;
 
-  Future<Map<String, dynamic>?> loadArea(String area) async {
+  Future<Map<String, dynamic>?> loadArea(
+    String area, {
+    bool strict = false,
+  }) async {
     try {
       final row = await _supa
           .from('cash_taxonomy_configs')
@@ -21,6 +24,7 @@ class CashTaxonomyRepository {
         return Map<String, dynamic>.from(payload);
       }
     } catch (error, stackTrace) {
+      if (strict) rethrow;
       debugPrint(
         'CashTaxonomyRepository.loadArea($area) failed: $error\n$stackTrace',
       );

@@ -8,6 +8,10 @@ import 'package:pdf/widgets.dart' as pw;
 import '../auth/auth_access.dart';
 import '../shared/utils/file_download_save.dart';
 import 'management_reports_history_store.dart';
+import 'management_reports_documental_pdf.dart';
+import 'management_reports_accounting_pdf.dart';
+import 'management_reports_direction_pdf.dart';
+import 'management_reports_finance_budget_pdf.dart';
 import 'management_reports_operations_daily_pdf.dart';
 import 'management_reports_registry.dart';
 
@@ -54,6 +58,30 @@ Future<Uint8List> buildManagementReportPdfBytes({
   required DateTime generatedAt,
   required String generatedBy,
 }) async {
+  if (area.key == ManagementAreaKey.direccionGeneral &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildDirectionWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.contabilidad &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildAccountingWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.gestion &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildDocumentalWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
   if (area.key == ManagementAreaKey.gerencia &&
       frequency == ManagementReportFrequency.weeklyFriday) {
     return buildGerenciaWeeklySupervisionPdfBytes(
@@ -112,7 +140,7 @@ Future<Uint8List> buildManagementReportPdfBytes({
   }
   if (area.key == ManagementAreaKey.finanzas &&
       frequency == ManagementReportFrequency.weeklyFriday) {
-    return buildFinanceWeeklySupervisionPdfBytes(
+    return buildFinanceWeeklyBudgetPdfBytes(
       area: area,
       generatedAt: generatedAt,
       generatedBy: generatedBy,

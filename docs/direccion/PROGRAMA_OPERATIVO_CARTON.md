@@ -14,35 +14,47 @@ programa. No se cambian estados ni cantidades de embarques al programar.
 
 ## Uso
 
-1. Capturar y confirmar embarques de la semana.
-2. En Programa operativo, capturar y confirmar el patio inicial del lunes por
-   material. El valor inicial es cero; no se sustituye por el conteo actual del
-   patio porque puede corresponder a otra hora o día.
+1. Capturar y confirmar embarques de la semana, o revisar
+   [Embarques sugeridos](EMBARQUES_SUGERIDOS_CARTON.md) y usar **Aceptar embarques**
+   para incorporar la selección semanal. Se pueden editar después; la generación
+   vuelve a leer la lista final de embarques confirmados guardados.
+2. Programa operativo precarga el patio inicial del lunes a partir del conteo
+   fechado y los movimientos posteriores, o de las condiciones guardadas de la
+   semana. Los saldos estimados se señalan en la propuesta y pueden editarse.
+   La referencia calculada permite generar sin volver a capturar el patio.
 3. Revisar Histórico de Producción: periodo, semanas con registros y promedios
-   por material/día/turno. Configurar capacidad diaria (100 por defecto), porcentaje
+   por material/día/turno. La capacidad diaria parte del percentil 75 de los
+   totales diarios observados, o de la capacidad guardada para esa semana.
+   Sin historial se conserva el valor editable previo de 100 como configuración,
+   no como capacidad verificada. Se pueden ajustar capacidad diaria, porcentaje
    de capacidad del turno día, días laborables y disponibilidad de cada turno.
    La proporción inicial Día/Noche viene de los registros reales; el botón
    Aplicar proporción histórica permite recuperarla después de un ajuste manual.
-4. Generar programa semanal: calcula y guarda una nueva versión Borrador.
+4. Generar programa semanal: toma los embarques confirmados finales de la semana,
+   descuenta el patio disponible de cada material y distribuye la producción
+   faltante de lunes a viernes entre día y noche, antes de las fechas de salida.
+   Calcula y guarda una nueva versión Borrador; los faltantes por capacidad se
+   muestran con su material, fecha y destino.
 5. Ajustar celdas o usar Mover producción. La validación se recalcula mientras
    se escribe. Enter confirma una celda; Esc o clic afuera cancela esa edición.
    Guardar nueva versión conserva los ajustes como otra versión persistente.
 6. Aprobar fija una sola versión operativa por semana; sus cantidades quedan
    inmutables. Crear nuevo borrador conserva la versión anterior y permite
    cambios. Iniciar ejecución cambia el estado de la versión vigente aprobada.
-7. Exportar PDF para operador desde una versión guardada: A4 horizontal de una
-   página, logo DICSA, semana/versión/estado, patio inicial y restricciones.
-   Separa embarques con destinos de producción por material y turno; incluye
-   ceros, totales, cuadre contra patio utilizado y fuente histórica Día/Noche.
-   Los faltantes muestran fecha, material, cantidad y causa. Las modificaciones
-   y cancelaciones actuales se imprimen como avisos, sin cambiar los embarques
-   guardados de esa versión. Corrige cantidades excedentes o turnos bloqueados
-   antes de imprimir. Si el detalle no cabe a tamaño legible, solicita abreviar
-   destinos/observaciones: nunca recorta datos, reduce la letra ni cambia a A3.
-   El botón confirma la ruta del archivo guardado y muestra cancelaciones o
-   errores junto a la acción; el refresco automático no borra ese resultado.
-   Las sesiones anteriores sin las fuentes nuevas usan fuentes estándar del PDF
-   para poder exportar hasta que se carguen los recursos actualizados.
+7. Exportar PDF para operador desde una versión guardada: A4 horizontal con
+   logo DICSA, semana/versión/estado y patio inicial. Conserva una sola página
+   cuando cabe. Embarques esperados y destino se presentan como una matriz:
+   cinco filas de lunes a viernes, una columna por destino y total por día.
+   Cada celda consolida las cargas del mismo destino/día y separa cantidades por
+   material. El total semanal queda debajo de la tabla. Todos los destinos se
+   mantienen en la misma matriz, sin crear otra fila por cada embarque.
+   La producción mantiene su tabla por material y turno, totales y cuadre contra
+   patio utilizado. El PDF excluye las condiciones y observaciones completas,
+   incluidas las explicaciones automáticas de sugerencias; estas siguen en la app.
+   Los faltantes de producción conservan sus alertas por fecha, material y destino.
+   El encabezado identifica la versión exportada y las continuaciones se numeran.
+   El botón confirma la ruta guardada y muestra cancelaciones o errores junto
+   a la acción; el refresco automático conserva ese resultado.
 8. Abrir Producción real vs programada para comparar fecha, turno y material.
 
 ## Reglas del cálculo

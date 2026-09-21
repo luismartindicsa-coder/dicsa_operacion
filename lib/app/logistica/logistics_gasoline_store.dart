@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/utils/fetch_all_supabase_rows.dart';
+import 'logistics_fuel_load_origin.dart';
 
 const String _kLogisticsGasolineControlTable = 'logistics_gasoline_control';
 
@@ -12,6 +13,7 @@ class LogisticsGasolineControlRecord {
   final String? vehicleId;
   final String vehicleLabel;
   final double litersLoaded;
+  final String loadOrigin;
   final String notes;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -24,6 +26,7 @@ class LogisticsGasolineControlRecord {
     required this.vehicleId,
     required this.vehicleLabel,
     required this.litersLoaded,
+    required this.loadOrigin,
     required this.notes,
     required this.createdAt,
     required this.updatedAt,
@@ -37,6 +40,7 @@ class LogisticsGasolineControlRecord {
     Object? vehicleId = _unset,
     String? vehicleLabel,
     double? litersLoaded,
+    String? loadOrigin,
     String? notes,
     Object? createdAt = _unset,
     Object? updatedAt = _unset,
@@ -51,6 +55,7 @@ class LogisticsGasolineControlRecord {
       vehicleId: vehicleId == _unset ? this.vehicleId : vehicleId as String?,
       vehicleLabel: vehicleLabel ?? this.vehicleLabel,
       litersLoaded: litersLoaded ?? this.litersLoaded,
+      loadOrigin: loadOrigin ?? this.loadOrigin,
       notes: notes ?? this.notes,
       createdAt: createdAt == _unset ? this.createdAt : createdAt as DateTime?,
       updatedAt: updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
@@ -65,6 +70,7 @@ class LogisticsGasolineControlRecord {
     'vehicle_id': vehicleId,
     'vehicle_label': vehicleLabel.trim(),
     'liters_loaded': litersLoaded,
+    'load_origin': loadOrigin,
     'notes': notes.trim(),
   };
 
@@ -79,6 +85,8 @@ class LogisticsGasolineControlRecord {
       vehicleId: row['vehicle_id']?.toString(),
       vehicleLabel: (row['vehicle_label'] ?? '').toString(),
       litersLoaded: _tryParseDouble(row['liters_loaded']) ?? 0,
+      loadOrigin: (row['load_origin'] ?? kLogisticsFuelLoadOriginGasStation)
+          .toString(),
       notes: (row['notes'] ?? '').toString(),
       createdAt: _tryParseDateTime(row['created_at']?.toString()),
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),

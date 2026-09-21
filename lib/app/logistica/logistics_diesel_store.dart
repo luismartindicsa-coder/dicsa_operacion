@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/utils/fetch_all_supabase_rows.dart';
+import 'logistics_fuel_load_origin.dart';
 
 const String _kLogisticsDieselConsumptionTable = 'logistics_diesel_consumption';
 
@@ -14,6 +15,7 @@ class LogisticsDieselConsumptionRecord {
   final double litersPurchased;
   final double litersRequested;
   final double balanceLiters;
+  final String loadOrigin;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -27,6 +29,7 @@ class LogisticsDieselConsumptionRecord {
     required this.litersPurchased,
     required this.litersRequested,
     required this.balanceLiters,
+    required this.loadOrigin,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -41,6 +44,7 @@ class LogisticsDieselConsumptionRecord {
     double? litersPurchased,
     double? litersRequested,
     double? balanceLiters,
+    String? loadOrigin,
     Object? createdAt = _unset,
     Object? updatedAt = _unset,
   }) {
@@ -59,6 +63,7 @@ class LogisticsDieselConsumptionRecord {
           balanceLiters ??
           (litersPurchased ?? this.litersPurchased) -
               (litersRequested ?? this.litersRequested),
+      loadOrigin: loadOrigin ?? this.loadOrigin,
       createdAt: createdAt == _unset ? this.createdAt : createdAt as DateTime?,
       updatedAt: updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
     );
@@ -73,6 +78,7 @@ class LogisticsDieselConsumptionRecord {
     'vehicle_label': vehicleLabel.trim().isEmpty ? null : vehicleLabel.trim(),
     'liters_purchased': litersPurchased,
     'liters_requested': litersRequested,
+    'load_origin': loadOrigin,
   };
 
   factory LogisticsDieselConsumptionRecord.fromRemoteRow(
@@ -91,6 +97,8 @@ class LogisticsDieselConsumptionRecord {
       litersRequested: requested,
       balanceLiters:
           _tryParseDouble(row['balance_liters']) ?? (purchased - requested),
+      loadOrigin: (row['load_origin'] ?? kLogisticsFuelLoadOriginPatio)
+          .toString(),
       createdAt: _tryParseDateTime(row['created_at']?.toString()),
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
     );

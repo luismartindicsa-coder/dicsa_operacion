@@ -309,9 +309,27 @@ class ProgramConditions {
       bundle.weekStartDate,
       bundle.productionHistory,
     );
+    final saved = bundle.savedProgramConditions;
+    final report = bundle.suggestionReport;
+    final capacity =
+        report?.dailyCapacity ??
+        directionHistoricalDailyCapacity(
+          bundle.weekStartDate,
+          bundle.productionHistory,
+        );
+    final savedDays = saved?['days'] as List?;
     return ProgramConditions(
-      yard: {for (final m in programMaterials) m: 0},
-      dayShare: history.dayShare,
+      yard: {
+        for (final m in programMaterials)
+          m:
+              report?.openingFloorByMaterial[m] ??
+              ((saved?['yard'] as Map?)?[m] as num?)?.toInt() ??
+              0,
+      },
+      dailyCapacity:
+          (saved?['daily_capacity'] as num?)?.toInt() ??
+          (capacity > 0 ? capacity : 100),
+      dayShare: (saved?['day_share'] as num?)?.toInt() ?? history.dayShare,
       history: history,
       days: List.generate(5, (d) {
         final date = bundle.weekStartDate.add(Duration(days: d));
@@ -329,7 +347,13 @@ class ProgramConditions {
         }
         // Nominal capacity is shared equally by the two compactors. The
         // historical output is a reference, never the shipment requirement.
+        final calendar = savedDays != null && d < savedDays.length
+            ? savedDays[d] as Map
+            : const {};
         return ProgramDayCondition(
+          working: calendar['working'] != false,
+          dayAvailable: calendar['day_available'] != false,
+          nightAvailable: calendar['night_available'] != false,
           lossPercent: ((math.min(100, c1) + math.min(100, c2)) / 2).ceil(),
           machineryNote: impacts
               .map(

@@ -183,11 +183,16 @@ class MenudeoAnalysisRepository {
         .toList(growable: false);
     final lineRows = <Map<String, dynamic>>[];
     for (final voucherBatch in _chunkList(voucherIds, 80)) {
-      final rows = await _client
-          .from('men_cash_voucher_lines')
-          .select('voucher_id,concept,subconcept,unit,driver,amount')
-          .inFilter('voucher_id', voucherBatch)
-          .order('voucher_id');
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('men_cash_voucher_lines')
+            .select('voucher_id,concept,subconcept,unit,driver,amount')
+            .inFilter('voucher_id', voucherBatch)
+            .order('voucher_id')
+            .order('id')
+            .range(from, to),
+        pageSize: 500,
+      );
       lineRows.addAll(
         (rows as List)
             .map((row) => Map<String, dynamic>.from(row as Map))

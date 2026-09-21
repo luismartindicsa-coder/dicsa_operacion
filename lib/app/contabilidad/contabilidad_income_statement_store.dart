@@ -179,12 +179,14 @@ class ContabilidadIncomeStatementStore {
     required int windowDays,
     required DateTimeRange? dateRange,
     bool migrateLegacyVouchers = true,
+    bool strictLegacyVouchers = false,
   }) async {
     final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
     final results = await Future.wait<dynamic>([
       FinanzasBankAccountsStore.loadMovementsStrict(),
       DirectionVaultRepository.instance.loadVouchers(
         migrateLegacy: migrateLegacyVouchers,
+        strictLegacyRead: strictLegacyVouchers,
       ),
       MenudeoAnalysisRepository().loadCashDataset(
         windowDays: windowDays,
