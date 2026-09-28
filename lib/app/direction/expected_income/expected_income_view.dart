@@ -14,12 +14,14 @@ import '../../shared/archetypes/grid_editable/grid_selection_controller.dart';
 import '../../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../../shared/ui_contract_core/theme/glass_styles.dart';
 import '../../shared/utils/number_formatters.dart';
+import '../../shared/utils/file_download_save.dart';
 import '../direction_shipments_store.dart';
 import '../direction_theme.dart';
 import '../operating_program/operating_program_models.dart';
 import 'expected_income_engine.dart';
 import 'expected_income_forms.dart';
 import 'expected_income_models.dart';
+import 'expected_income_pdf.dart';
 import 'expected_income_repository.dart';
 
 /// Executive read-only report. Editing operational rows stays in Embarques;
@@ -30,6 +32,7 @@ class ExpectedIncomeView extends StatefulWidget {
   final ExpectedIncomeRepository? repository;
   final bool active;
   final DateTime Function()? clock;
+  final String? referenceError;
   const ExpectedIncomeView({
     super.key,
     required this.bundle,
@@ -37,6 +40,7 @@ class ExpectedIncomeView extends StatefulWidget {
     this.repository,
     this.active = true,
     this.clock,
+    this.referenceError,
   });
   @override
   State<ExpectedIncomeView> createState() => _ExpectedIncomeViewState();
@@ -50,7 +54,10 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
   ExpectedIncomeData? _data;
   DirectionShipmentPlanningBundle? _reference;
   Timer? _timer;
-  bool _loading = false, _editing = false;
+  bool _loading = false, _editing = false, _exporting = false;
+  bool _exportFailed = false;
+  String? _exportMessage;
+  bool get _busy => _editing || _exporting || widget.referenceError != null;
   int _request = 0;
   String? _error;
   DateTime get _now => widget.clock?.call() ?? DateTime.now();
@@ -72,6 +79,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
       _selection.clear();
       _request++;
       _loading = false;
+      _exportMessage = null;
     }
     if (widget.active &&
         (!oldWidget.active || oldWidget.bundle != widget.bundle)) {
@@ -88,7 +96,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
   }
 
   Future<void> _load() async {
-    if (_editing || _loading) return;
+    if (_busy || _loading) return;
     final request = ++_request;
     final reference = widget.bundle;
     setState(() => _loading = true);
@@ -110,7 +118,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
   }
 
   Future<void> _edit(Future<void> Function() action) async {
-    if (_editing) return;
+    if (_busy) return;
     _request++; // An in-flight refresh must not replace the form's reference.
     setState(() {
       _editing = true;
@@ -126,6 +134,70 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
         await _load();
       }
     }
+  }
+
+  Future<void> _exportPdf() async {
+    final data = _data;
+    final reference = _reference;
+    if (_busy ||
+        _loading ||
+        _error != null ||
+        data == null ||
+        reference == null) {
+      return;
+    }
+    final snapshot = ExpectedIncomePrintData(
+      bundle: reference,
+      data: data,
+      generatedAt: _now,
+    );
+    setState(() {
+      _exporting = true;
+      _exportFailed = false;
+      _exportMessage = 'Generando PDF…';
+    });
+    try {
+      final bytes = await buildExpectedIncomePdf(
+        snapshot,
+        assetBundle: DefaultAssetBundle.of(context),
+      );
+      if (!mounted) return;
+      setState(() => _exportMessage = 'Elige dónde guardar el PDF.');
+      final path = await saveBytesAs(
+        bytes: bytes,
+        suggestedFileName: snapshot.fileName,
+        dialogTitle: 'Guardar ingreso proyectado por embarque semanal',
+        throwOnPickerError: true,
+      );
+      if (!mounted) return;
+      _showExportResult(
+        path == null
+            ? 'No se guardó el PDF: no se eligió un archivo de destino.'
+            : 'PDF guardado en $path',
+      );
+    } catch (error) {
+      if (mounted) {
+        _showExportResult(
+          'No se pudo generar o guardar el PDF. $error',
+          failed: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+        if (widget.active && _reference != widget.bundle) unawaited(_load());
+      }
+    }
+  }
+
+  void _showExportResult(String message, {bool failed = false}) {
+    setState(() {
+      _exportMessage = message;
+      _exportFailed = failed;
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _materials() => _edit(() async {
@@ -174,6 +246,78 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
       await editIncomeClient(context, name, _data!, _repository);
     }
   });
+  Future<void> _distribute(List<ExpectedIncomeRow> rows) => _edit(() async {
+    final choices = rows.where((r) => r.canAllocate).toList()
+      ..sort((a, b) {
+        final date = b.shipment.shipDate.compareTo(a.shipment.shipDate);
+        return date != 0
+            ? date
+            : a.shipment.clientName.compareTo(b.shipment.clientName);
+      });
+    if (choices.isEmpty) return;
+    final id = choices.length == 1
+        ? choices.single.shipment.id
+        : await showSearchablePickerDialog<String>(
+            context,
+            title: 'Distribuir ingresos mixtos',
+            options: [
+              for (final r in choices)
+                SearchablePickerOption(
+                  value: r.shipment.id,
+                  label:
+                      '${programDate(r.shipment.shipDate)} · ${r.shipment.clientName} · ${incomeMaterialName(r.shipment.materialCode)} · ${_money(r.pendingCents)}${r.allocationApplied ? ' · Distribuido' : ' · Por distribuir'}',
+                ),
+            ],
+          );
+    if (id == null || !mounted) return;
+    final row = choices.firstWhere((r) => r.shipment.id == id);
+    await showIncomeForm(
+      context,
+      title: 'Distribuir ingreso mixto',
+      description:
+          '${row.shipment.clientName} · ${programDate(row.shipment.shipDate)}\n'
+          'Por distribuir: ${_money(row.pendingCents)}. Efectivo y Fiscal deben sumar este importe pendiente de cobro.'
+          '${row.allocationStale ? '\nEl importe o la venta cambió. Confirma una nueva distribución.' : ''}',
+      fields: [
+        IncomeFormField(
+          'allocationCash',
+          'Efectivo',
+          row.allocationApplied
+              ? (row.allocation!.cashCents / 100).toStringAsFixed(2)
+              : null,
+          numeric: true,
+          max: row.pendingCents / 100,
+        ),
+        IncomeFormField(
+          'allocationFiscal',
+          'Fiscal',
+          row.allocationApplied
+              ? (row.allocation!.fiscalCents / 100).toStringAsFixed(2)
+              : null,
+          numeric: true,
+          max: row.pendingCents / 100,
+        ),
+      ],
+      onSave: (values) async {
+        int cents(String key) {
+          final amount = (values[key] as num).toDouble();
+          final value = incomeCents(amount);
+          if ((amount * 100 - value).abs() > 0.00001) {
+            throw ArgumentError('Captura importes con máximo dos decimales.');
+          }
+          return value;
+        }
+
+        await _repository.saveAllocation(
+          row.distribute(
+            cashCents: cents('allocationCash'),
+            fiscalCents: cents('allocationFiscal'),
+          ),
+        );
+      },
+    );
+  });
+
   Future<void> _link(ExpectedIncomeRow row) => _edit(() async {
     final data = _data!;
     final used = {
@@ -356,7 +500,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
                     ),
                     IconButton(
                       tooltip: 'Semana anterior',
-                      onPressed: _editing
+                      onPressed: _busy
                           ? null
                           : () => widget.onWeekChanged(
                               week.subtract(const Duration(days: 7)),
@@ -369,7 +513,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
                     ),
                     IconButton(
                       tooltip: 'Semana siguiente',
-                      onPressed: _editing
+                      onPressed: _busy
                           ? null
                           : () => widget.onWeekChanged(
                               week.add(const Duration(days: 7)),
@@ -377,19 +521,39 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
                       icon: const Icon(Icons.chevron_right),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _editing ? null : _materials,
+                      onPressed: _busy ? null : _materials,
                       icon: const Icon(Icons.scale_outlined),
                       label: const Text('Pesos y precios'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _editing ? null : _clients,
+                      onPressed: _busy ? null : _clients,
                       icon: const Icon(Icons.people_outline),
                       label: const Text('Condiciones comerciales'),
                     ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('export-expected-income'),
+                      onPressed: _busy || _loading || _error != null
+                          ? null
+                          : _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: Text(
+                        _exporting ? 'Generando PDF…' : 'PDF de ingresos',
+                      ),
+                    ),
+                    if (rows.any((r) => r.canAllocate))
+                      OutlinedButton.icon(
+                        onPressed: _busy || _loading || _error != null
+                            ? null
+                            : () => _distribute(rows),
+                        icon: const Icon(Icons.call_split),
+                        label: const Text('Distribuir ingresos mixtos'),
+                      ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
+              if (_exportMessage != null)
+                _text(_exportMessage!, warning: _exportFailed),
               _text(
                 'Flujo esperado en MXN: cobros de embarques y Ventas Mayoreo + disposición posible de El Palomar al cierre de la semana consultada.',
               ),
@@ -644,18 +808,37 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
             row.state.label,
             '',
           ],
+          payment: row.canAllocate
+              ? TextButton(
+                  key: ValueKey('distribute-income-${row.shipment.id}'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 6,
+                      horizontal: 2,
+                    ),
+                  ),
+                  onPressed: _busy || _loading || _error != null
+                      ? null
+                      : () => _distribute([row]),
+                  child: Text(
+                    row.allocationApplied
+                        ? 'Efectivo ${_money(row.allocation!.cashCents)}\nFiscal ${_money(row.allocation!.fiscalCents)}'
+                        : 'Mixto · ${row.allocationStale ? 'revisar reparto' : 'por distribuir'}',
+                  ),
+                )
+              : null,
           action: IconButton(
             tooltip: row.sale == null
                 ? 'Vincular venta real'
                 : 'Venta ${row.sale!.ticket} · revisar vínculo',
-            onPressed: _editing ? null : () => _link(row),
+            onPressed: _busy ? null : () => _link(row),
             icon: Icon(row.sale == null ? Icons.link : Icons.link_rounded),
           ),
         ),
       ),
     ),
   );
-  Widget _tableRow(List<String> values, {Widget? action}) {
+  Widget _tableRow(List<String> values, {Widget? action, Widget? payment}) {
     const widths = <double>[185, 100, 90, 55, 145, 110, 90, 120, 160, 55];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -671,6 +854,8 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
                   padding: const EdgeInsets.only(right: 8),
                   child: i == values.length - 1 && action != null
                       ? action
+                      : i == 6 && payment != null
+                      ? payment
                       : Text(
                           values[i],
                           style: const TextStyle(
@@ -733,7 +918,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
           runSpacing: 8,
           children: [
             OutlinedButton(
-              onPressed: _editing
+              onPressed: _busy
                   ? null
                   : () => _edit(() async {
                       await editPalomarConfig(
@@ -745,7 +930,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
               child: const Text('Configurar disposición'),
             ),
             OutlinedButton(
-              onPressed: _editing ? null : _adjustment,
+              onPressed: _busy ? null : _adjustment,
               child: const Text('Compensación prevista'),
             ),
           ],
@@ -912,7 +1097,9 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
           ),
           const SizedBox(height: 10),
           for (final type in ['EFECTIVO', 'FISCAL', 'MIXTO'])
-            _text('$type: ${_money(total.byType[type] ?? 0)}'),
+            _text(
+              '${type == 'MIXTO' ? 'Por distribuir' : type}: ${_money(total.byType[type] ?? 0)}',
+            ),
           if (palomar != null) ...[
             const Divider(),
             _text('Cobros por ventas: ${_money(total.salesTotal)}'),

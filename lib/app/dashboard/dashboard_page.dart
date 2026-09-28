@@ -24,6 +24,7 @@ import '../shared/app_error_reporter.dart';
 import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/utils/number_formatters.dart';
+import '../shared/utils/manual_yard_count_time.dart';
 
 const double _kDashboardTitleMinWidth = 430;
 const double _kWidgetSmallHeight = 132;
@@ -2439,9 +2440,7 @@ class _DashboardManualYardCount {
       countUnits: ((row['count_units'] as num?) ?? 0).toInt(),
       weightKg: ((row['weight_kg'] as num?) ?? 0).toDouble(),
       notes: (row['notes'] ?? '').toString(),
-      countedAt:
-          DateTime.tryParse((row['counted_at'] ?? '').toString()) ??
-          DateTime.now(),
+      countedAt: (manualYardCountTime(row) ?? DateTime.now()).toLocal(),
       updatedAt:
           DateTime.tryParse((row['updated_at'] ?? '').toString()) ??
           DateTime.now(),
@@ -3325,7 +3324,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           'count_units': units,
           'weight_kg': double.parse(kg.toStringAsFixed(3)),
           'notes': notesC.text.trim().isEmpty ? null : notesC.text.trim(),
-          'counted_at': DateTime.now().toIso8601String(),
+          'counted_at': DateTime.now().toUtc().toIso8601String(),
           'updated_by': _supa.auth.currentUser?.id,
         }, onConflict: 'site,widget_key');
         if (!mounted) return;

@@ -224,6 +224,7 @@ ExpectedIncomeProjection projectExpectedIncome({
     }
     rows.add(
       ExpectedIncomeRow(
+        allocation: data.allocations[shipment.id],
         shipment: shipment,
         state: state,
         paymentType:
@@ -242,6 +243,13 @@ ExpectedIncomeProjection projectExpectedIncome({
         risks: cancelled ? [] : risks,
       ),
     );
+    if (rows.last.canAllocate && !rows.last.allocationApplied) {
+      risks.add(
+        rows.last.allocationStale
+            ? 'El importe o la venta cambió; revisa la distribución Efectivo / Fiscal.'
+            : 'Ingreso mixto por distribuir entre Efectivo y Fiscal.',
+      );
+    }
   }
   final current = IncomeTotals(),
       next = IncomeTotals(),
@@ -252,7 +260,9 @@ ExpectedIncomeProjection projectExpectedIncome({
   for (final row in rows.where((r) => r.ordinary && r.pendingCents > 0)) {
     final date = row.collectionDate, type = row.paymentType;
     if (date == null || type == null) {
-      undated.add(type ?? 'SIN CLASIFICAR', row.pendingCents);
+      for (final part in row.pendingByType.entries) {
+        undated.add(part.key, part.value);
+      }
       continue;
     }
     final bucket = date.isBefore(week)
@@ -262,8 +272,10 @@ ExpectedIncomeProjection projectExpectedIncome({
         : date.isBefore(nextEnd)
         ? next
         : later;
-    bucket.add(type, row.pendingCents);
-    timeline.putIfAbsent(date, IncomeTotals.new).add(type, row.pendingCents);
+    for (final part in row.pendingByType.entries) {
+      bucket.add(part.key, part.value);
+      timeline.putIfAbsent(date, IncomeTotals.new).add(part.key, part.value);
+    }
   }
   final represented = rows
       .where((r) => r.state != IncomeState.cancelled && r.sale != null)

@@ -91,6 +91,9 @@ class GerenciaBaleWeeklyPlanRecord {
   final int? snapshotShipmentActualBales;
   final int? snapshotShipmentTargetBales;
   final DateTime? snapshotRefreshedAt;
+  final String? sourceOperatingProgramId;
+  final int? sourceOperatingProgramVersion;
+  final DateTime? operatingProgramSyncedAt;
   final List<GerenciaBaleWeeklyPlanLineRecord> lines;
 
   const GerenciaBaleWeeklyPlanRecord({
@@ -106,6 +109,9 @@ class GerenciaBaleWeeklyPlanRecord {
     required this.snapshotShipmentTargetBales,
     required this.snapshotRefreshedAt,
     required this.lines,
+    this.sourceOperatingProgramId,
+    this.sourceOperatingProgramVersion,
+    this.operatingProgramSyncedAt,
   });
 
   factory GerenciaBaleWeeklyPlanRecord.fromRow(
@@ -135,11 +141,24 @@ class GerenciaBaleWeeklyPlanRecord {
         row['snapshot_refreshed_at'] as String?,
       ),
       lines: lines,
+      sourceOperatingProgramId: row['source_operating_program_id'] as String?,
+      sourceOperatingProgramVersion: _tryParseInt(
+        row['source_operating_program_version'],
+      ),
+      operatingProgramSyncedAt: _tryParseDateTime(
+        row['operating_program_synced_at'] as String?,
+      ),
     );
   }
 
   int get totalProductionTarget =>
       lines.fold(0, (sum, line) => sum + line.productionTargetBales);
+
+  bool get hasOperatingProgram => sourceOperatingProgramId != null;
+
+  bool isLinkedMaterial(String key) =>
+      hasOperatingProgram &&
+      const {'revuelto', 'limpio', 'americano'}.contains(key);
 
   int get totalShipmentTarget =>
       lines.fold(0, (sum, line) => sum + line.shipmentTargetBales);
@@ -278,6 +297,15 @@ class GerenciaBaleWeeklyHistorySnapshot {
 }
 
 class GerenciaBaleWeeklyTrackingStore {
+  static final _approvedPrograms = StreamController<DateTime>.broadcast();
+  static Stream<DateTime> get approvedPrograms => _approvedPrograms.stream;
+
+  static void operatingProgramApproved(DateTime week) {
+    final normalized = _weekStartMonday(week);
+    _invalidateWeekCache(normalized);
+    _approvedPrograms.add(normalized);
+  }
+
   static final SupabaseClient _supa = Supabase.instance.client;
   static const Duration _kBundleCacheTtl = Duration(seconds: 20);
   static const Duration _kBaleTypeCacheTtl = Duration(minutes: 10);
@@ -354,7 +382,8 @@ class GerenciaBaleWeeklyTrackingStore {
             'id,week_start_date,week_end_date,status,notes,closed_at,'
             'snapshot_production_actual_bales,snapshot_production_target_bales,'
             'snapshot_shipment_actual_bales,snapshot_shipment_target_bales,'
-            'snapshot_refreshed_at',
+            'snapshot_refreshed_at,source_operating_program_id,'
+            'source_operating_program_version,operating_program_synced_at',
           )
           .eq('week_start_date', _fmtDate(normalizedWeekStart))
           .maybeSingle();
@@ -780,13 +809,14 @@ class GerenciaBaleWeeklyTrackingStore {
     required int productionTargetBales,
     required int shipmentTargetBales,
     required String notes,
+    bool notesOnly = false,
   }) async {
     try {
       await _supa
           .from(_kGerenciaBaleWeeklyPlanLinesTable)
           .update({
-            'production_target_bales': productionTargetBales,
-            'shipment_target_bales': shipmentTargetBales,
+            if (!notesOnly) 'production_target_bales': productionTargetBales,
+            if (!notesOnly) 'shipment_target_bales': shipmentTargetBales,
             'notes': notes.trim().isEmpty ? null : notes.trim(),
           })
           .eq('id', line.id);
@@ -865,6 +895,7 @@ class GerenciaBaleWeeklyTrackingStore {
     unawaited(
       _persistSummarySnapshot(
         planId: plan.id,
+        sourceOperatingProgramId: plan.sourceOperatingProgramId,
         productionActualBales: productionActual,
         productionTargetBales: productionTarget,
         shipmentActualBales: shipmentActual,
@@ -875,13 +906,14 @@ class GerenciaBaleWeeklyTrackingStore {
 
   static Future<void> _persistSummarySnapshot({
     required String planId,
+    required String? sourceOperatingProgramId,
     required int productionActualBales,
     required int productionTargetBales,
     required int shipmentActualBales,
     required int shipmentTargetBales,
   }) async {
     try {
-      await _supa
+      final update = _supa
           .from(_kGerenciaBaleWeeklyPlansTable)
           .update({
             'snapshot_production_actual_bales': productionActualBales,
@@ -891,6 +923,15 @@ class GerenciaBaleWeeklyTrackingStore {
             'snapshot_refreshed_at': DateTime.now().toUtc().toIso8601String(),
           })
           .eq('id', planId);
+      // A read started before approval must not restore the old target totals.
+      if (sourceOperatingProgramId == null) {
+        await update.isFilter('source_operating_program_id', null);
+      } else {
+        await update.eq(
+          'source_operating_program_id',
+          sourceOperatingProgramId,
+        );
+      }
     } catch (_) {
       // No bloquea la lectura principal si falla la persistencia del snapshot.
     }

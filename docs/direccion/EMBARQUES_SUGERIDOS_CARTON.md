@@ -5,6 +5,11 @@ Las metas son **resultados** de los embarques factibles y su producción requeri
 no se consultan ni se exigen metas de Gerencia para generar sugerencias.
 El PDF proporcionado por el usuario es referencia informativa y no se modifica.
 
+El subtab **Real** precarga las salidas de Operación y permite confirmar o corregir
+las cantidades ejecutadas. Las próximas sugerencias usan ese historial confirmado,
+sin duplicarlo. Confirmar también actualiza la agenda con embarcados, cancelados y
+cargas adicionales; la referencia original se conserva para comparar. Ver [Resultados reales](RESULTADOS_REALES.md).
+
 ## Flujo
 
 1. **Embarques sugeridos** lee las fuentes actuales y presenta clientes, fechas,
@@ -59,6 +64,16 @@ registros. No se publican ni sobrescriben automáticamente las metas de Gerencia
   eventos se calcula el saldo actual y se reconstruye el saldo inicial del lunes.
   Un patio inicial guardado sirve como respaldo. Sin conteo utilizable se parte
   de cero más los movimientos netos observados de la semana y se marca estimado.
+- Operación y Embarques usan el instante de guardado del conteo registrado por
+  el servidor (`updated_at`; respaldo `counted_at`). Este formulario captura el
+  conteo al guardar y no permite fecharlo hacia atrás. Así se corrigen también
+  las lecturas de clientes anteriores que enviaban la hora local sin zona.
+  Las nuevas capturas escriben `counted_at` en UTC y Operación muestra la hora local.
+- Una reconstrucción incierta o negativa del patio del lunes se advierte por
+  separado; no invalida el conteo físico actual. “Sin conteo” identifica falta de
+  una referencia utilizable, mientras “Piso estimado” señala incertidumbre en
+  los movimientos posteriores. Cada embarque muestra el piso disponible, la
+  producción esperada, los compromisos previos y el saldo antes/después.
 - La producción se suma una sola vez: se excluyen entradas comerciales de origen
   `TRANSFORMATION`, ya representadas por los registros de Producción. Fechas de
   captura comparables permiten separar movimientos anteriores y posteriores al

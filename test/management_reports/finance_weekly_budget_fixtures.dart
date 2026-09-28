@@ -1,4 +1,5 @@
 import 'package:dicsa_operacion/app/finanzas/finanzas_bank_accounts_store.dart';
+import 'package:dicsa_operacion/app/compras/compras_tickets_store.dart';
 import 'package:dicsa_operacion/app/finanzas/finanzas_fixed_payments_store.dart';
 import 'package:dicsa_operacion/app/finanzas/finanzas_provider_accounts_store.dart';
 import 'package:dicsa_operacion/app/management_reports/finance_weekly_budget_analysis.dart';
@@ -126,6 +127,9 @@ FinanceWeeklyBudgetSource budgetSource({
   List<FinanzasSupplierAgreementRecord> agreements = const [],
   List<FinanzasSupplierAgreementInstallmentRecord> installments = const [],
   List<FinanzasSupplierAgreementInvoiceRecord> links = const [],
+  List<ComprasTicketRecord> tickets = const [],
+  List<ComprasTicketPaymentApplicationRecord> ticketApplications = const [],
+  List<FinanzasSupplierInvoiceTicketRecord> invoiceTickets = const [],
 }) => FinanceWeeklyBudgetSource(
   movements: movements,
   invoices: invoices,
@@ -133,4 +137,7 @@ FinanceWeeklyBudgetSource budgetSource({
   agreements: agreements,
   installments: installments,
   agreementLinks: links,
+  tickets: tickets,
+  ticketApplications: ticketApplications,
+  invoiceTickets: invoiceTickets,
 );

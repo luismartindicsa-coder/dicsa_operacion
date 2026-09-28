@@ -140,13 +140,20 @@ class DirectionCashRubricDefinition {
 class DirectionCashTaxonomyStore
     extends ValueNotifier<List<DirectionCashRubricDefinition>> {
   DirectionCashTaxonomyStore._() : super(_seedRubrics()) {
-    unawaited(ensureLoaded());
+    unawaited(
+      ensureLoaded().catchError((Object error, StackTrace stackTrace) {
+        debugPrint(
+          'DirectionCashTaxonomyStore load failed: $error\n$stackTrace',
+        );
+      }),
+    );
   }
 
   static final DirectionCashTaxonomyStore instance =
       DirectionCashTaxonomyStore._();
 
   Future<void>? _loadFuture;
+  bool _loaded = false;
   Future<void> _saveQueue = Future<void>.value();
 
   final ValueNotifier<List<String>> entryPeople =
@@ -184,16 +191,28 @@ class DirectionCashTaxonomyStore
         .toList(growable: false);
   }
 
-  Future<void> ensureLoaded() {
-    return _loadFuture ??= _loadFromRemote();
+  Future<void> ensureLoaded({bool refresh = false}) {
+    if (_loadFuture != null) return _loadFuture!;
+    if (_loaded && !refresh) return Future<void>.value();
+    return _loadFuture = _loadFromRemote().whenComplete(() {
+      // A failed request must not remain cached for the rest of the session.
+      _loadFuture = null;
+    });
   }
 
   Future<void> _loadFromRemote() async {
+    await _saveQueue;
     final payload =
-        await CashTaxonomyRepository.instance.loadArea(_kDirectionCashArea) ??
-        await CashTaxonomyRepository.instance.loadArea(_kLegacyMayoreoCashArea);
-    if (payload == null) return;
-    _hydrateFromPayload(payload);
+        await CashTaxonomyRepository.instance.loadArea(
+          _kDirectionCashArea,
+          strict: true,
+        ) ??
+        await CashTaxonomyRepository.instance.loadArea(
+          _kLegacyMayoreoCashArea,
+          strict: true,
+        );
+    if (payload != null) _hydrateFromPayload(payload);
+    _loaded = true;
   }
 
   void _hydrateFromPayload(Map<String, dynamic> payload) {
@@ -205,14 +224,12 @@ class DirectionCashTaxonomyStore
           .toList(growable: false);
     }
 
-    final loadedEntryPeople = _stringListFromJson(payload['entry_people']);
-    if (loadedEntryPeople.isNotEmpty) {
-      entryPeople.value = loadedEntryPeople;
+    if (payload['entry_people'] is List) {
+      entryPeople.value = _stringListFromJson(payload['entry_people']);
     }
 
-    final loadedExitPeople = _stringListFromJson(payload['exit_people']);
-    if (loadedExitPeople.isNotEmpty) {
-      exitPeople.value = loadedExitPeople;
+    if (payload['exit_people'] is List) {
+      exitPeople.value = _stringListFromJson(payload['exit_people']);
     }
 
     notifyListeners();

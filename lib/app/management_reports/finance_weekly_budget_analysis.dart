@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../compras/compras_tickets_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_fixed_payments_store.dart';
 import '../finanzas/finanzas_provider_accounts_store.dart';
@@ -23,10 +24,12 @@ bool _validAccount(String key) =>
     key.split('|').length == 2 && key.split('|').every((s) => s.isNotEmpty);
 
 class FinanceBudgetPeriod {
-  FinanceBudgetPeriod(DateTime at) {
+  FinanceBudgetPeriod(DateTime at, {DateTime? targetWeek}) {
     asOf = _day(at);
     currentMonday = _add(asOf, 1 - asOf.weekday);
-    start = _add(currentMonday, 7);
+    start = targetWeek == null
+        ? _add(currentMonday, 7)
+        : _add(_day(targetWeek), 1 - targetWeek.weekday);
     end = _add(start, 6);
     historyStart = _add(currentMonday, -56);
     historyEnd = _add(currentMonday, -1);
@@ -42,6 +45,9 @@ class FinanceWeeklyBudgetSource {
     required this.agreements,
     required this.installments,
     required this.agreementLinks,
+    this.tickets = const [],
+    this.ticketApplications = const [],
+    this.invoiceTickets = const [],
   });
   final List<FinanzasBankMovementRecord> movements;
   final List<FinanzasSupplierInvoiceRecord> invoices;
@@ -49,6 +55,9 @@ class FinanceWeeklyBudgetSource {
   final List<FinanzasSupplierAgreementRecord> agreements;
   final List<FinanzasSupplierAgreementInstallmentRecord> installments;
   final List<FinanzasSupplierAgreementInvoiceRecord> agreementLinks;
+  final List<ComprasTicketRecord> tickets;
+  final List<ComprasTicketPaymentApplicationRecord> ticketApplications;
+  final List<FinanzasSupplierInvoiceTicketRecord> invoiceTickets;
 }
 
 class FinanceBudgetWeekFlow {
@@ -116,8 +125,11 @@ class FinanceBudgetAccountPlan {
 /// A requirements-based weekly proposal. Bank balances and historical flows
 /// never determine selection or the ceiling. Money is allocated in cents.
 class FinanceWeeklyBudgetAnalysis {
-  FinanceWeeklyBudgetAnalysis(this.source, DateTime generatedAt)
-    : period = FinanceBudgetPeriod(generatedAt) {
+  FinanceWeeklyBudgetAnalysis(
+    this.source,
+    DateTime generatedAt, {
+    DateTime? targetWeek,
+  }) : period = FinanceBudgetPeriod(generatedAt, targetWeek: targetWeek) {
     _build();
   }
   static const int weeklyLimit = 50000000; // MXN 500,000 in cents.

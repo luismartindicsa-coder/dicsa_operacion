@@ -15,8 +15,9 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'direction_maintenance_page.dart';
 import 'direction_shipments_store.dart';
 import 'direction_theme.dart';
+import 'execution/direction_execution_view.dart';
 import 'operating_program/operating_program_view.dart';
-import 'expected_income/expected_income_view.dart';
+import 'direction_projection_page.dart';
 
 class DirectionShipmentsPage extends StatefulWidget {
   final bool instantOpen;
@@ -37,6 +38,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
 
   bool _menuOpen = false;
   int _selectedTab = 0;
+  int _shipmentSubtab = 0;
   GlobalKey<OperatingProgramViewState> _programKey =
       GlobalKey<OperatingProgramViewState>();
   bool _pendingReload = false;
@@ -205,6 +207,19 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
         page: const DirectionMaintenancePage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openProjection() async {
+    if (await _programKey.currentState?.canLeave() == false) return;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: DirectionProjectionPage(
+          instantOpen: true,
+          initialWeekStartDate: _visibleWeekStartDate,
+        ),
       ),
     );
   }
@@ -1079,15 +1094,12 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                                 label: Text('Programa operativo'),
                                 icon: Icon(Icons.calendar_view_week),
                               ),
-                              ButtonSegment(
-                                value: 2,
-                                label: Text('Ingresos esperados'),
-                                icon: Icon(Icons.payments_outlined),
-                              ),
                             ],
                             selected: {_selectedTab},
-                            onSelectionChanged: (v) =>
-                                setState(() => _selectedTab = v.single),
+                            onSelectionChanged: _runningMutation
+                                ? null
+                                : (v) =>
+                                      setState(() => _selectedTab = v.single),
                           ),
                         ),
                         Expanded(
@@ -1096,17 +1108,49 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                               : IndexedStack(
                                   index: _selectedTab,
                                   children: [
-                                    _buildBody(),
+                                    Column(
+                                      children: [
+                                        DirectionExecutionTabs(
+                                          selected: _shipmentSubtab,
+                                          onChanged: _runningMutation
+                                              ? null
+                                              : (v) => setState(
+                                                  () => _shipmentSubtab = v,
+                                                ),
+                                        ),
+                                        Expanded(
+                                          child: _shipmentSubtab == 0
+                                              ? _buildBody()
+                                              : DirectionExecutionView(
+                                                  kind: 'shipment',
+                                                  bundle: _bundle!,
+                                                  onWeekChanged:
+                                                      _changeVisibleWeek,
+                                                  onChanged: () async {
+                                                    await _refreshProgramReference();
+                                                  },
+                                                  onBusyChanged: (v) {
+                                                    if (mounted) {
+                                                      setState(
+                                                        () => _runningMutation =
+                                                            v,
+                                                      );
+                                                    }
+                                                  },
+                                                ),
+                                        ),
+                                      ],
+                                    ),
                                     OperatingProgramView(
                                       key: _programKey,
                                       bundle: _bundle!,
+                                      onExecutionBusyChanged: (v) {
+                                        if (mounted) {
+                                          setState(() => _runningMutation = v);
+                                        }
+                                      },
                                       refreshReference:
                                           _refreshProgramReference,
-                                      onWeekChanged: _changeVisibleWeek,
-                                    ),
-                                    ExpectedIncomeView(
-                                      bundle: _bundle!,
-                                      active: _selectedTab == 2,
                                       onWeekChanged: _changeVisibleWeek,
                                     ),
                                   ],
@@ -1159,7 +1203,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
                   child: Text(
-                    'Acepta los embarques sugeridos y ajusta aquí fechas, destinos o cantidades. Al generar, Programa operativo toma la versión final de los embarques confirmados.',
+                    'Acepta y ajusta los embarques para generar el Programa operativo. Confirma lo ejecutado en Real para actualizar esta agenda con los embarcados, cancelados y las cargas adicionales.',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w700,
@@ -1329,6 +1373,12 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                 title: 'Embarques',
                 subtitle: 'Embarques y programa operativo',
                 current: true,
+              ),
+              DirectionModuleMenuEntry(
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Proyección',
+                subtitle: 'Ingresos, egresos y flujo semanal',
+                onTap: _openProjection,
               ),
               DirectionModuleMenuEntry(
                 icon: Icons.build_circle_outlined,
@@ -2364,6 +2414,15 @@ class _ShipmentProjectionRow extends StatelessWidget {
             runSpacing: 10,
             children: [
               _ProjectionStatCard(
+                title: 'Piso disponible',
+                accent: kDirectionOliveGlow,
+                primary: _formatMaterialQuantity(
+                  plan.materialCode,
+                  projection.currentFloorQuantity,
+                ),
+                secondary: 'Conteo de Operación y movimientos posteriores',
+              ),
+              _ProjectionStatCard(
                 title: 'Saldo proyectado',
                 accent: riskStyle.color,
                 primary:
@@ -2385,6 +2444,17 @@ class _ShipmentProjectionRow extends StatelessWidget {
                     '-${_formatMaterialQuantity(plan.materialCode, projection.priorCommittedQuantity)}',
                 secondary: 'Mismo tipo comprometido antes de este renglón',
               ),
+              if (projection.fulfilledQuantity > 0)
+                _ProjectionStatCard(
+                  title: 'Real confirmado',
+                  accent: kDirectionSuccess,
+                  primary: _formatMaterialQuantity(
+                    plan.materialCode,
+                    projection.fulfilledQuantity,
+                  ),
+                  secondary:
+                      'Pendiente ${_formatMaterialQuantity(plan.materialCode, plan.plannedQuantity - projection.fulfilledQuantity)}',
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -3186,6 +3256,8 @@ _RiskStyle _riskStyle(DirectionShipmentRisk risk) {
       return const _RiskStyle(label: 'Cancelado', color: kDirectionSubtleText);
     case DirectionShipmentRisk.unknown:
       return const _RiskStyle(label: 'Sin conteo', color: kDirectionWarning);
+    case DirectionShipmentRisk.estimated:
+      return const _RiskStyle(label: 'Piso estimado', color: kDirectionWarning);
   }
 }
 

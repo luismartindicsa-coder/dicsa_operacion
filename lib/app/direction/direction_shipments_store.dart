@@ -7,9 +7,11 @@ import 'package:uuid/uuid.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
+import '../shared/utils/manual_yard_count_time.dart';
 
 part 'direction_shipment_suggestions.dart';
 part 'direction_shipment_inventory.dart';
+part 'direction_execution_models.dart';
 
 const String _kDirectionShipmentPlansTable = 'direction_shipment_plans';
 const String _kDirectionCapacityImpactsTable =
@@ -155,6 +157,7 @@ enum DirectionShipmentRisk {
   overdue,
   shipped,
   cancelled,
+  estimated,
   unknown,
 }
 
@@ -381,6 +384,8 @@ class DirectionShipmentPlanProjection {
   final int projectedRemainingAfterQuantity;
   final int expectedFutureQuantity;
   final int priorCommittedQuantity;
+  final int currentFloorQuantity;
+  final int fulfilledQuantity;
   final DirectionShipmentRisk risk;
 
   const DirectionShipmentPlanProjection({
@@ -390,6 +395,8 @@ class DirectionShipmentPlanProjection {
     required this.expectedFutureQuantity,
     required this.priorCommittedQuantity,
     required this.risk,
+    this.currentFloorQuantity = 0,
+    this.fulfilledQuantity = 0,
   });
 
   int get projectedAvailableBeforeUnits => projectedAvailableBeforeQuantity;
@@ -458,6 +465,9 @@ class DirectionShipmentPlanningBundle {
   final List<DirectionProductionHistoryRecord> productionHistory;
   final DirectionShipmentSuggestionReport? suggestionReport;
   final Map<String, dynamic>? savedProgramConditions;
+  final List<DirectionExecutionActual> executionActuals;
+  final List<DirectionProductionHistoryRecord> productionActuals;
+  final List<DirectionShipmentMovement> shipmentMovements;
 
   const DirectionShipmentPlanningBundle({
     required this.weekStartDate,
@@ -474,6 +484,9 @@ class DirectionShipmentPlanningBundle {
     this.productionHistory = const [],
     this.suggestionReport,
     this.savedProgramConditions,
+    this.executionActuals = const [],
+    this.productionActuals = const [],
+    this.shipmentMovements = const [],
   });
 
   int get activeFloorMaterialCount =>
@@ -582,6 +595,7 @@ class DirectionShipmentsStore {
           weekStart.subtract(const Duration(days: 112)),
           weekEnd,
         ),
+        loadExecutionActuals(historyStart, weekEnd),
       ]);
 
       final shipments = results[0] as List<DirectionShipmentPlanRecord>;
@@ -594,16 +608,24 @@ class DirectionShipmentsStore {
       final savedConditions = results[5] as Map<String, dynamic>?;
       final movements = results[6] as List<DirectionShipmentMovement>;
       final directionHistory = results[7] as List<DirectionShipmentPlanRecord>;
-
-      final quantityByDateMaterial = _buildQuantityByDateMaterial(events);
-      final quantityByDateMaterialShift = _buildQuantityByDateMaterialShift(
+      final executionActuals = results[8] as List<DirectionExecutionActual>;
+      final learnedProduction = directionProductionWithActuals(
         events,
+        executionActuals,
+        before: _dateOnly(asOf),
+      );
+
+      final quantityByDateMaterial = _buildQuantityByDateMaterial(
+        learnedProduction,
+      );
+      final quantityByDateMaterialShift = _buildQuantityByDateMaterialShift(
+        learnedProduction,
       );
       final quantityByDateMaterialMachine = _buildQuantityByDateMaterialMachine(
-        events,
+        learnedProduction,
       );
       final quantityByDateMaterialMachineShift =
-          _buildQuantityByDateMaterialMachineShift(events);
+          _buildQuantityByDateMaterialMachineShift(learnedProduction);
       final expectedDays = _buildExpectedDays(
         weekStart: weekStart,
         weekEnd: weekEnd,
@@ -637,13 +659,14 @@ class DirectionShipmentsStore {
         shipments: directionHistory,
         floorCounts: floorData.countsByMaterial,
         floorCountedAt: floorData.countedAtByMaterial,
-        production: events,
+        production: learnedProduction,
+        executionActuals: executionActuals,
         impacts: impacts,
         savedProgramConditions: savedConditions,
         movements: movements,
       );
 
-      final projections = _buildProjections(
+      final projections = buildProjections(
         shipments: shipments,
         floorCounts: {
           ...floorData.countsByMaterial,
@@ -651,6 +674,8 @@ class DirectionShipmentsStore {
         },
         expectedDays: expectedDays,
         suggestionReport: suggestionReport,
+        asOf: asOf,
+        executionActuals: executionActuals,
       );
 
       return DirectionShipmentPlanningBundle(
@@ -661,13 +686,20 @@ class DirectionShipmentsStore {
         suggestedShipments: suggestionReport.suggestions,
         suggestionReport: suggestionReport,
         savedProgramConditions: savedConditions,
+        executionActuals: executionActuals,
+        productionActuals: events
+            .where((e) => !e.date.isBefore(weekStart))
+            .toList(),
+        shipmentMovements: movements
+            .where((m) => !m.date.isBefore(weekStart))
+            .toList(),
         floorCountByMaterial: floorData.countsByMaterial,
         floorCountUpdatedAt: floorData.latestUpdatedAt,
         expectedDays: expectedDays,
         activeCapacityImpacts: impacts,
         impactSummaries: impactSummaries,
         maintenanceAlerts: alerts,
-        productionHistory: events
+        productionHistory: learnedProduction
             .where((event) => event.date.isBefore(weekStart))
             .toList(growable: false),
       );
@@ -680,6 +712,23 @@ class DirectionShipmentsStore {
       );
       rethrow;
     }
+  }
+
+  static Future<List<DirectionExecutionActual>> loadExecutionActuals(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from('direction_execution_actuals')
+          .select()
+          .gte('op_date', _fmtDate(start))
+          .lte('op_date', _fmtDate(end))
+          .order('op_date')
+          .order('id')
+          .range(from, to),
+    );
+    return rows.map(DirectionExecutionActual.fromRow).toList();
   }
 
   static Future<void> createShipmentPlan({
@@ -933,7 +982,7 @@ class DirectionShipmentsStore {
         (value) => value + quantity,
         ifAbsent: () => quantity,
       );
-      final countedAt = _tryParseDateTime(row['counted_at']);
+      final countedAt = manualYardCountTime(row);
       if (countedAt == null) {
         undatedMaterials.add(materialCode);
       } else if (!countedAtByMaterial.containsKey(materialCode) ||
@@ -1408,13 +1457,15 @@ class DirectionShipmentsStore {
         .toList(growable: false);
   }
 
-  static List<DirectionShipmentPlanProjection> _buildProjections({
+  static List<DirectionShipmentPlanProjection> buildProjections({
     required List<DirectionShipmentPlanRecord> shipments,
     required Map<String, int> floorCounts,
     required List<DirectionProductionExpectationDay> expectedDays,
     DirectionShipmentSuggestionReport? suggestionReport,
+    DateTime? asOf,
+    List<DirectionExecutionActual> executionActuals = const [],
   }) {
-    final today = _dateOnly(DateTime.now());
+    final today = _dateOnly(asOf ?? DateTime.now());
     final sorted = shipments.toList(growable: false)
       ..sort((a, b) {
         final dateCompare = a.shipDate.compareTo(b.shipDate);
@@ -1429,6 +1480,14 @@ class DirectionShipmentsStore {
       });
 
     final runningCommittedByMaterial = <String, int>{};
+    final outstanding = {
+      for (final p in directionOutstandingShipmentPlans(
+        shipments,
+        executionActuals,
+        today,
+      ))
+        p.id: p.plannedQuantity,
+    };
     final projections = <DirectionShipmentPlanProjection>[];
     for (final plan in sorted) {
       final materialCode = plan.materialCode;
@@ -1443,6 +1502,7 @@ class DirectionShipmentsStore {
             projectedRemainingAfterQuantity: baseFloor,
             expectedFutureQuantity: 0,
             priorCommittedQuantity: priorCommitted,
+            currentFloorQuantity: baseFloor,
             risk: DirectionShipmentRisk.cancelled,
           ),
         );
@@ -1456,6 +1516,7 @@ class DirectionShipmentsStore {
             projectedRemainingAfterQuantity: baseFloor,
             expectedFutureQuantity: 0,
             priorCommittedQuantity: priorCommitted,
+            currentFloorQuantity: baseFloor,
             risk: DirectionShipmentRisk.shipped,
           ),
         );
@@ -1483,15 +1544,22 @@ class DirectionShipmentsStore {
                       ),
                 );
       final projectedBefore = baseFloor + expectedFuture - priorCommitted;
-      final projectedAfter = projectedBefore - plan.plannedQuantity;
-      final risk =
-          suggestionReport?.estimatedFloorMaterials.contains(materialCode) ==
-              true
+      final remainingDemand = outstanding[plan.id] ?? 0;
+      final fulfilled = plan.plannedQuantity - remainingDemand;
+      final projectedAfter = projectedBefore - remainingDemand;
+      final risk = remainingDemand == 0
+          ? DirectionShipmentRisk.shipped
+          : suggestionReport?.missingFloorMaterials.contains(materialCode) ==
+                true
           ? DirectionShipmentRisk.unknown
+          : suggestionReport?.estimatedFloorMaterials.contains(materialCode) ==
+                true
+          ? DirectionShipmentRisk.estimated
           : _riskForPlan(
               plan: plan,
               projectedAfter: projectedAfter,
               floorCounts: floorCounts,
+              asOf: today,
             );
       projections.add(
         DirectionShipmentPlanProjection(
@@ -1499,12 +1567,14 @@ class DirectionShipmentsStore {
           projectedAvailableBeforeQuantity: projectedBefore,
           projectedRemainingAfterQuantity: projectedAfter,
           expectedFutureQuantity: expectedFuture,
+          fulfilledQuantity: fulfilled,
           priorCommittedQuantity: priorCommitted,
+          currentFloorQuantity: baseFloor,
           risk: risk,
         ),
       );
       runningCommittedByMaterial[materialCode] =
-          priorCommitted + plan.plannedQuantity;
+          priorCommitted + remainingDemand;
     }
     return projections;
   }
@@ -1655,6 +1725,7 @@ DirectionShipmentRisk _riskForPlan({
   required DirectionShipmentPlanRecord plan,
   required int projectedAfter,
   required Map<String, int> floorCounts,
+  DateTime? asOf,
 }) {
   return _riskForSuggestedQuantity(
     materialCode: plan.materialCode,
@@ -1663,6 +1734,7 @@ DirectionShipmentRisk _riskForPlan({
     shipDate: plan.shipDate,
     projectedAfter: projectedAfter,
     floorCounts: floorCounts,
+    asOf: asOf,
   );
 }
 
@@ -2030,8 +2102,9 @@ DirectionShipmentRisk _riskForSuggestedQuantity({
   required DateTime shipDate,
   required int projectedAfter,
   required Map<String, int> floorCounts,
+  DateTime? asOf,
 }) {
-  final today = _dateOnly(DateTime.now());
+  final today = _dateOnly(asOf ?? DateTime.now());
   if (!floorCounts.containsKey(materialCode)) {
     return DirectionShipmentRisk.unknown;
   }

@@ -14,6 +14,11 @@ programa. No se cambian estados ni cantidades de embarques al programar.
 
 ## Uso
 
+Los subtabs **Planeado** y **Real** separan la programación de lo ejecutado.
+Real precarga Producción de Operación por fecha, turno y material y permite
+confirmar o corregir el resultado, conservando la versión planeada como referencia.
+Ver [Resultados reales](RESULTADOS_REALES.md) para el efecto en futuras planeaciones.
+
 1. Capturar y confirmar embarques de la semana, o revisar
    [Embarques sugeridos](EMBARQUES_SUGERIDOS_CARTON.md) y usar **Aceptar embarques**
    para incorporar la selección semanal. Se pueden editar después; la generación
@@ -154,12 +159,48 @@ La producción real se lee de las mismas fuentes, con selección por semana del
 histórico anterior de `production_runs` cuando no hay pacas en la fuente actual.
 Las referencias aprobadas no se recalculan a partir de la producción real.
 
+## Metas automáticas de Gerencia
+
+La migración `20260921200000_sync_operating_program_gerencia_goals.sql` conecta
+la aprobación del programa con el plan semanal de Gerencia en la misma
+transacción. Si la sincronización falla, tampoco se cambia la versión operativa.
+Aplicada al proyecto Supabase vinculado el 21 de septiembre de 2026.
+
+- Guardar o generar un borrador no modifica metas. Al aprobarlo, se crea la semana
+  en Gerencia si falta y se reemplazan las metas de los tres materiales de cartón.
+- Meta de embarque: suma de los embarques confirmados incluidos en la copia
+  aprobada, de lunes a viernes. No incluye planeados, kilos ni el sábado.
+- Meta de producción: suma de las cantidades programadas en ambos turnos de
+  lunes a viernes. El patio puede hacer que esta meta sea menor que los embarques;
+  la producción adicional programada también queda incluida.
+- Nacional corresponde a `revuelto` en Gerencia; Limpio a `limpio` y Americano a
+  `americano`. Un material retirado de una nueva versión queda con meta cero.
+- Una nueva aprobación sustituye las metas de esa misma semana y conserva los
+  identificadores, notas, estado y datos reales. Iniciar ejecución no vuelve a sumarlas.
+- Gerencia muestra la versión de origen. Las cantidades vinculadas se ajustan
+  mediante otra aprobación en Dirección; las notas siguen siendo editables.
+- La aplicación invalida la caché y avisa a las vistas de Gerencia al aprobar.
+  Los cambios en las líneas también se publican por Realtime para otros equipos,
+  con la recarga periódica existente como respaldo. Un diálogo abierto difiere
+  el refresco y la base impide que una edición anterior sobrescriba metas vinculadas.
+- Las semanas cerradas o canceladas no se sobrescriben: aprobar otra versión de
+  esas semanas devuelve un conflicto y conserva el programa anterior.
+- El despliegue vincula las versiones operativas ya aprobadas de la semana
+  actual y futuras, salvo semanas cerradas o canceladas. No altera metas históricas.
+
+La prueba SQL `tool/test_direction_gerencia_goals_sql.mjs` ejecuta las migraciones
+reales en PostgreSQL temporal y verifica creación, sustitución, turnos, materiales,
+patio, exclusiones, permisos y reversión de ambas partes ante conflictos.
+`test/direction/operating_program_gerencia_test.dart` comprueba la recarga inmediata
+de la caché, la notificación a las vistas y la edición de notas sin reenviar metas.
+
 ## Validación
 
 ```sh
 flutter test --no-pub test/direction
 dart analyze lib/app/direction/operating_program lib/app/direction/direction_shipments_page.dart lib/app/direction/direction_shipments_store.dart test/direction
 DICSA_PGLITE_MODULE=/ruta/a/pglite/dist/index.js node tool/test_direction_operating_program_sql.mjs
+DICSA_PGLITE_MODULE=/ruta/a/pglite/dist/index.js node tool/test_direction_gerencia_goals_sql.mjs
 ```
 
 Las pruebas cubren patio por material, turno nocturno, plazos, equilibrio diario,

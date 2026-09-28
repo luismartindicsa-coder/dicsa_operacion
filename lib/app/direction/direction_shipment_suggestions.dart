@@ -78,6 +78,7 @@ class DirectionShipmentSuggestionReport {
   final int incomingRecordCount, dailyCapacity;
   final Map<String, int> openingFloorByMaterial, currentFloorByMaterial;
   final Set<String> estimatedFloorMaterials;
+  final Set<String> missingFloorMaterials;
   final Map<DateTime, Map<String, int>> productionForecast,
       dayProductionForecast;
   const DirectionShipmentSuggestionReport({
@@ -96,6 +97,7 @@ class DirectionShipmentSuggestionReport {
     this.openingFloorByMaterial = const {},
     this.currentFloorByMaterial = const {},
     this.estimatedFloorMaterials = const {},
+    this.missingFloorMaterials = const {},
     this.productionForecast = const {},
     this.dayProductionForecast = const {},
   });
@@ -165,6 +167,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   List<DirectionShipmentTarget> targets = const [],
   Map<String, dynamic>? savedProgramConditions,
   required List<DirectionShipmentMovement> movements,
+  List<DirectionExecutionActual> executionActuals = const [],
 }) {
   final start = _weekStartMonday(weekStart);
   final today = _dateOnly(asOf);
@@ -175,9 +178,16 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
       : _weekStartMonday(today);
   final historyStart = historyEnd.subtract(const Duration(days: 42));
   final commercialStart = start.subtract(const Duration(days: 112));
+  production = directionProductionWithActuals(
+    production,
+    executionActuals,
+    before: today,
+  );
   final observations = <String>[
     'Propuesta de cartón de lunes a viernes. Mantiene 5 pacas de reserva por material y protege los embarques ya capturados hasta el sábado.',
     'El historial y el piso determinan la propuesta. Las metas de embarque y producción se calculan como resultado de la selección; no se requieren metas previas.',
+    if (executionActuals.any((a) => a.active && a.date.isBefore(historyEnd)))
+      'Los resultados confirmados en Real sustituyen los registros equivalentes de Operación en el historial de producción y embarques; no se suman dos veces.',
   ];
   bool inWeek(DateTime date) => !date.isBefore(start) && date.isBefore(sunday);
   final actualOut = <String, _ObservedShipment>{};
@@ -214,7 +224,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
       );
     }
   }
-  for (final row in shipments) {
+  for (final row in directionShipmentSourcePlans(shipments, executionActuals)) {
     if (row.isShipped &&
         row.quantityUnit == DirectionShipmentQuantityUnit.bales) {
       add(
@@ -234,6 +244,27 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   for (final entry in directionOut.entries) {
     if (entry.value.quantity > (reconciled[entry.key]?.quantity ?? 0)) {
       reconciled[entry.key] = entry.value;
+    }
+  }
+  for (final a in executionActuals) {
+    if (!a.active ||
+        a.kind != 'shipment' ||
+        !_suggestionMaterials.contains(a.material) ||
+        a.date.isAfter(today) ||
+        a.date.isBefore(commercialStart))
+      continue;
+    final event = _ObservedShipment(
+      a.date,
+      _suggestionClient(a.client),
+      a.material,
+      a.quantity,
+      a.loads,
+    );
+    // Explicit zero removes an erroneous source shipment from history too.
+    if (a.quantity == 0) {
+      reconciled.remove(event.key);
+    } else {
+      reconciled[event.key] = event;
     }
   }
   if (directionOut.keys.any(actualOut.containsKey)) {
@@ -256,7 +287,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
     }
   }
   final commitments =
-      shipments
+      directionOutstandingShipmentPlans(shipments, executionActuals, today)
           .where(
             (s) =>
                 s.isActive &&
@@ -327,7 +358,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
         (p) =>
             !p.date.isBefore(historyStart) &&
             p.date.isBefore(historyEnd) &&
-            p.quantity > 0 &&
+            (p.quantity > 0 || p.source == 'direction_execution_actuals') &&
             _suggestionMaterials.contains(p.materialCode),
       )
       .toList();
@@ -351,6 +382,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
     movements: movements,
     shipments: shipments,
     savedProgramConditions: savedProgramConditions,
+    executionActuals: executionActuals,
   );
   observations.addAll(inventory.observations);
   final validFloor = inventory.current;
@@ -624,8 +656,10 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
               historicalAverageQuantity: typical,
               historicalShipmentCount: events.length,
               lastShipmentDate: events.last.date,
-              risk: inventory.estimatedMaterials.contains(material)
+              risk: inventory.missingMaterials.contains(material)
                   ? DirectionShipmentRisk.unknown
+                  : inventory.estimatedMaterials.contains(material)
+                  ? DirectionShipmentRisk.estimated
                   : projected > 0 ||
                         before - bestQuantity <
                             math.max(5, (bestQuantity * .15).ceil())
@@ -706,6 +740,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
     openingFloorByMaterial: inventory.opening,
     currentFloorByMaterial: inventory.current,
     estimatedFloorMaterials: inventory.estimatedMaterials,
+    missingFloorMaterials: inventory.missingMaterials,
     productionForecast: forecast,
     dayProductionForecast: dayForecast,
   );

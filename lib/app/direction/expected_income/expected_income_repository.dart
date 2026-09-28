@@ -78,6 +78,19 @@ class ExpectedIncomeRepository {
             .order('id')
             .range(from, to),
       ),
+      bundle.shipments.isEmpty
+          ? Future.value(<Map<String, dynamic>>[])
+          : fetchAllSupabaseRows(
+              (from, to) => client
+                  .from('direction_income_allocations')
+                  .select()
+                  .inFilter(
+                    'shipment_id',
+                    bundle.shipments.map((s) => s.id).toList(),
+                  )
+                  .order('shipment_id')
+                  .range(from, to),
+            ),
     ]);
     return assembleExpectedIncomeData(
       bundle: bundle,
@@ -97,6 +110,23 @@ class ExpectedIncomeRepository {
       throw ArgumentError('Peso o precio fuera de rango.');
     }
     await client.from('direction_income_material_rules').upsert(rule.toJson());
+  }
+
+  Future<void> saveAllocation(IncomeAllocation allocation) async {
+    if (!allocation.valid) {
+      throw ArgumentError('Distribución de ingreso inválida.');
+    }
+    await client.rpc(
+      'direction_income_save_allocation',
+      params: {
+        'p_shipment_id': allocation.shipmentId,
+        'p_source_key': allocation.sourceKey,
+        'p_total_cents': allocation.totalCents,
+        'p_cash_cents': allocation.cashCents,
+        'p_fiscal_cents': allocation.fiscalCents,
+        'p_expected_revision': allocation.revision,
+      },
+    );
   }
 
   Future<void> saveClient(
@@ -358,6 +388,11 @@ ExpectedIncomeData assembleExpectedIncomeData({
     }
   }
   return ExpectedIncomeData(
+    allocations: {
+      if (tables.length > 15)
+        for (final row in tables[15])
+          row['shipment_id'] as String: IncomeAllocation.fromJson(row),
+    },
     collections: mayoreoExpectedCollections(tables[8], bankCredits),
     materials: tables[0].map(IncomeMaterialRule.fromJson).toList(),
     clients: rules,

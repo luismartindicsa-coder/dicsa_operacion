@@ -1,0 +1,288 @@
+Análisis integral de costos y
+        rentabilidad
+    Desperdicios Industriales Celaya, S.A. de C.V.
+
+
+
+
+                    LICBOX
+          Periodo: 21/09/2026 al 22/09/2026
+
+
+            Análisis operativo para Dirección
+                 Elaborado el 22/09/2026
+LICBOX                                                                                      21/09/2026 al 22/09/2026
+
+                                                                                 Celaya, Guanajuato, 22/09/2026
+
+
+1. Alcance y resultado del periodo
+Este documento presenta los materiales y servicios asociados a LICBOX, sus costos de atención y el aporte a
+DICSA para el periodo seleccionado. Consolida Compras, Ventas, RH, Logística, Finanzas y entradas físicas. Los
+importes corresponden a la misma lectura de la pantalla, realizada el 22/09/2026 a las 14:55. Se expresan en
+pesos mexicanos.
+
+ Concepto                                                                                           Importe MXN
+
+ Valor recuperable del material                                                                        $50,125.00
+
+ Ingresos por servicios                                                                                     $0.00
+
+ Total generado                                                                                        $50,125.00
+
+ Costo total de la cuenta                                                                              $42,216.45
+
+ APORTE OPERATIVO DEL PERIODO                                                                           $7,908.55
+
+
+El valor recuperable se estima con ventas comparables y la recuperación aplicada por el modelo. No equivale
+necesariamente a una venta realizada. Los importes se presentan según las fuentes; este reporte no calcula
+utilidad contable ni normaliza el tratamiento fiscal.
+
+ Concepto                                                                                           Importe MXN
+
+ Aporte antes del soporte compartido                                                                   $11,067.67
+
+ Soporte compartido incluido en el costo total                                                          $3,159.12
+
+ Aporte después del reparto                                                                             $7,908.55
+
+El soporte compartido ya forma parte del costo total. Este puente explica el resultado; no agrega otro cargo. Su
+asignación no implica que todo ese costo desaparezca al dejar de atender la cuenta.
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                   2/7
+LICBOX                                                                                                 21/09/2026 al 22/09/2026
+
+
+
+
+2. Materiales y servicios atendidos
+20,050.0 kg de material, 2.0 servicios y 63.2 km atribuidos en el periodo.
+
+ Material / servicio                                Kg                 Genera      Costos atribuidos                  Aporte
+
+ CARTON                                        20,050.0           $50,125.00             $40,965.22                $9,159.78
+
+
+ Concepto                                                                                                      Importe MXN
+
+ Costos atribuidos a materiales y servicios                                                                       $40,965.22
+
+ Costos que permanecen a nivel empresa                                                                             $1,251.23
+
+ COSTO TOTAL (incluye ambas partes una vez)                                                                      $42,216.45
+
+
+
+3. Compra y valoración del material
+Los costos atribuidos incluyen la compra del material y los gastos de atención distribuidos a esa línea. Los
+siguientes rubros explican esos mismos costos; no se suman de nuevo al total.
+
+ Concepto                                                 Registrado        Repartido          Estimado                 Total
+
+ Compra de materiales                                         $0.00              $0.00        $33,936.31          $33,936.31
+
+$33,936.31 de la compra es estimada. Se infiere para cantidades sin compra conciliada o sin precio registrado,
+con las bases comparables disponibles. No acredita un pago efectuado a esta empresa.
+
+
+
+4. Personal operativo y soporte compartido
+RH aporta la nómina publicada y las referencias de remuneración para días sin cierre. El personal dedicado se
+atribuye a la planta; el soporte común se reparte entre cuentas atendidas. Se presentan importes agregados.
+
+ Concepto                                                 Registrado        Repartido          Estimado                 Total
+
+ Personal operativo                                           $0.00              $0.00             $0.00               $0.00
+
+ Nómina y soporte compartidos                                 $0.00             $34.48         $1,216.57           $1,251.05
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                              3/7
+LICBOX                                                                                     21/09/2026 al 22/09/2026
+
+
+
+
+5. Logística, combustible y mantenimiento
+Los gastos se asignan mediante la actividad disponible: km, servicios y kg. El combustible puede usar litros
+despachados como aproximación al consumo. Si no hay gasto actual para un rubro, puede utilizarse un
+promedio histórico o una referencia documentada.
+
+ Concepto                                       Registrado         Repartido         Estimado               Total
+
+ Combustible                                         $0.00             $0.00         $2,692.59         $2,692.59
+
+ Recolección y transporte                            $0.00             $0.00           $100.38           $100.38
+
+ Proceso y maniobras                                 $0.00             $0.00           $970.81           $970.81
+
+ Mantenimiento                                       $0.00         $1,216.06             $0.00         $1,216.06
+
+
+
+6. Equipo, residuos y servicios complementarios
+Contenedores atribuidos: 0.0. Los cobros por recolección de residuos son ingresos; la disposición en relleno es
+un costo. Se mantienen separados en el resultado.
+
+ Concepto                                       Registrado         Repartido         Estimado               Total
+
+ Contenedores y equipo                               $0.00             $0.00             $0.00             $0.00
+
+ Relleno sanitario                                   $0.00             $0.00             $0.00             $0.00
+
+ Báscula externa                                     $0.00           $141.18             $0.00           $141.18
+
+ Capacitaciones                                      $0.00             $0.00             $0.18             $0.18
+
+ Otros servicios y gastos                            $0.00         $1,907.89             $0.00         $1,907.89
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                   4/7
+LICBOX                                                                                     21/09/2026 al 22/09/2026
+
+
+
+
+7. Resumen integral de costos
+Desglose del costo total ya mostrado en el resultado. Registrado = importe directo; repartido = documento
+distribuido; estimado = tarifa, promedio o inferencia. La base del reparto también puede ser estimada. Los ceros
+indican que el modelo no aplicó un cargo y no acreditan gratuidad.
+
+ Concepto                                                                                          Importe MXN
+
+ Compra de materiales                                                                                 $33,936.31
+
+ Contenedores y equipo                                                                                     $0.00
+
+ Relleno sanitario                                                                                         $0.00
+
+ Combustible                                                                                           $2,692.59
+
+ Recolección y transporte                                                                                $100.38
+
+ Personal operativo                                                                                        $0.00
+
+ Nómina y soporte compartidos                                                                          $1,251.05
+
+ Proceso y maniobras                                                                                     $970.81
+
+ Mantenimiento                                                                                         $1,216.06
+
+ Báscula externa                                                                                         $141.18
+
+ Capacitaciones                                                                                            $0.18
+
+ Otros servicios y gastos                                                                              $1,907.89
+
+ TOTAL DE COSTOS DEL PERIODO                                                                         $42,216.45
+
+
+
+8. Lectura operativa
+La cuenta presenta un aporte estimado de $7,908.55 después de los costos y del soporte asignado. La
+conclusión depende de las referencias de recuperación, precios y reparto utilizadas.
+
+$38,916.85 del costo total utiliza estimaciones. Las comparaciones por periodos cortos pueden cambiar por
+diferencias de fechas entre entradas, compras, nómina y pagos.
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                  5/7
+LICBOX                                                                                     21/09/2026 al 22/09/2026
+
+
+
+
+9. Bases principales del cálculo
+Las bases se agrupan por fórmula. Se muestran las tres de mayor importe por rubro y el resto cuantificado. Los
+conceptos de esta sección respaldan los totales anteriores y no representan cargos adicionales. El detalle
+completo está en "Cómo se calculó" y en la exportación de bases de la app.
+
+
+Valor del material: $50,125.00
+$28,300.00 | 1 componente(s). Estimado. 11320.0 kg x 2.5000/kg de venta comparable por nombre/calidad.
+Recuperación operativa 100% como base sin merma capturada; ajustable.
+
+$21,825.00 | 1 componente(s). Estimado. 8730.0 kg x 2.5000/kg de venta comparable por nombre/calidad.
+Recuperación operativa 100% como base sin merma capturada; ajustable.
+
+
+Compra de materiales: $33,936.31
+$33,936.31 | 2 componente(s). Estimado. Conciliación estimada por planta/familia: máximo entre 20050.0 kg de
+entradas y 0.0 kg de compras; incremento 20050.0 kg, distribuido entre las entradas. No suma ambos registros.
+Costo de compra inferido 1.6926/kg físico de 67 registro(s) comparable(s). Diferencias de fecha u origen pueden
+requerir ajuste.
+
+
+Combustible: $2,692.59
+$1,775.25 | 1 componente(s). Estimado. 150.0 litros despachados/cargados x 23.6700/L x 50.00% de km de la
+unidad. Aproximación al consumo, no inventario comprado. · línea CARTON: 2.0 / 2.0.
+
+$479.21 | 1 componente(s). Estimado. 350.0 litros despachados/cargados x 23.6700/L x 5.78% de km de la
+flota. Aproximación al consumo, no inventario comprado. · línea CARTON: 2.0 / 2.0.
+
+$410.75 | 2 componente(s). Estimado. 150.0 litros despachados/cargados x 23.6700/L x 5.78% de km de la
+flota. Aproximación al consumo, no inventario comprado. · línea CARTON: 2.0 / 2.0.
+
+Otras 1 bases: $27.38. Incluidas en el total de este rubro.
+
+
+Recolección y transporte: $100.38
+$100.38 | 13 componente(s). Estimado. Promedio de 90 días x 2 días; reparto por servicios: 5.88%. · línea
+CARTON: 2.0 / 2.0.
+
+
+Nómina y soporte compartidos: $1,251.05
+$1,216.57 | 6 componente(s). Estimado. Sueldo semanal acordado en RH / 7; personal compartido dividido entre
+29 cuentas atendidas. Base operativa de remuneración; cargas patronales adicionales solo si están registradas.
+
+$34.48 | 2 componente(s). Repartido. Gasto del periodo; reparto por empresas: 3.45%.
+
+
+Proceso y maniobras: $970.81
+$970.81 | 24 componente(s). Estimado. Promedio de 90 días x 2 días; reparto por kg: 14.00%. · línea CARTON:
+20050.0 / 20050.0.
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                  6/7
+LICBOX                                                                                      21/09/2026 al 22/09/2026
+
+
+
+Mantenimiento: $1,216.06
+$1,216.06 | 7 componente(s). Repartido. Gasto del periodo; reparto por km: 5.78%. · línea CARTON: 2.0 / 2.0.
+
+
+Báscula externa: $141.18
+$100.00 | 1 componente(s). Repartido. Gasto del periodo; empresa identificada: 100.00%. · línea CARTON: 2.0 /
+2.0.
+
+$41.18 | 1 componente(s). Repartido. Gasto del periodo; reparto por servicios: 5.88%. · línea CARTON: 2.0 / 2.0.
+
+
+Capacitaciones: $0.18
+$0.18 | 2 componente(s). Estimado. Promedio de 90 días x 2 días; reparto por empresas: 3.45%.
+
+
+Otros servicios y gastos: $1,907.89
+$1,907.89 | 17 componente(s). Repartido. Gasto del periodo; reparto por empresas: 3.45%. · línea CARTON:
+20050.0 / 20050.0.
+
+
+
+Elaborado por Dirección - DICSA
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                   7/7
+

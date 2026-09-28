@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../compras/compras_tickets_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_fixed_payments_store.dart';
 import '../finanzas/finanzas_provider_accounts_store.dart';
@@ -7,7 +8,9 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'finance_weekly_budget_analysis.dart';
 
 /// Strict, paginated read: an unavailable source must not produce missing obligations. Unlike the interactive stores, this loader never swallows errors.
-Future<FinanceWeeklyBudgetSource> loadFinanceWeeklyBudgetSource() async {
+Future<FinanceWeeklyBudgetSource> loadFinanceWeeklyBudgetSource({
+  bool includeUninvoiced = false,
+}) async {
   Future<List<Map<String, dynamic>>> rows(String table) => fetchAllSupabaseRows(
     (from, to) => Supabase.instance.client
         .from(table)
@@ -23,6 +26,11 @@ Future<FinanceWeeklyBudgetSource> loadFinanceWeeklyBudgetSource() async {
     rows('finanzas_supplier_agreements'),
     rows('finanzas_supplier_agreement_installments'),
     rows('finanzas_supplier_agreement_invoices'),
+    if (includeUninvoiced) ...[
+      rows('compras_tickets'),
+      rows('compras_ticket_payment_applications'),
+      rows('finanzas_supplier_invoice_tickets'),
+    ],
   ]);
   List<T> decode<T>(int index, T Function(Map<String, dynamic>) parse) =>
       (results[index] as List<Map<String, dynamic>>).map(parse).toList();
@@ -39,5 +47,14 @@ Future<FinanceWeeklyBudgetSource> loadFinanceWeeklyBudgetSource() async {
       5,
       FinanzasSupplierAgreementInvoiceRecord.fromRemoteRow,
     ),
+    tickets: includeUninvoiced
+        ? decode(6, ComprasTicketRecord.fromRemoteRow)
+        : const [],
+    ticketApplications: includeUninvoiced
+        ? decode(7, ComprasTicketPaymentApplicationRecord.fromRemoteRow)
+        : const [],
+    invoiceTickets: includeUninvoiced
+        ? decode(8, FinanzasSupplierInvoiceTicketRecord.fromRemoteRow)
+        : const [],
   );
 }

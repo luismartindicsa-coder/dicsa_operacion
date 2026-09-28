@@ -3,13 +3,15 @@ part of 'direction_shipments_store.dart';
 class DirectionShipmentInventoryReference {
   final Map<String, int> opening, current;
   final Set<String> estimatedMaterials;
+  final Set<String> missingMaterials;
   final List<String> observations;
   const DirectionShipmentInventoryReference(
     this.opening,
     this.current,
     this.estimatedMaterials,
-    this.observations,
-  );
+    this.observations, {
+    this.missingMaterials = const {},
+  });
 }
 
 /// Reconciles a dated count with physical production and external movements.
@@ -23,13 +25,47 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
   required List<DirectionShipmentMovement> movements,
   required List<DirectionShipmentPlanRecord> shipments,
   Map<String, dynamic>? savedProgramConditions,
+  List<DirectionExecutionActual> executionActuals = const [],
 }) {
+  shipments = directionShipmentSourcePlans(shipments, executionActuals);
   final opening = <String, int>{}, current = <String, int>{};
   final estimated = <String>{};
+  final estimatedOpening = <String>{};
+  final missing = <String>{};
   final observations = <String>[];
   final savedYard = savedProgramConditions?['yard'] as Map?;
   final historyStart = weekStart.subtract(const Duration(days: 112));
   final today = _dateOnly(asOf);
+  final confirmedOut = {
+    for (final a in executionActuals)
+      if (a.active && a.kind == 'shipment' && !a.date.isAfter(today)) a.key: a,
+  };
+
+  final operationTotals = <String, int>{}, shippedTotals = <String, int>{};
+  for (final m in movements.where(
+    (m) =>
+        m.flow == 'OUT' &&
+        m.level == 'COMMERCIAL' &&
+        m.origin != 'TRANSFORMATION',
+  )) {
+    final key = directionExecutionKey('shipment', m.date, m.material, m.client);
+    operationTotals[key] = (operationTotals[key] ?? 0) + m.bales;
+  }
+  for (final s in shipments.where((s) => s.isShipped)) {
+    final key = directionExecutionKey(
+      'shipment',
+      s.shipDate,
+      s.materialCode,
+      s.clientName,
+    );
+    shippedTotals[key] = (shippedTotals[key] ?? 0) + s.plannedQuantity;
+  }
+  // Keep physical timestamps when confirming an unchanged source total.
+  confirmedOut.removeWhere(
+    (key, a) =>
+        a.quantity ==
+        math.max(operationTotals[key] ?? 0, shippedTotals[key] ?? 0),
+  );
 
   // Date is authoritative. Capture time only disambiguates the count's day.
   bool before(
@@ -38,6 +74,7 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
     DateTime cut,
     String material, {
     required bool incoming,
+    required bool trackCurrentEstimate,
   }) {
     final day = _dateOnly(date), cutDay = _dateOnly(cut.toLocal());
     if (day != cutDay) return day.isBefore(cutDay);
@@ -45,21 +82,40 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
     if (recordedAt != null && _dateOnly(recordedAt.toLocal()) == day) {
       return !recordedAt.isAfter(cut);
     }
-    estimated.add(material);
+    (trackCurrentEstimate ? estimated : estimatedOpening).add(material);
     // Ambiguous intraday receipts are not treated as additional current stock.
     return incoming;
   }
 
-  int delta(String material, DateTime from, DateTime to) {
+  int delta(
+    String material,
+    DateTime from,
+    DateTime to, {
+    bool trackCurrentEstimate = true,
+  }) {
     if (!to.isAfter(from)) return 0;
     int received = 0;
     final operationsOut = <String, int>{}, directionOut = <String, int>{};
     bool included(DateTime date, DateTime? recordedAt, bool incoming) =>
-        !before(date, recordedAt, from, material, incoming: incoming) &&
+        !before(
+          date,
+          recordedAt,
+          from,
+          material,
+          incoming: incoming,
+          trackCurrentEstimate: trackCurrentEstimate,
+        ) &&
         // Operational records on the current day are already real observations.
         (to == asOf
             ? !_dateOnly(date).isAfter(today)
-            : before(date, recordedAt, to, material, incoming: incoming));
+            : before(
+                date,
+                recordedAt,
+                to,
+                material,
+                incoming: incoming,
+                trackCurrentEstimate: trackCurrentEstimate,
+              ));
     for (final p in production) {
       if (p.materialCode == material && included(p.date, p.recordedAt, true)) {
         received += math.max(0, p.quantity);
@@ -75,6 +131,10 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
         received += m.bales;
       }
       if (m.flow == 'OUT' && included(m.date, m.recordedAt, false)) {
+        if (confirmedOut.containsKey(
+          directionExecutionKey('shipment', m.date, material, m.client),
+        ))
+          continue;
         final key = _ObservedShipment(
           _dateOnly(m.date),
           _suggestionClient(m.client),
@@ -97,7 +157,21 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
         material,
         0,
       ).key;
+      if (confirmedOut.containsKey(
+        directionExecutionKey('shipment', s.shipDate, material, s.clientName),
+      ))
+        continue;
       directionOut[key] = (directionOut[key] ?? 0) + s.plannedQuantity;
+    }
+    for (final a in confirmedOut.values) {
+      if (a.material != material || !included(a.date, null, false)) continue;
+      final key = _ObservedShipment(
+        a.date,
+        _suggestionClient(a.client),
+        material,
+        0,
+      ).key;
+      directionOut[key] = a.quantity;
     }
     return received -
         {...operationsOut.keys, ...directionOut.keys}.fold(
@@ -118,12 +192,19 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
     if (saved is num && saved >= 0) opening[m] = saved.toInt();
     if (hasCount) {
       final count = math.max(0, counts[m]!);
-      current[m] = math.max(0, count + delta(m, stamp, asOf));
+      final balance = count + delta(m, stamp, asOf);
+      current[m] = math.max(0, balance);
+      if (balance < 0) estimated.add(m);
       final beginning = stamp.isBefore(weekStart)
-          ? count + delta(m, stamp, weekStart)
-          : count - delta(m, weekStart, stamp);
+          ? count + delta(m, stamp, weekStart, trackCurrentEstimate: false)
+          : count - delta(m, weekStart, stamp, trackCurrentEstimate: false);
       if (!opening.containsKey(m)) opening[m] = math.max(0, beginning);
-      if (beginning < 0) estimated.add(m);
+      if (beginning < 0 || estimatedOpening.contains(m)) {
+        observations.add(
+          '${directionShipmentMaterialLabel(m)}: revisar la conciliación del '
+          'patio inicial del lunes; se conserva el conteo físico actual.',
+        );
+      }
       observations.add(
         '${directionShipmentMaterialLabel(m)}: conteo $count del ${_fmtDate(stamp.toLocal())}; '
         'piso calculado ${current[m]}, inicial del lunes ${opening[m]}.',
@@ -138,6 +219,7 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
       opening[m] = 0;
       current[m] = math.max(0, delta(m, weekStart, asOf));
       estimated.add(m);
+      missing.add(m);
       observations.add(
         '${directionShipmentMaterialLabel(m)}: sin conteo inicial utilizable; '
         'se parte de 0 pacas y se considera la producción posible. Puedes ajustar el patio.',
@@ -155,6 +237,7 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
     Map.unmodifiable(current),
     Set.unmodifiable(estimated),
     List.unmodifiable(observations),
+    missingMaterials: Set.unmodifiable(missing),
   );
 }
 
@@ -175,7 +258,7 @@ int directionHistoricalDailyCapacity(
     totals[_dateOnly(r.date)] =
         (totals[_dateOnly(r.date)] ?? 0) + math.max(0, r.quantity);
   }
-  final values = totals.values.where((n) => n > 0).toList()..sort();
+  final values = totals.values.toList()..sort();
   return values.isEmpty
       ? 0
       : values[(values.length * .75).floor().clamp(0, values.length - 1)];

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../../shared/utils/fetch_all_supabase_rows.dart';
 import '../direction_shipments_store.dart';
 import 'operating_program_models.dart';
@@ -48,7 +49,13 @@ class OperatingProgramRepository {
       'direction_approve_operating_program',
       params: {'p_id': id, 'p_execute': execute},
     );
-    return OperatingProgram.fromJson(Map<String, dynamic>.from(result as Map));
+    final program = OperatingProgram.fromJson(
+      Map<String, dynamic>.from(result as Map),
+    );
+    if (!execute) {
+      GerenciaBaleWeeklyTrackingStore.operatingProgramApproved(program.week);
+    }
+    return program;
   }
 
   Future<List<ProgramLine>> loadActual(DateTime week) async {

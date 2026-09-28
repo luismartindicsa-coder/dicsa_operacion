@@ -74,6 +74,26 @@ void main() {
       'installment_id': 'installment$i',
       'invoice_id': 'separate-bill$i',
     },
+    'compras_tickets' => {
+      'id': 'ticket$i',
+      'ticket_date': '2026-09-18',
+      'ticket_number': 'T$i',
+      'amount': 1000,
+      'factura_status': 'SIN_FACTURA',
+    },
+    'compras_ticket_payment_applications' => {
+      'id': 'application$i',
+      'ticket_id': 'ticket$i',
+      'provider_movement_id': 'payment$i',
+      'applied_amount': 100,
+      'applied_at': '2026-09-18',
+    },
+    'finanzas_supplier_invoice_tickets' => {
+      'id': 'invoice-ticket$i',
+      'ticket_id': 'ticket$i',
+      'invoice_id': 'invoice$i',
+      'applied_amount': 1000,
+    },
     _ => throw StateError('Unexpected source $table'),
   };
   setUpAll(() async {
@@ -181,6 +201,38 @@ void main() {
     },
   );
 
+  test(
+    'projection reads every Finance ticket classification, link and application strictly',
+    () async {
+      count = 505;
+      final source = await loadFinanceWeeklyBudgetSource(
+        includeUninvoiced: true,
+      );
+      expect(source.tickets.length, 505);
+      expect(source.tickets.last.facturaStatus, 'SIN_FACTURA');
+      expect(source.ticketApplications.length, 505);
+      expect(source.invoiceTickets.length, 505);
+      for (final table in [
+        'compras_tickets',
+        'compras_ticket_payment_applications',
+        'finanzas_supplier_invoice_tickets',
+      ]) {
+        expect(
+          requests.any(
+            (r) =>
+                r.url.pathSegments.last == table &&
+                r.url.queryParameters['offset'] == '500',
+          ),
+          isTrue,
+        );
+        failTable = table;
+        await expectLater(
+          loadFinanceWeeklyBudgetSource(includeUninvoiced: true),
+          throwsA(isA<PostgrestException>()),
+        );
+      }
+    },
+  );
   test(
     'central Finance Friday generator uses the budget sources and dated fixed payments',
     () async {

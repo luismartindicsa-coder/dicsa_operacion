@@ -2,7 +2,7 @@ name: dicsa_operacion
 description: "Sistema operativo Dicsa"
 publish_to: "none"
 
-version: 1.0.88+91
+version: 1.0.89+92
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -18,6 +18,7 @@ dependencies:
   flutter_map: ^8.3.1
   file_picker: ^10.3.3
   http: ^1.4.0
+  crypto: ^3.0.7
   latlong2: ^0.10.1
   archive: ^4.0.9
   package_info_plus: ^8.3.0

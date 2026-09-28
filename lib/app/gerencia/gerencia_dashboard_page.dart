@@ -37,12 +37,14 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
   bool _loading = true;
   bool _loadingHistory = true;
   bool _refreshing = false;
+  bool _pendingReload = false;
   bool _refreshingHistory = false;
   bool _pendingHistoryReload = false;
   late DateTime _visibleWeekStartDate;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   List<GerenciaBaleWeeklyHistorySnapshot> _history = const [];
   Timer? _reloadTimer;
+  StreamSubscription<DateTime>? _programApprovalSubscription;
   RealtimeChannel? _dashboardRefreshChannel;
 
   static final EmptyAreaDashboardConfig _config = EmptyAreaDashboardConfig(
@@ -52,13 +54,14 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     heroEyebrow: 'GERENCIA',
     heroTitle: 'Seguimiento semanal de producción y embarque.',
     heroSubtitle:
-        'Consulta el avance semanal de pacas con base en el plan capturado y la ejecución real registrada en Operación.',
+        'Consulta las metas del programa aprobado en Dirección y el avance real registrado en Operación.',
     emptyTitle: 'Pulso semanal',
     emptySubtitle:
         'Producción, embarque y estado semanal consolidados para lectura ejecutiva.',
     contractTitle: 'Gerencia',
     contractSubtitle: 'Superficie operativa de Gerencia.',
-    contractFootnote: 'Plan semanal manual contra producción y salidas reales.',
+    contractFootnote:
+        'Programa semanal aprobado contra producción y salidas reales.',
     heroCardBorderColor: Color(0x40FF9FA7),
     heroCardGradient: LinearGradient(
       begin: Alignment.topLeft,
@@ -120,7 +123,15 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     super.initState();
     _visibleWeekStartDate =
         GerenciaBaleWeeklyTrackingStore.currentWeekStartDate();
-    unawaited(_load());
+    unawaited(_load(forceRefresh: true));
+    _programApprovalSubscription = GerenciaBaleWeeklyTrackingStore
+        .approvedPrograms
+        .listen((week) {
+          if (week == _visibleWeekStartDate) {
+            unawaited(_load(silent: true, forceRefresh: true));
+          }
+          unawaited(_loadHistory());
+        });
     unawaited(_loadHistory());
     _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
       unawaited(_load(silent: true, forceRefresh: true));
@@ -152,12 +163,16 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _programApprovalSubscription?.cancel();
     _dashboardRefreshChannel?.unsubscribe();
     super.dispose();
   }
 
   Future<void> _load({bool silent = false, bool forceRefresh = false}) async {
-    if (_refreshing) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
     _refreshing = true;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
@@ -180,6 +195,10 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
       }
     } finally {
       _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true, forceRefresh: true));
+      }
     }
   }
 

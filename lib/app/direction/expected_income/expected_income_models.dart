@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../direction_shipments_store.dart';
 import '../operating_program/operating_program_models.dart';
 import '../../mayoreo/mayoreo_expected_collections.dart';
@@ -217,7 +219,41 @@ class PalomarIncomeMovement {
   }
 }
 
+/// A distribution of the outstanding forecast, never a posted collection.
+class IncomeAllocation {
+  final String shipmentId, sourceKey;
+  final int totalCents, cashCents, fiscalCents, revision;
+  const IncomeAllocation({
+    required this.shipmentId,
+    required this.sourceKey,
+    required this.totalCents,
+    required this.cashCents,
+    required this.fiscalCents,
+    this.revision = 0,
+  });
+  factory IncomeAllocation.fromJson(Map<String, dynamic> row) =>
+      IncomeAllocation(
+        shipmentId: row['shipment_id'] as String,
+        sourceKey: row['source_key'] as String,
+        totalCents: (row['total_cents'] as num).toInt(),
+        cashCents: (row['cash_cents'] as num).toInt(),
+        fiscalCents: (row['fiscal_cents'] as num).toInt(),
+        revision: (row['revision'] as num).toInt(),
+      );
+  bool get valid =>
+      totalCents > 0 &&
+      totalCents <= 100000000000000 &&
+      cashCents >= 0 &&
+      fiscalCents >= 0 &&
+      cashCents + fiscalCents == totalCents &&
+      revision >= 0 &&
+      shipmentId.isNotEmpty &&
+      sourceKey.isNotEmpty &&
+      sourceKey.length <= 4000;
+}
+
 class ExpectedIncomeData {
+  final Map<String, IncomeAllocation> allocations;
   final List<MayoreoExpectedCollection> collections;
   final List<IncomeMaterialRule> materials;
   final List<IncomeClientRule> clients;
@@ -233,6 +269,7 @@ class ExpectedIncomeData {
   final PalomarIncomeConfig palomarConfig;
   final List<PalomarIncomeMovement> palomarMovements;
   const ExpectedIncomeData({
+    this.allocations = const {},
     this.collections = const [],
     this.materials = const [],
     this.clients = const [],
@@ -260,6 +297,7 @@ class ExpectedIncomeData {
 }
 
 class ExpectedIncomeRow {
+  final IncomeAllocation? allocation;
   final bool cashExcluded;
   final DirectionShipmentPlanRecord shipment;
   final IncomeState state;
@@ -273,6 +311,7 @@ class ExpectedIncomeRow {
   final int missingBales, stockBales;
   final List<String> risks;
   const ExpectedIncomeRow({
+    this.allocation,
     this.cashExcluded = false,
     required this.shipment,
     required this.state,
@@ -294,6 +333,51 @@ class ExpectedIncomeRow {
       : ((valueCents ?? 0) - paidCents).clamp(0, 1 << 62);
   bool get ordinary =>
       !revolving && !cashExcluded && state != IncomeState.cancelled;
+  bool get canAllocate =>
+      ordinary && paymentType == 'MIXTO' && pendingCents > 0;
+  // Amount or sale changes require a new decision. Date/status changes alone
+  // keep the split while the same outstanding income moves to its new bucket.
+  String get allocationSourceKey => jsonEncode([
+    shipment.id,
+    incomeKey(shipment.clientName),
+    shipment.materialCode,
+    sale?.id,
+    valueCents,
+    paidCents,
+    paymentType,
+  ]);
+  bool get allocationApplied =>
+      canAllocate &&
+      allocation != null &&
+      allocation!.valid &&
+      allocation!.shipmentId == shipment.id &&
+      allocation!.sourceKey == allocationSourceKey &&
+      allocation!.totalCents == pendingCents;
+  bool get allocationStale =>
+      canAllocate && allocation != null && !allocationApplied;
+  Map<String, int> get pendingByType => allocationApplied
+      ? {'EFECTIVO': allocation!.cashCents, 'FISCAL': allocation!.fiscalCents}
+      : {paymentType ?? 'SIN CLASIFICAR': pendingCents};
+
+  IncomeAllocation distribute({
+    required int cashCents,
+    required int fiscalCents,
+  }) {
+    final result = IncomeAllocation(
+      shipmentId: shipment.id,
+      sourceKey: allocationSourceKey,
+      totalCents: pendingCents,
+      cashCents: cashCents,
+      fiscalCents: fiscalCents,
+      revision: allocation?.revision ?? 0,
+    );
+    if (!canAllocate || !result.valid) {
+      throw ArgumentError(
+        'Efectivo y Fiscal deben sumar exactamente el importe por distribuir.',
+      );
+    }
+    return result;
+  }
 }
 
 class IncomeTotals {

@@ -8,6 +8,8 @@ import '../../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../../shared/utils/file_download_save.dart';
 import '../direction_shipments_store.dart';
 import '../direction_theme.dart';
+import '../execution/direction_execution_view.dart';
+import '../execution/direction_execution_repository.dart';
 import 'operating_program_engine.dart';
 import 'operating_program_models.dart';
 import 'operating_program_pdf.dart';
@@ -17,6 +19,8 @@ class OperatingProgramView extends StatefulWidget {
   final DirectionShipmentPlanningBundle bundle;
   final Future<void> Function(DateTime) onWeekChanged;
   final OperatingProgramRepository? repository;
+  final DirectionExecutionRepository? executionRepository;
+  final ValueChanged<bool>? onExecutionBusyChanged;
 
   /// Reads persisted shipments immediately before generation and updates the
   /// parent's reference, so edits need not wait for the silent refresh timer.
@@ -26,6 +30,8 @@ class OperatingProgramView extends StatefulWidget {
     required this.bundle,
     required this.onWeekChanged,
     this.repository,
+    this.executionRepository,
+    this.onExecutionBusyChanged,
     this.refreshReference,
   });
   @override
@@ -37,7 +43,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   late ProgramConditions _conditions;
   late List<ProgramDemand> _demands;
   List<ProgramLine> _lines = emptyProgramLines();
-  List<ProgramLine>? _actual;
+  int _subtab = 0;
   List<OperatingProgram> _versions = [];
   OperatingProgram? _selected;
   bool _loading = true, _busy = false, _dirty = false, _yardConfirmed = false;
@@ -45,7 +51,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   final Set<String> _invalidFields = {};
   int _versionsRequest = 0;
   int _dayShareRevision = 0;
-  String? _error, _actualError;
+  String? _error;
   String? _exportMessage;
   bool _exportFailed = false;
   Timer? _timer;
@@ -69,10 +75,8 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
     _yardConfirmed = widget.bundle.suggestionReport != null;
     _demands = ProgramDemand.fromShipments(_week, widget.bundle.shipments);
     unawaited(_loadVersions());
-    unawaited(_loadActual());
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!_busy) unawaited(_loadVersions(silent: true));
-      unawaited(_loadActual());
     });
   }
 
@@ -113,24 +117,6 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
         _loadFailed = _versions.isEmpty;
         _error = 'No se pudo leer el historial del programa. $e';
       });
-    }
-  }
-
-  Future<void> _loadActual() async {
-    try {
-      final actual = await _repository.loadActual(_week);
-      if (mounted) {
-        setState(() {
-          _actual = actual;
-          _actualError = null;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _actualError = 'No se pudo consultar la producción real.',
-        );
-      }
     }
   }
 
@@ -230,7 +216,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
           : 'Aprobar programa v${selected.version}',
       content: execute
           ? 'La versión operativa pasará a En ejecución.'
-          : 'Esta versión quedará fija como programa operativo de la semana. Los ajustes posteriores se guardarán en un nuevo borrador.',
+          : 'Esta versión quedará fija como programa operativo de la semana y actualizará las metas de Gerencia por material: embarques confirmados y producción programada. Los ajustes posteriores se guardarán en un nuevo borrador; las metas cambiarán al aprobarlo.',
       confirmText: execute ? 'Iniciar ejecución' : 'Aprobar',
       tokens: directionAreaTokens,
     );
@@ -242,7 +228,18 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
     });
     try {
       final approved = await _repository.approve(selected.id, execute: execute);
-      if (mounted) setState(() => _select(approved));
+      if (mounted) {
+        setState(() => _select(approved));
+        if (!execute) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Programa aprobado. Metas de producción y embarque actualizadas en Gerencia.',
+              ),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _error = 'No se cambió el estado del programa. $e');
@@ -492,7 +489,34 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
               onSurface: kDirectionSurfaceText,
             ),
       ),
-      child: Builder(builder: _buildContent),
+      child: Builder(
+        builder: (context) => Column(
+          children: [
+            DirectionExecutionTabs(
+              selected: _subtab,
+              onChanged: _busy ? null : (v) => setState(() => _subtab = v),
+            ),
+            Expanded(
+              child: _subtab == 0
+                  ? _buildContent(context)
+                  : DirectionExecutionView(
+                      kind: 'production',
+                      bundle: widget.bundle,
+                      program: _selected,
+                      repository: widget.executionRepository,
+                      onWeekChanged: _changeWeek,
+                      onChanged: () async {
+                        await widget.refreshReference?.call();
+                      },
+                      onBusyChanged: (busy) {
+                        if (mounted) setState(() => _busy = busy);
+                        widget.onExecutionBusyChanged?.call(busy);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -854,7 +878,6 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                   danger: true,
                 ),
               const SizedBox(height: 12),
-              _actualComparison(),
               const SizedBox(height: 24),
             ],
           ),
@@ -1270,41 +1293,6 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
           ],
         ),
       ),
-    ),
-  );
-  Widget _actualComparison() => DirectionGlassPanel(
-    child: ExpansionTile(
-      title: const Text(
-        'Producción real vs programada',
-        style: TextStyle(color: kDirectionSurfaceText),
-      ),
-      subtitle: Text(
-        _selected == null
-            ? 'Guarda una versión para conservar la referencia.'
-            : 'Referencia: v${_selected!.version} · ${_selected!.statusLabel}',
-        style: const TextStyle(color: kDirectionMutedText),
-      ),
-      children: [
-        if (_actualError != null)
-          _notice(_actualError!, danger: true)
-        else if (_actual == null)
-          const LinearProgressIndicator()
-        else ...[
-          const Text(
-            'Día / turno / material · Programado / Real / Diferencia',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          for (final line in _lines)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                '${programDayNames[line.day]} · ${line.shift == 0 ? 'Día' : 'Noche'} · ${programMaterialNames[programMaterials.indexOf(line.material)]} · '
-                '${line.quantity} / ${programQuantity(_actual!, day: line.day, shift: line.shift, material: line.material)} / '
-                '${programQuantity(_actual!, day: line.day, shift: line.shift, material: line.material) - line.quantity}',
-              ),
-            ),
-        ],
-      ],
     ),
   );
 }

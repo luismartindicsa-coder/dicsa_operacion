@@ -34,6 +34,8 @@ import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_financial_status.dart';
+import 'mayoreo_invoice_reconciliation_dialog.dart';
+import 'mayoreo_invoice_reconciliation_store.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_sorting.dart';
@@ -1179,6 +1181,24 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     });
   }
 
+  Future<void> _openInvoiceReconciliation() async {
+    await _runWithRefreshPause(
+      () => showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: Theme(
+            data: _mayoreoMaterialTheme(dialogContext),
+            child: MayoreoInvoiceReconciliationDialog(
+              repository: SupabaseMayoreoInvoiceRepository(_supa),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleMenuAction(
     _MayoreoAccountRow row,
     _AccountsMenuAction action,
@@ -2182,6 +2202,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                               exportingCsv: _exportingCsv,
                               onExportReportPdf: _exportAccountsReportPdf,
                               onExportCsv: _exportCsv,
+                              onReconcileInvoice: _openInvoiceReconciliation,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -2345,6 +2366,7 @@ class _AccountsTopBar extends StatelessWidget {
   final bool exportingCsv;
   final Future<void> Function() onExportReportPdf;
   final Future<void> Function() onExportCsv;
+  final Future<void> Function() onReconcileInvoice;
 
   const _AccountsTopBar({
     required this.selectedRow,
@@ -2360,6 +2382,7 @@ class _AccountsTopBar extends StatelessWidget {
     required this.exportingCsv,
     required this.onExportReportPdf,
     required this.onExportCsv,
+    required this.onReconcileInvoice,
   });
 
   @override
@@ -2367,11 +2390,23 @@ class _AccountsTopBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 2, bottom: 10),
-          child: Text(
-            'Ventas / Cuentas',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Ventas / Cuentas',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: () => unawaited(onReconcileInvoice()),
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Conciliar para factura'),
+              ),
+            ],
           ),
         ),
         AppGlassToolbarPanel(
@@ -3584,8 +3619,9 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                     ),
                   ),
                   IconButton(
-                    onPressed:
-                        _saving ? null : () => Navigator.of(context).pop(),
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
@@ -3843,8 +3879,9 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                 children: [
                   OutlinedButton.icon(
                     style: _mayoreoSecondaryButtonStyle(),
-                    onPressed:
-                        _saving ? null : () => Navigator.of(context).pop(),
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                     label: const Text('Cancelar'),
                   ),

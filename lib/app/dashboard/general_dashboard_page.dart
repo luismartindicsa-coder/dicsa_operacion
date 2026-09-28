@@ -26,6 +26,8 @@ import '../direction/direction_purchase_orders_page.dart';
 import '../direction/direction_shipments_dashboard_card.dart';
 import '../direction/direction_human_resources_dashboard_card.dart';
 import '../direction/direction_shipments_page.dart';
+import '../direction/direction_projection_page.dart';
+import '../direction/direction_profitability_page.dart';
 import '../direction/direction_supervision_dashboard_card.dart';
 import '../direction/direction_theme.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
@@ -407,6 +409,20 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openDirectionProfitability() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(page: const DirectionProfitabilityPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openDirectionProjection() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(page: const DirectionProjectionPage(instantOpen: true)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AreaThemeScope(
@@ -477,6 +493,8 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       areasExpanded: _areasExpanded,
       onOpenGeneralDashboard: () async {},
       onOpenDirectionShipments: _openDirectionShipments,
+      onOpenDirectionProjection: _openDirectionProjection,
+      onOpenDirectionProfitability: _openDirectionProfitability,
       onOpenDirectionCashWorkspace: _openDirectionCashWorkspace,
       onOpenDirectionCashCatalog: _openDirectionCashCatalog,
       onOpenDirectionMenudeoAnalysis: _openDirectionMenudeoAnalysis,
@@ -576,7 +594,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenGestionDocumental;
   final Future<void> Function() onOpenLogistics;
   final Future<void> Function(DirectionFuelType fuel, DateTime weekStart)
-      onOpenLogisticsFuelControl;
+  onOpenLogisticsFuelControl;
   final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
@@ -6170,6 +6188,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final VoidCallback? onToggleAreasExpanded;
   final Future<void> Function()? onOpenGeneralDashboard;
   final Future<void> Function()? onOpenDirectionShipments;
+  final Future<void> Function()? onOpenDirectionProjection;
+  final Future<void> Function()? onOpenDirectionProfitability;
   final Future<void> Function()? onOpenDirectionCashWorkspace;
   final Future<void> Function()? onOpenDirectionCashCatalog;
   final Future<void> Function()? onOpenDirectionMenudeoAnalysis;
@@ -6194,6 +6214,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onToggleAreasExpanded,
     this.onOpenGeneralDashboard,
     this.onOpenDirectionShipments,
+    this.onOpenDirectionProjection,
+    this.onOpenDirectionProfitability,
     this.onOpenDirectionCashWorkspace,
     this.onOpenDirectionCashCatalog,
     this.onOpenDirectionMenudeoAnalysis,
@@ -6277,6 +6299,20 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Embarques',
                       subtitle: 'Planeación semanal y semáforos',
                       onTap: onOpenDirectionShipments,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Proyección',
+                      subtitle: 'Ingresos, egresos y flujo semanal',
+                      onTap: onOpenDirectionProjection,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.business_center_outlined,
+                      title: 'Rentabilidad por empresa',
+                      subtitle: 'Material, costos y contribución',
+                      onTap: onOpenDirectionProfitability,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(

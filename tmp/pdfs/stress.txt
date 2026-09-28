@@ -1,0 +1,499 @@
+   Análisis integral de costos y
+           rentabilidad
+       Desperdicios Industriales Celaya, S.A. de C.V.
+
+
+
+
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN
+ Y APROVECHAMIENTO DE MATERIALES
+       DEL BAJÍO, S.A. DE C.V.
+             Periodo: 01/01/2026 al 31/12/2026
+
+
+               Análisis operativo para Dirección
+                    Elaborado el 22/09/2026
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                            01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+                                                                                 Celaya, Guanajuato, 22/09/2026
+
+
+1. Alcance y resultado del periodo
+Este documento presenta los materiales y servicios asociados a COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y
+APROVECHAMIENTO DE MATERIALES DEL BAJÍO, S.A. DE C.V., sus costos de atención y el aporte a DICSA para
+el periodo seleccionado. Consolida Compras, Ventas, RH, Logística, Finanzas y entradas físicas. Los importes
+corresponden a la misma lectura de la pantalla, realizada el 21/09/2026 a las 00:00. Se expresan en pesos
+mexicanos.
+
+ Concepto                                                                                           Importe MXN
+
+ Valor recuperable del material                                                                      $260,000.00
+
+ Ingresos por servicios                                                                                     $0.00
+
+ Total generado                                                                                      $260,000.00
+
+ Costo total de la cuenta                                                                            $314,000.00
+
+ APORTE OPERATIVO DEL PERIODO                                                                         $-54,000.00
+
+
+El valor recuperable se estima con ventas comparables y la recuperación aplicada por el modelo. No equivale
+necesariamente a una venta realizada. Los importes se presentan según las fuentes; este reporte no calcula
+utilidad contable ni normaliza el tratamiento fiscal.
+
+ Concepto                                                                                           Importe MXN
+
+ Aporte antes del soporte compartido                                                                 $156,000.00
+
+ Soporte compartido incluido en el costo total                                                       $210,000.00
+
+ Aporte después del reparto                                                                           $-54,000.00
+
+El soporte compartido ya forma parte del costo total. Este puente explica el resultado; no agrega otro cargo. Su
+asignación no implica que todo ese costo desaparezca al dejar de atender la cuenta.
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                  2 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                              01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+
+
+2. Materiales y servicios atendidos
+40,000.0 kg de material, 100.0 servicios y 8,000.0 km atribuidos en el periodo.
+
+ Material / servicio                             Kg           Genera      Costos atribuidos                  Aporte
+
+ CARTON material 0                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 1                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 2                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 3                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 4                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 5                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 6                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 7                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 8                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 9                             400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 10                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 11                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 12                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 13                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 14                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 15                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 16                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 17                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 18                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 19                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 20                            400.0       $2,600.00               $900.00                $1,700.00
+
+ CARTON material 21                            400.0       $2,600.00               $900.00                $1,700.00
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                    3 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                       01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+ Material / servicio                             Kg      Genera    Costos atribuidos                  Aporte
+
+ CARTON material 22                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 23                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 24                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 25                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 26                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 27                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 28                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 29                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 30                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 31                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 32                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 33                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 34                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 35                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 36                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 37                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 38                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 39                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 40                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 41                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 42                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 43                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 44                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 45                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 46                            400.0   $2,600.00            $900.00                $1,700.00
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                             4 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                       01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+ Material / servicio                             Kg      Genera    Costos atribuidos                  Aporte
+
+ CARTON material 47                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 48                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 49                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 50                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 51                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 52                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 53                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 54                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 55                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 56                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 57                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 58                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 59                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 60                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 61                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 62                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 63                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 64                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 65                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 66                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 67                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 68                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 69                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 70                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 71                            400.0   $2,600.00            $900.00                $1,700.00
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                             5 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                       01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+ Material / servicio                             Kg      Genera    Costos atribuidos                  Aporte
+
+ CARTON material 72                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 73                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 74                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 75                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 76                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 77                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 78                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 79                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 80                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 81                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 82                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 83                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 84                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 85                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 86                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 87                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 88                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 89                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 90                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 91                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 92                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 93                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 94                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 95                            400.0   $2,600.00            $900.00                $1,700.00
+
+ CARTON material 96                            400.0   $2,600.00            $900.00                $1,700.00
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                             6 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                                   01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+ Material / servicio                             Kg                 Genera     Costos atribuidos                  Aporte
+
+ CARTON material 97                            400.0            $2,600.00               $900.00                $1,700.00
+
+ CARTON material 98                            400.0            $2,600.00               $900.00                $1,700.00
+
+ CARTON material 99                            400.0            $2,600.00               $900.00                $1,700.00
+
+
+ Concepto                                                                                                  Importe MXN
+
+ Costos atribuidos a materiales y servicios                                                                   $90,000.00
+
+ Costos que permanecen a nivel empresa                                                                      $224,000.00
+
+ COSTO TOTAL (incluye ambas partes una vez)                                                                 $314,000.00
+
+
+
+3. Compra y valoración del material
+Los costos atribuidos incluyen la compra del material y los gastos de atención distribuidos a esa línea. Los
+siguientes rubros explican esos mismos costos; no se suman de nuevo al total.
+
+ Concepto                                              Registrado        Repartido         Estimado                 Total
+
+ Compra de materiales                                  $70,000.00            $0.00             $0.00          $70,000.00
+
+
+
+4. Personal operativo y soporte compartido
+RH aporta la nómina publicada y las referencias de remuneración para días sin cierre. El personal dedicado se
+atribuye a la planta; el soporte común se reparte entre cuentas atendidas. Se presentan importes agregados.
+
+ Concepto                                              Registrado        Repartido         Estimado                 Total
+
+ Personal operativo                                        $0.00             $0.00        $14,000.00          $14,000.00
+
+ Nómina y soporte compartidos                              $0.00             $0.00      $210,000.00         $210,000.00
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                         7 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                           01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+
+
+5. Logística, combustible y mantenimiento
+Los gastos se asignan mediante la actividad disponible: km, servicios y kg. El combustible puede usar litros
+despachados como aproximación al consumo. Si no hay gasto actual para un rubro, puede utilizarse un
+promedio histórico o una referencia documentada.
+
+ Concepto                                       Registrado         Repartido         Estimado               Total
+
+ Combustible                                         $0.00        $10,000.00             $0.00        $10,000.00
+
+ Recolección y transporte                            $0.00             $0.00             $0.00             $0.00
+
+ Proceso y maniobras                                 $0.00             $0.00             $0.00             $0.00
+
+ Mantenimiento                                       $0.00             $0.00             $0.00             $0.00
+
+
+
+6. Equipo, residuos y servicios complementarios
+Contenedores atribuidos: 0.0. Los cobros por recolección de residuos son ingresos; la disposición en relleno es
+un costo. Se mantienen separados en el resultado.
+
+ Concepto                                       Registrado         Repartido         Estimado               Total
+
+ Contenedores y equipo                               $0.00             $0.00             $0.00             $0.00
+
+ Relleno sanitario                                   $0.00             $0.00             $0.00             $0.00
+
+ Báscula externa                                     $0.00             $0.00        $10,000.00        $10,000.00
+
+ Capacitaciones                                      $0.00             $0.00             $0.00             $0.00
+
+ Otros servicios y gastos                            $0.00             $0.00             $0.00             $0.00
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                   8 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                           01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+
+
+7. Resumen integral de costos
+Desglose del costo total ya mostrado en el resultado. Registrado = importe directo; repartido = documento
+distribuido; estimado = tarifa, promedio o inferencia. La base del reparto también puede ser estimada. Los ceros
+indican que el modelo no aplicó un cargo y no acreditan gratuidad.
+
+ Concepto                                                                                          Importe MXN
+
+ Compra de materiales                                                                                 $70,000.00
+
+ Contenedores y equipo                                                                                     $0.00
+
+ Relleno sanitario                                                                                         $0.00
+
+ Combustible                                                                                          $10,000.00
+
+ Recolección y transporte                                                                                  $0.00
+
+ Personal operativo                                                                                   $14,000.00
+
+ Nómina y soporte compartidos                                                                       $210,000.00
+
+ Proceso y maniobras                                                                                       $0.00
+
+ Mantenimiento                                                                                             $0.00
+
+ Báscula externa                                                                                      $10,000.00
+
+ Capacitaciones                                                                                            $0.00
+
+ Otros servicios y gastos                                                                                  $0.00
+
+ TOTAL DE COSTOS DEL PERIODO                                                                        $314,000.00
+
+
+
+8. Lectura operativa
+La cuenta cubre los costos previos al soporte compartido, pero presenta un déficit de $54,000.00 después de
+ese reparto. Revisar condiciones de atención y asignación de estructura antes de decidir sobre su continuidad.
+
+$234,000.00 del costo total utiliza estimaciones. Las comparaciones por periodos cortos pueden cambiar por
+diferencias de fechas entre entradas, compras, nómina y pagos.
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                                 9 / 10
+COMPAÑÍA INDUSTRIAL DE RECUPERACIÓN Y APROVECHAMIENTO DE MATERIALES DEL
+                                                                                          01/01/2026 al 31/12/2026
+BAJÍO, S.A. DE C.V.
+
+
+
+
+9. Bases principales del cálculo
+Las bases se agrupan por fórmula. Se muestran las tres de mayor importe por rubro y el resto cuantificado. Los
+conceptos de esta sección respaldan los totales anteriores y no representan cargos adicionales. El detalle
+completo está en "Cómo se calculó" y en la exportación de bases de la app.
+
+
+Valor del material: $260,000.00
+$195,000.00 | 100 componente(s). Estimado. 300.0 kg x 6.5000/kg de promedio ponderado de ventas de la
+familia CARTON (mezcla estimada). Recuperación operativa 100% como base sin merma capturada; ajustable.
+
+$65,000.00 | 100 componente(s). Estimado. 100.0 kg x 6.5000/kg de promedio ponderado de ventas de la
+familia CARTON (mezcla estimada). Recuperación operativa 100% como base sin merma capturada; ajustable.
+
+
+Compra de materiales: $70,000.00
+$54,000.00 | 100 componente(s). Registrado. 270.0 kg pagables · importe registrado
+
+$16,000.00 | 100 componente(s). Registrado. 80.0 kg pagables · importe registrado
+
+
+Combustible: $10,000.00
+$10,000.00 | 100 componente(s). Repartido. Gasto del periodo; reparto por km: 100.00%. · línea CARTON: 1.0 /
+1.0.
+
+
+Personal operativo: $14,000.00
+$14,000.00 | 700 componente(s). Estimado. Nómina publicada repartida en días; reintegra
+préstamos/retenciones de flujo. Base operativa de remuneración; cargas patronales adicionales solo si están
+registradas.
+
+
+Nómina y soporte compartidos: $210,000.00
+$210,000.00 | 1400 componente(s). Estimado. Sueldo semanal acordado en RH / 7; personal compartido
+dividido entre 1 cuentas atendidas. Base operativa de remuneración; cargas patronales adicionales solo si están
+registradas.
+
+
+Báscula externa: $10,000.00
+$10,000.00 | 100 componente(s). Estimado. 1.0 recolecciones x una pesada externa estimada x 100. No usa
+Pesadas de la app como si fueran básculas externas. · línea CARTON: 1.0 / 1.0.
+
+
+
+Elaborado por Dirección - DICSA
+
+
+
+
+DICSA | Rentabilidad operativa | Uso interno                                                               10 / 10
+

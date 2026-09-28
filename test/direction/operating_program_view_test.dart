@@ -200,9 +200,19 @@ void main() {
       await tester.ensureVisible(find.text('Aprobar programa'));
       await tester.tap(find.text('Aprobar programa'));
       await tester.pumpAndSettle();
+      expect(
+        find.textContaining('actualizará las metas de Gerencia'),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Aprobar'));
       await tester.pumpAndSettle();
       expect(repo.saved.single.status, 'approved');
+      expect(
+        find.text(
+          'Programa aprobado. Metas de producción y embarque actualizadas en Gerencia.',
+        ),
+        findsOneWidget,
+      );
       final button = tester.widget<FilledButton>(
         find.byKey(const ValueKey('generate-operating-program')),
       );

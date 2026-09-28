@@ -136,7 +136,8 @@ class ProgramProductionHistory {
   double average({int? day, int? shift, String? material}) => hasData
       ? total(day: day, shift: shift, material: material) / observedWeeks.length
       : 0;
-  int get dayShare => hasData ? (100 * total(shift: 0) / total()).round() : 50;
+  int get dayShare =>
+      hasData && total() > 0 ? (100 * total(shift: 0) / total()).round() : 50;
 
   // Prefer the observed cell, then the same material's shift across weekdays.
   // A material absent from history uses the overall production pattern and is
@@ -164,7 +165,8 @@ class ProgramProductionHistory {
       if (record.date.isBefore(start) ||
           !record.date.isBefore(week) ||
           record.date.weekday > 5 ||
-          record.quantity <= 0 ||
+          (record.quantity <= 0 &&
+              record.source != 'direction_execution_actuals') ||
           !programMaterials.contains(record.materialCode)) {
         continue;
       }

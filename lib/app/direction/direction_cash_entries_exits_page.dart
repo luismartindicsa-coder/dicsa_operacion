@@ -393,6 +393,7 @@ class _DirectionCashEntriesExitsPageState
   bool _canReturnToDirection = false;
   bool _loadingRows = true;
   bool _exportingCsv = false;
+  bool _openingVoucher = false;
   int _currentPage = 0;
   int _pageSize = 40;
   int _folioSequence = 18420;
@@ -1182,8 +1183,27 @@ class _DirectionCashEntriesExitsPageState
   }
 
   Future<void> _openVoucherDialog({_VoucherRecord? initial, int? index}) async {
+    if (_openingVoucher) return;
     final pageContext = context;
     final messenger = ScaffoldMessenger.of(pageContext);
+    setState(() => _openingVoucher = true);
+    try {
+      await DirectionCashTaxonomyStore.instance.ensureLoaded(refresh: true);
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo cargar el catálogo de Bóveda. Vuelve a abrir el movimiento para reintentar.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    } finally {
+      if (mounted) setState(() => _openingVoucher = false);
+    }
+    if (!mounted) return;
     final editableEntries = <({int index, _VoucherRecord row})>[
       if (initial != null && index != null)
         ...((_selectedVoucherKeys.length > 1 &&
@@ -1457,6 +1477,7 @@ class _DirectionCashEntriesExitsPageState
                               ? 0
                               : selectedTotal / selectedRows.length,
                           exportingCsv: _exportingCsv,
+                          openingVoucher: _openingVoucher,
                           onExportCsv: () =>
                               _exportFilteredVouchersCsv(filteredRows),
                           onShowNewVoucher: () => _openVoucherDialog(),
@@ -2348,6 +2369,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
   final bool exportingCsv;
   final Future<void> Function() onExportCsv;
   final Future<void> Function() onShowNewVoucher;
+  final bool openingVoucher;
 
   const _VouchersModuleTopBar({
     required this.visibleCount,
@@ -2364,6 +2386,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
     required this.exportingCsv,
     required this.onExportCsv,
     required this.onShowNewVoucher,
+    required this.openingVoucher,
   });
 
   String _money(num value) => formatMoney(value);
@@ -2420,9 +2443,21 @@ class _VouchersModuleTopBar extends StatelessWidget {
                   ),
                   FilledButton.icon(
                     style: _vouchersPrimaryToolbarActionStyle(),
-                    onPressed: () => unawaited(onShowNewVoucher()),
-                    icon: const Icon(Icons.add_circle_outline_rounded),
-                    label: const Text('Nuevo movimiento'),
+                    onPressed: openingVoucher
+                        ? null
+                        : () => unawaited(onShowNewVoucher()),
+                    icon: openingVoucher
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add_circle_outline_rounded),
+                    label: Text(
+                      openingVoucher
+                          ? 'Cargando catálogo...'
+                          : 'Nuevo movimiento',
+                    ),
                   ),
                 ],
               );
@@ -2632,9 +2667,10 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     );
     final availablePeople = _peopleOptionsForType(_type);
     final initialPerson = (initial?.person ?? '').trim().toUpperCase();
-    _person = availablePeople.contains(initialPerson)
+    // Existing vouchers retain their saved person even if the catalog changed.
+    _person = initial != null
         ? initialPerson
-        : (availablePeople.isNotEmpty ? availablePeople.first : initialPerson);
+        : (availablePeople.isNotEmpty ? availablePeople.first : '');
     _generalCommentC = TextEditingController(text: initial?.comment ?? '');
     _rubric = initial?.rubric ?? _rubricOptionsForType(_type).first;
     if (initial != null) {

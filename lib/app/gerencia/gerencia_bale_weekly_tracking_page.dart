@@ -44,9 +44,12 @@ class _GerenciaBaleWeeklyTrackingPageState
   bool _loading = true;
   bool _canReturnToDirection = false;
   bool _refreshing = false;
+  bool _editing = false;
+  bool _pendingReload = false;
   late DateTime _visibleWeekStartDate;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   Timer? _reloadTimer;
+  StreamSubscription<DateTime>? _programApprovalSubscription;
   RealtimeChannel? _weeklyTrackingChannel;
 
   @override
@@ -58,7 +61,14 @@ class _GerenciaBaleWeeklyTrackingPageState
               GerenciaBaleWeeklyTrackingStore.currentWeekStartDate(),
         );
     unawaited(_resolveNavigationAccess());
-    unawaited(_load());
+    unawaited(_load(forceRefresh: true));
+    _programApprovalSubscription = GerenciaBaleWeeklyTrackingStore
+        .approvedPrograms
+        .listen((week) {
+          if (week == _visibleWeekStartDate) {
+            unawaited(_load(silent: true, forceRefresh: true));
+          }
+        });
     _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
       unawaited(_load(silent: true, forceRefresh: true));
     });
@@ -82,6 +92,7 @@ class _GerenciaBaleWeeklyTrackingPageState
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _programApprovalSubscription?.cancel();
     _weeklyTrackingChannel?.unsubscribe();
     super.dispose();
   }
@@ -95,7 +106,10 @@ class _GerenciaBaleWeeklyTrackingPageState
   }
 
   Future<void> _load({bool silent = false, bool forceRefresh = false}) async {
-    if (_refreshing) return;
+    if (_refreshing || _editing) {
+      _pendingReload = true;
+      return;
+    }
     _refreshing = true;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
@@ -117,6 +131,10 @@ class _GerenciaBaleWeeklyTrackingPageState
       }
     } finally {
       _refreshing = false;
+      if (_pendingReload && mounted && !_editing) {
+        _pendingReload = false;
+        unawaited(_load(silent: true, forceRefresh: true));
+      }
     }
   }
 
@@ -192,6 +210,9 @@ class _GerenciaBaleWeeklyTrackingPageState
   }
 
   Future<void> _editLine(GerenciaBaleWeeklyPlanLineRecord line) async {
+    final linked =
+        _bundle?.currentPlan?.isLinkedMaterial(line.baleTypeKey) ?? false;
+    _editing = true;
     final productionController = TextEditingController(
       text: line.productionTargetBales.toString(),
     );
@@ -261,9 +282,16 @@ class _GerenciaBaleWeeklyTrackingPageState
                           ),
                         ),
                         const SizedBox(height: 14),
+                        if (linked) ...[
+                          const Text(
+                            'Metas del programa operativo aprobado. Para cambiarlas, aprueba una nueva versión en Dirección.',
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         TextField(
                           controller: productionController,
-                          autofocus: true,
+                          readOnly: linked,
+                          autofocus: !linked,
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.done,
                           style: const TextStyle(
@@ -283,6 +311,7 @@ class _GerenciaBaleWeeklyTrackingPageState
                         const SizedBox(height: 12),
                         TextField(
                           controller: shipmentController,
+                          readOnly: linked,
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.done,
                           style: const TextStyle(
@@ -302,6 +331,7 @@ class _GerenciaBaleWeeklyTrackingPageState
                         const SizedBox(height: 12),
                         TextField(
                           controller: notesController,
+                          autofocus: linked,
                           minLines: 2,
                           maxLines: 4,
                           textInputAction: TextInputAction.done,
@@ -358,7 +388,14 @@ class _GerenciaBaleWeeklyTrackingPageState
     productionController.dispose();
     shipmentController.dispose();
     notesController.dispose();
-    if (result != true) return;
+    _editing = false;
+    if (result != true) {
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true, forceRefresh: true));
+      }
+      return;
+    }
     final productionTarget = int.tryParse(productionText.trim());
     final shipmentTarget = int.tryParse(shipmentText.trim());
     if (productionTarget == null ||
@@ -373,13 +410,22 @@ class _GerenciaBaleWeeklyTrackingPageState
       );
       return;
     }
-    await GerenciaBaleWeeklyTrackingStore.updatePlanLine(
-      line,
-      productionTargetBales: productionTarget,
-      shipmentTargetBales: shipmentTarget,
-      notes: notesText,
-    );
-    await _load();
+    try {
+      await GerenciaBaleWeeklyTrackingStore.updatePlanLine(
+        line,
+        productionTargetBales: productionTarget,
+        shipmentTargetBales: shipmentTarget,
+        notes: notesText,
+        notesOnly: linked,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se guardó el cambio. $error')),
+        );
+      }
+    }
+    if (mounted) await _load(forceRefresh: true);
   }
 
   String _labelForType(String key) {
@@ -628,7 +674,7 @@ class _GerenciaHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Plan semanal manual de Gerencia con base lista para conectar producción y embarques reales desde Operación.',
+                  'Metas semanales desde los embarques confirmados y el programa de producción aprobado en Dirección.',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
@@ -759,9 +805,11 @@ class _GerenciaPlanBoard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Lectura ejecutiva homologada sin scroll horizontal. Cada tarjeta resume plan, real, estimación y faltante por tipo.',
-            style: TextStyle(
+          Text(
+            bundle.currentPlan?.hasOperatingProgram ?? false
+                ? 'Metas vinculadas al programa operativo v${bundle.currentPlan!.sourceOperatingProgramVersion}. Una nueva aprobación actualiza las metas de esta semana.'
+                : 'Cada tarjeta resume metas, avance real, estimación y faltante por tipo de paca.',
+            style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Color(0xCCFFE7EA),
@@ -957,7 +1005,7 @@ class _GerenciaEmptyPlanPanel extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Crea la semana ${_isoWeekNumber(bundle.weekStartDate)} para empezar a capturar metas de producción y embarque por tipo de paca.',
+            'Las metas de la semana ${_isoWeekNumber(bundle.weekStartDate)} se crearán automáticamente al aprobar el programa operativo en Dirección. También puedes crear un plan manual mientras tanto.',
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
