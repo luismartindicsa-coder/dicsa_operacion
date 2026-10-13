@@ -1,7 +1,34 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/fetch_all_supabase_rows.dart';
+
 const String _kLogisticsDriverProfilesTable = 'logistics_driver_profiles';
 const String _kLogisticsVehicleProfilesTable = 'logistics_vehicle_profiles';
+
+const _unchangedTankCapacity = Object();
+
+String logisticsTankCapacityInput(double? liters) => liters == null
+    ? ''
+    : liters.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+
+String logisticsTankCapacityLabel(double? liters) =>
+    liters == null ? 'Sin capturar' : '${logisticsTankCapacityInput(liters)} L';
+
+double? parseLogisticsTankCapacity(String input) {
+  final value = input.trim().replaceAll(',', '.');
+  if (value.isEmpty) return null;
+  final liters = double.tryParse(value);
+  if (!RegExp(r'^\d+(?:\.\d{1,2})?$').hasMatch(value) ||
+      liters == null ||
+      !liters.isFinite ||
+      liters <= 0 ||
+      liters > 999999.99) {
+    throw const FormatException(
+      'Captura litros mayores a 0, con máximo 2 decimales.',
+    );
+  }
+  return liters;
+}
 
 const List<String> kLogisticsPlanningStatusOptions = <String>[
   'ACTIVO',
@@ -269,6 +296,7 @@ class LogisticsVehicleProfileRecord {
   final List<String> compatibleLoadTypes;
   final String planningStatus;
   final String capacityNote;
+  final double? tankCapacityLiters;
   final String notes;
   final bool active;
   final DateTime? updatedAt;
@@ -283,6 +311,7 @@ class LogisticsVehicleProfileRecord {
     required this.compatibleLoadTypes,
     required this.planningStatus,
     required this.capacityNote,
+    this.tankCapacityLiters,
     required this.notes,
     required this.active,
     required this.updatedAt,
@@ -298,6 +327,7 @@ class LogisticsVehicleProfileRecord {
     List<String>? compatibleLoadTypes,
     String? planningStatus,
     String? capacityNote,
+    Object? tankCapacityLiters = _unchangedTankCapacity,
     String? notes,
     bool? active,
     DateTime? updatedAt,
@@ -312,6 +342,9 @@ class LogisticsVehicleProfileRecord {
       compatibleLoadTypes: compatibleLoadTypes ?? this.compatibleLoadTypes,
       planningStatus: planningStatus ?? this.planningStatus,
       capacityNote: capacityNote ?? this.capacityNote,
+      tankCapacityLiters: identical(tankCapacityLiters, _unchangedTankCapacity)
+          ? this.tankCapacityLiters
+          : tankCapacityLiters as double?,
       notes: notes ?? this.notes,
       active: active ?? this.active,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -330,6 +363,7 @@ class LogisticsVehicleProfileRecord {
     'compatible_load_types': compatibleLoadTypes,
     'planning_status': planningStatus,
     'capacity_note': capacityNote.trim().isEmpty ? null : capacityNote.trim(),
+    'tank_capacity_liters': tankCapacityLiters,
     'notes': notes.trim().isEmpty ? null : notes.trim(),
   };
 
@@ -348,6 +382,9 @@ class LogisticsVehicleProfileRecord {
       compatibleLoadTypes: _normalizeStringList(row['compatible_load_types']),
       planningStatus: (row['planning_status'] ?? 'ACTIVO').toString(),
       capacityNote: (row['capacity_note'] ?? '').toString(),
+      tankCapacityLiters: double.tryParse(
+        '${row['tank_capacity_liters'] ?? ''}',
+      ),
       notes: (row['notes'] ?? '').toString(),
       active: active,
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
@@ -392,6 +429,7 @@ class LogisticsVehicleProfileStore {
             compatibleLoadTypes: remote?.compatibleLoadTypes ?? const [],
             planningStatus: remote?.planningStatus ?? 'ACTIVO',
             capacityNote: remote?.capacityNote ?? '',
+            tankCapacityLiters: remote?.tankCapacityLiters,
             notes: remote?.notes ?? '',
             active: active,
             updatedAt: remote?.updatedAt,
@@ -406,7 +444,18 @@ class LogisticsVehicleProfileStore {
 
     if (rowsToSync.isNotEmpty) {
       try {
-        await saveProfileRows(rowsToSync);
+        // Master-data synchronization must not clear a tank value if the
+        // optional profile read failed or another user just updated it.
+        await client
+            .from(_kLogisticsVehicleProfilesTable)
+            .upsert(
+              rowsToSync
+                  .map(
+                    (row) => row.toUpsertJson()..remove('tank_capacity_liters'),
+                  )
+                  .toList(),
+              onConflict: 'vehicle_id',
+            );
       } catch (_) {}
     }
 
@@ -416,6 +465,7 @@ class LogisticsVehicleProfileStore {
   static Future<void> saveProfileRow(
     LogisticsVehicleProfileRecord record,
   ) async {
+    _validateTankCapacity(record);
     await Supabase.instance.client.from(_kLogisticsVehicleProfilesTable).upsert(
       <Map<String, dynamic>>[record.toUpsertJson()],
       onConflict: 'vehicle_id',
@@ -426,12 +476,39 @@ class LogisticsVehicleProfileStore {
     List<LogisticsVehicleProfileRecord> records,
   ) async {
     if (records.isEmpty) return;
+    for (final record in records) {
+      _validateTankCapacity(record);
+    }
     await Supabase.instance.client
         .from(_kLogisticsVehicleProfilesTable)
         .upsert(
           records.map((row) => row.toUpsertJson()).toList(growable: false),
           onConflict: 'vehicle_id',
         );
+  }
+
+  static void _validateTankCapacity(LogisticsVehicleProfileRecord record) {
+    final liters = record.tankCapacityLiters;
+    if (liters != null &&
+        (!liters.isFinite || liters <= 0 || liters > 999999.99)) {
+      throw ArgumentError('La capacidad del tanque debe ser mayor a 0 litros.');
+    }
+  }
+
+  static Future<Map<String, double?>> loadTankCapacities() async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kLogisticsVehicleProfilesTable)
+          .select('vehicle_id,tank_capacity_liters')
+          .order('vehicle_id')
+          .range(from, to),
+    );
+    return {
+      for (final row in rows)
+        row['vehicle_id'].toString(): double.tryParse(
+          '${row['tank_capacity_liters'] ?? ''}',
+        ),
+    };
   }
 
   static Future<Map<String, LogisticsVehicleProfileRecord>>

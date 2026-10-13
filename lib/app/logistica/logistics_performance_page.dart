@@ -31,6 +31,8 @@ import 'logistics_gasoline_page.dart';
 import 'logistics_savings_page.dart';
 import 'logistics_gasoline_store.dart';
 import 'logistics_performance_store.dart';
+import 'logistics_fuel_cost.dart';
+import 'logistics_resource_profile_store.dart';
 import 'logistics_theme.dart';
 
 class LogisticsPerformancePage extends StatefulWidget {
@@ -79,6 +81,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
             .eq('area', 'LOGISTICA')
             .not('vehicle_id', 'is', null),
         supa.from('sites').select('id,name').eq('type', 'cliente'),
+        LogisticsVehicleProfileStore.loadTankCapacities(),
       ]);
       if (!mounted) return;
 
@@ -98,6 +101,12 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
       final vehicleLabelByKey = <String, String>{
         for (final vehicle in vehicles)
           logisticsVehicleKey(vehicle.label): vehicle.label,
+      };
+
+      final tankById = results[7] as Map<String, double?>;
+      final tankByKey = <String, double?>{
+        for (final vehicle in vehicles)
+          logisticsVehicleKey(vehicle.label): tankById[vehicle.id],
       };
 
       final fuelByDayAndVehicle = <String, _FuelTotals>{};
@@ -176,6 +185,11 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
                       mileage.vehicleLabel,
                   vehicleKey: mileage.vehicleKey,
                   kilometers: mileage.kilometers,
+                  tankCapacityLiters: mileage.vehicleId != null
+                      ? tankById[mileage.vehicleId]
+                      : tankByKey[mileage.vehicleKey],
+                  dieselPrice: mileage.dieselPricePerLiter,
+                  gasolinePrice: mileage.gasolinePricePerLiter,
                   tripDetails: trips,
                   fuel: fuel,
                 );
@@ -222,36 +236,36 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
 
   Future<void> _importMileageXlsx() async {
     if (_importing) return;
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['xlsx'],
-      withData: true,
-      lockParentWindow: true,
-      dialogTitle: 'Seleccionar Excel de kilometraje',
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    if (!mounted) return;
-    final file = picked.files.single;
-    final bytes =
-        file.bytes ??
-        (file.path == null ? null : await File(file.path!).readAsBytes());
-    if (bytes == null || bytes.isEmpty) {
-      _toast('No se pudo leer el archivo seleccionado');
-      return;
-    }
-    if (!mounted) return;
-
-    final month = await showDatePicker(
-      context: context,
-      initialDate: DateTime(DateTime.now().year, DateTime.now().month, 1),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
-      helpText: 'Selecciona el mes de las filas “Día N”',
-    );
-    if (month == null || !mounted) return;
-
     setState(() => _importing = true);
     try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['xlsx'],
+        withData: true,
+        lockParentWindow: true,
+        dialogTitle: 'Seleccionar Excel de kilometraje',
+      );
+      if (picked == null || picked.files.isEmpty) return;
+      if (!mounted) return;
+      final file = picked.files.single;
+      final bytes =
+          file.bytes ??
+          (file.path == null ? null : await File(file.path!).readAsBytes());
+      if (bytes == null || bytes.isEmpty) {
+        _toast('No se pudo leer el archivo seleccionado');
+        return;
+      }
+      if (!mounted) return;
+
+      final month = await showDatePicker(
+        context: context,
+        initialDate: DateTime(DateTime.now().year, DateTime.now().month, 1),
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2035),
+        helpText: 'Selecciona el mes de las filas “Día N”',
+      );
+      if (month == null || !mounted) return;
+
       final imported = _LogisticsMileageXlsxReader.read(
         bytes: bytes,
         year: month.year,
@@ -262,6 +276,27 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
         _toast('No se encontraron filas “Día N” con kilometraje en el Excel');
         return;
       }
+
+      final prices = await showLogisticsContractDialog<_ImportFuelPrices>(
+        context: context,
+        builder: (_) => ServicesVisualModeScope(
+          logisticsSilverMode: true,
+          child: AreaThemeScope(
+            tokens: logisticsAreaTokens,
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: Theme.of(context).colorScheme.copyWith(
+                  primary: kLogisticsSilverIcon,
+                  secondary: kLogisticsSilverIcon,
+                  surface: kLogisticsSilverSurfaceElevated,
+                ),
+              ),
+              child: _ImportFuelPricesDialog(rowCount: imported.length),
+            ),
+          ),
+        ),
+      );
+      if (prices == null || !mounted) return;
 
       final vehicleRows = await supa.from('vehicles').select('id,code');
       final vehicleIdByKey = <String, String>{
@@ -279,6 +314,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
               vehicleKey: row.vehicleKey,
               kilometers: row.kilometers,
               sourceFileName: file.name,
+              dieselPricePerLiter: prices.diesel,
+              gasolinePricePerLiter: prices.gasoline,
             ),
           )
           .toList(growable: false);
@@ -449,6 +486,10 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
       );
       final totalTrips = aggregates.fold<int>(0, (sum, row) => sum + row.trips);
       final average = totalFuel == 0 ? null : totalKm / totalFuel;
+      final totalCost = aggregates.fold(
+        const LogisticsFuelCost(),
+        (sum, row) => sum + row.cost,
+      );
       final document = pw.Document();
       document.addPage(
         pw.MultiPage(
@@ -533,6 +574,20 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
               ),
             ),
             pw.SizedBox(height: 10),
+            pw.Text(
+              'Monto de combustible: ${totalCost.label}',
+              style: pw.TextStyle(
+                color: ink,
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+            if (!totalCost.isComplete)
+              pw.Text(
+                'El monto parcial incluye únicamente combustible con precio capturado.',
+                style: const pw.TextStyle(color: muted, fontSize: 8),
+              ),
+            pw.SizedBox(height: 8),
             pw.TableHelper.fromTextArray(
               headers: const [
                 'CORTE',
@@ -543,6 +598,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
                 'KM',
                 'VIAJES',
                 'KM/L',
+                'MONTO',
                 'DESTINOS',
               ],
               data: aggregates
@@ -558,6 +614,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
                       row.performance == null
                           ? 'Pendiente'
                           : row.performance!.toStringAsFixed(2),
+                      row.cost.label,
                       row.destinations.isEmpty
                           ? 'Sin destino'
                           : row.destinations.join(', '),
@@ -597,7 +654,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
                 5: pw.FlexColumnWidth(.7),
                 6: pw.FlexColumnWidth(.6),
                 7: pw.FlexColumnWidth(.7),
-                8: pw.FlexColumnWidth(2.45),
+                8: pw.FlexColumnWidth(1.25),
+                9: pw.FlexColumnWidth(1.8),
               },
             ),
           ],
@@ -797,7 +855,13 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildSummary(totalKilometers, totalFuel, totalTrips, average),
+          _buildSummary(
+            totalKilometers,
+            totalFuel,
+            totalTrips,
+            average,
+            rows.fold(const LogisticsFuelCost(), (sum, row) => sum + row.cost),
+          ),
           const SizedBox(height: 10),
           _buildActions(),
           const SizedBox(height: 10),
@@ -812,6 +876,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
     double fuel,
     int trips,
     double? average,
+    LogisticsFuelCost cost,
   ) {
     final cards = [
       _MetricCard(
@@ -825,6 +890,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
         Icons.local_gas_station_rounded,
       ),
       _MetricCard('Viajes', '$trips', Icons.route_rounded),
+      _MetricCard('Monto de combustible', cost.label, Icons.payments_outlined),
       _MetricCard(
         'Rendimiento promedio',
         average == null ? 'Pendiente' : '${average.toStringAsFixed(2)} km/L',
@@ -840,7 +906,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
               (card) => SizedBox(
                 width: constraints.maxWidth < 900
                     ? (constraints.maxWidth - 10) / 2
-                    : (constraints.maxWidth - 30) / 4,
+                    : (constraints.maxWidth - 40) / 5,
                 child: card,
               ),
             )
@@ -1004,42 +1070,87 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
           ? const Center(
               child: Text('Aún no hay kilometraje importado para este filtro.'),
             )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(12),
-              child: DataTable(
-                headingRowColor: WidgetStatePropertyAll(
-                  kLogisticsSilverSurfaceInteractive,
-                ),
-                columns: const [
-                  DataColumn(label: Text('FECHA')),
-                  DataColumn(label: Text('UNIDAD')),
-                  DataColumn(label: Text('COMBUSTIBLE')),
-                  DataColumn(numeric: true, label: Text('# VIAJES')),
-                  DataColumn(numeric: true, label: Text('KILOMETRAJE')),
-                  DataColumn(numeric: true, label: Text('RENDIMIENTO')),
-                ],
-                rows: rows
-                    .map(
-                      (row) => DataRow(
-                        cells: [
-                          DataCell(Text(_formatDate(row.date))),
-                          DataCell(Text(row.vehicleLabel)),
-                          DataCell(_FuelChip(fuel: row.fuel)),
-                          DataCell(Text('${row.trips}')),
-                          DataCell(
-                            Text('${row.kilometers.toStringAsFixed(1)} km'),
-                          ),
-                          DataCell(
-                            Text(
-                              row.performance == null
-                                  ? 'Pendiente'
-                                  : '${row.performance!.toStringAsFixed(2)} km/L',
-                            ),
-                          ),
-                        ],
+          : LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minWidth: (constraints.maxWidth - 24).clamp(
+                        0.0,
+                        double.infinity,
                       ),
-                    )
-                    .toList(growable: false),
+                    ),
+                    child: DataTable(
+                      headingRowColor: WidgetStatePropertyAll(
+                        kLogisticsSilverSurfaceInteractive,
+                      ),
+                      columns: const [
+                        DataColumn(label: Text('FECHA')),
+                        DataColumn(label: Text('UNIDAD')),
+                        DataColumn(numeric: true, label: Text('TANQUE (L)')),
+                        DataColumn(label: Text('COMBUSTIBLE')),
+                        DataColumn(numeric: true, label: Text(r'DIÉSEL $/L')),
+                        DataColumn(numeric: true, label: Text(r'GASOLINA $/L')),
+                        DataColumn(numeric: true, label: Text('MONTO')),
+                        DataColumn(numeric: true, label: Text('# VIAJES')),
+                        DataColumn(numeric: true, label: Text('KILOMETRAJE')),
+                        DataColumn(numeric: true, label: Text('RENDIMIENTO')),
+                      ],
+                      rows: rows
+                          .map(
+                            (row) => DataRow(
+                              cells: [
+                                DataCell(Text(_formatDate(row.date))),
+                                DataCell(Text(row.vehicleLabel)),
+                                DataCell(
+                                  Text(
+                                    logisticsTankCapacityLabel(
+                                      row.tankCapacityLiters,
+                                    ),
+                                  ),
+                                ),
+                                DataCell(_FuelChip(fuel: row.fuel)),
+                                DataCell(
+                                  Text(
+                                    row.dieselPrice == null
+                                        ? 'Sin precio'
+                                        : logisticsFuelMoney(
+                                            (row.dieselPrice! * 100).round(),
+                                          ),
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(
+                                    row.gasolinePrice == null
+                                        ? 'Sin precio'
+                                        : logisticsFuelMoney(
+                                            (row.gasolinePrice! * 100).round(),
+                                          ),
+                                  ),
+                                ),
+                                DataCell(Text(row.cost.label)),
+                                DataCell(Text('${row.trips}')),
+                                DataCell(
+                                  Text(
+                                    '${row.kilometers.toStringAsFixed(1)} km',
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(
+                                    row.performance == null
+                                        ? 'Pendiente'
+                                        : '${row.performance!.toStringAsFixed(2)} km/L',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ),
+                ),
               ),
             ),
     );
@@ -1102,6 +1213,145 @@ BoxDecoration _performanceDialogDecoration(BuildContext context) {
         offset: const Offset(0, 10),
       ),
     ],
+  );
+}
+
+class _ImportFuelPrices {
+  final double? diesel;
+  final double? gasoline;
+  const _ImportFuelPrices(this.diesel, this.gasoline);
+}
+
+class _ImportFuelPricesDialog extends StatefulWidget {
+  final int rowCount;
+  const _ImportFuelPricesDialog({required this.rowCount});
+
+  @override
+  State<_ImportFuelPricesDialog> createState() =>
+      _ImportFuelPricesDialogState();
+}
+
+class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
+  final _diesel = TextEditingController();
+  final _gasoline = TextEditingController();
+  final _form = GlobalKey<FormState>();
+  String? _error;
+
+  @override
+  void dispose() {
+    _diesel.dispose();
+    _gasoline.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_form.currentState!.validate()) return;
+    final diesel = parseLogisticsFuelPrice(_diesel.text);
+    final gasoline = parseLogisticsFuelPrice(_gasoline.text);
+    if (diesel == null && gasoline == null) {
+      setState(() => _error = 'Captura al menos un precio de combustible.');
+      return;
+    }
+    Navigator.of(context).pop(_ImportFuelPrices(diesel, gasoline));
+  }
+
+  Widget _priceField(
+    String label,
+    TextEditingController controller, {
+    bool autofocus = false,
+  }) => TextFormField(
+    controller: controller,
+    autofocus: autofocus,
+    cursorColor: kLogisticsSilverTextPrimary,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: InputDecoration(
+      labelText: label,
+      prefixText: r'$ ',
+      suffixText: '/ L',
+    ),
+    validator: (value) {
+      try {
+        parseLogisticsFuelPrice(value ?? '');
+        return null;
+      } on FormatException catch (error) {
+        return error.message;
+      }
+    },
+    onChanged: (_) {
+      if (_error != null) setState(() => _error = null);
+    },
+    onFieldSubmitted: (_) => _submit(),
+  );
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.transparent,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: _performanceDialogDecoration(context),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Precios de combustible',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: ServicesVisualPalette.of(context).textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${widget.rowCount} ${widget.rowCount == 1 ? 'lectura' : 'lecturas'} por importar. El monto se calcula con los litros registrados para cada unidad y día.',
+                ),
+                const SizedBox(height: 18),
+                _priceField('Precio de diésel', _diesel, autofocus: true),
+                const SizedBox(height: 14),
+                _priceField('Precio de gasolina', _gasoline),
+                const SizedBox(height: 12),
+                const Text(
+                  'Deja vacío el combustible que no aplique. Al reimportar, un campo vacío conserva su precio anterior.',
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      style: _performanceOutlinedButtonStyle(context),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      style: _performanceFilledButtonStyle(context),
+                      onPressed: _submit,
+                      child: const Text('Importar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 }
 
@@ -1506,27 +1756,33 @@ class _MetricCard extends StatelessWidget {
       children: [
         Icon(icon, color: kLogisticsSilverIcon),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: kLogisticsSilverTextSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: kLogisticsSilverTextSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              value,
-              style: const TextStyle(
-                color: kLogisticsSilverTextPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
+              const SizedBox(height: 3),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    color: kLogisticsSilverTextPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     ),
@@ -1664,6 +1920,7 @@ class _PerformanceReportRow {
   double kilometers = 0;
   int trips = 0;
   _FuelTotals fuel = const _FuelTotals();
+  LogisticsFuelCost cost = const LogisticsFuelCost();
   final Set<String> destinations = <String>{};
 
   _PerformanceReportRow({
@@ -1675,6 +1932,7 @@ class _PerformanceReportRow {
   double? get performance => fuel.total <= 0 ? null : kilometers / fuel.total;
 
   void add(_PerformanceRow row) {
+    cost = cost + row.cost;
     kilometers += row.kilometers;
     trips += row.trips;
     fuel = fuel.copyWith(
@@ -1694,6 +1952,9 @@ class _PerformanceRow {
   final String vehicleLabel;
   final String vehicleKey;
   final double kilometers;
+  final double? tankCapacityLiters;
+  final double? dieselPrice;
+  final double? gasolinePrice;
   final List<_TripDetail> tripDetails;
   final _FuelTotals fuel;
   const _PerformanceRow({
@@ -1701,9 +1962,18 @@ class _PerformanceRow {
     required this.vehicleLabel,
     required this.vehicleKey,
     required this.kilometers,
+    required this.tankCapacityLiters,
+    required this.dieselPrice,
+    required this.gasolinePrice,
     required this.tripDetails,
     required this.fuel,
   });
+  LogisticsFuelCost get cost => LogisticsFuelCost.calculate(
+    dieselLiters: fuel.diesel,
+    gasolineLiters: fuel.gasoline,
+    dieselPrice: dieselPrice,
+    gasolinePrice: gasolinePrice,
+  );
   int get trips => tripDetails.length;
   double? get performance => fuel.total <= 0 ? null : kilometers / fuel.total;
 }

@@ -4,15 +4,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../management_reports/management_reports_registry.dart';
-import '../management_reports/management_reports_widgets.dart';
-import '../management_reports/management_supervision_page.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/page_routes.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_dashboard_summary.dart';
+import 'logistics_dashboard_missing_cards.dart';
 import 'logistics_operations_pages.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
@@ -175,16 +174,6 @@ class LogisticsDashboardPage extends StatelessWidget {
       );
     }
 
-    Future<void> openManagementSupervision() async {
-      await Navigator.of(context).push(
-        appPageRoute(
-          page: const ManagementSupervisionPage(instantOpen: true),
-          duration: const Duration(milliseconds: 320),
-          reverseDuration: const Duration(milliseconds: 240),
-        ),
-      );
-    }
-
     return EmptyAreaDashboardPage(
       instantOpen: instantOpen,
       config: _config.copyWith(
@@ -250,7 +239,6 @@ class LogisticsDashboardPage extends StatelessWidget {
         ],
         workspaceBuilder: (context, config, width) =>
             _LogisticsDashboardWorkspace(
-              width: width,
               onOpenControlDiario: openControlDiario,
               onOpenUnits: openUnits,
               onOpenCatalogs: openCatalogs,
@@ -258,7 +246,7 @@ class LogisticsDashboardPage extends StatelessWidget {
               onOpenGasoline: openGasoline,
               onOpenIncidents: openIncidents,
               onOpenSavings: openSavings,
-              onOpenSupervisionHub: openManagementSupervision,
+              onOpenPerformance: openPerformance,
             ),
       ),
     );
@@ -407,7 +395,6 @@ class LogisticsManagementExecutiveSection extends StatelessWidget {
 }
 
 class _LogisticsDashboardWorkspace extends StatelessWidget {
-  final double width;
   final Future<void> Function() onOpenControlDiario;
   final Future<void> Function() onOpenUnits;
   final Future<void> Function() onOpenCatalogs;
@@ -415,10 +402,9 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenGasoline;
   final Future<void> Function() onOpenIncidents;
   final Future<void> Function() onOpenSavings;
-  final Future<void> Function() onOpenSupervisionHub;
+  final Future<void> Function() onOpenPerformance;
 
   const _LogisticsDashboardWorkspace({
-    required this.width,
     required this.onOpenControlDiario,
     required this.onOpenUnits,
     required this.onOpenCatalogs,
@@ -426,14 +412,11 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
     required this.onOpenGasoline,
     required this.onOpenIncidents,
     required this.onOpenSavings,
-    required this.onOpenSupervisionHub,
+    required this.onOpenPerformance,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final isCompact = width < 1180;
-    final moduleGridWidth = math.max(0.0, width - 32);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -469,15 +452,6 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                   weeklyPanel,
                   const SizedBox(height: 14),
                   summaryPanel,
-                  const SizedBox(height: 14),
-                  ManagementAreaReportPanel(
-                    areaKey: ManagementAreaKey.logistica,
-                    subtitleOverride:
-                        'El encargado de Logística debe generar aquí su corte semanal, estudiarlo antes de la junta y llegar con explicación de costos, viajes y complicaciones.',
-                    showOpenHubButton: true,
-                    showReportActions: false,
-                    onOpenSupervisionHub: onOpenSupervisionHub,
-                  ),
                 ],
               );
             },
@@ -485,199 +459,14 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         _LogisticsWorkspaceGroup(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Accesos del área',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: tokens.onGlass,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Entradas homologadas para bajar al trabajo diario del área.',
-                      style: TextStyle(
-                        fontSize: 12.8,
-                        fontWeight: FontWeight.w700,
-                        color: tokens.onGlass.withValues(alpha: 0.76),
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (isCompact) ...[
-                _LogisticsModuleCard(
-                  icon: Icons.view_kanban_rounded,
-                  title: 'Control Diario',
-                  badge: 'Primero',
-                  subtitle:
-                      'Pantalla operativa principal para ver servicios del día, prioridad, zona, choferes y unidades disponibles.',
-                  outcome:
-                      'Debe resolver la pregunta: a quién mando, en qué unidad, a qué servicio y en qué orden.',
-                  onTap: onOpenControlDiario,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.directions_bus_filled_rounded,
-                  title: 'Estado de Unidades',
-                  badge: 'Estado manual',
-                  subtitle:
-                      'Captura del estado de cada unidad y sus observaciones en Logística.',
-                  outcome:
-                      'Mantén visible el estado reportado de cada unidad para planear las asignaciones.',
-                  onTap: onOpenUnits,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.inventory_2_outlined,
-                  title: 'Catálogos Operativos',
-                  badge: 'Base maestra',
-                  subtitle:
-                      'Choferes, tipos de unidad, tipos de carga y compatibilidades para asignar sin errores.',
-                  outcome:
-                      'Evita que Logística nazca con reglas libres o dependiente de memoria.',
-                  onTap: onOpenCatalogs,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.local_gas_station_rounded,
-                  title: 'Consumo de Diesel',
-                  badge: 'Combustible',
-                  subtitle:
-                      'Fecha, operador, unidad, litros comprados, litros solicitados y saldo operativo.',
-                  outcome:
-                      'Hace visible el consumo diario para empezar a medir ahorro real por combustible.',
-                  onTap: onOpenDiesel,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.local_gas_station_outlined,
-                  title: 'Control de Gasolina',
-                  badge: 'Gasolinera',
-                  subtitle:
-                      'Fecha, operador, unidad y litros cargados en compras directas fuera del tanque interno.',
-                  outcome:
-                      'Separa el consumo directo en gasolinera para medirlo sin mezclarlo con el saldo operativo de diesel.',
-                  onTap: onOpenGasoline,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.report_problem_outlined,
-                  title: 'Incidencias',
-                  badge: 'Seguimiento',
-                  subtitle:
-                      'Retrasos, material no listo, falla mecánica, cambio de unidad y reprogramación.',
-                  outcome:
-                      'Da visibilidad operativa y evita perder control del día cuando algo cambia.',
-                  onTap: onOpenIncidents,
-                ),
-                const SizedBox(height: 12),
-                _LogisticsModuleCard(
-                  icon: Icons.insights_outlined,
-                  title: 'Ahorro y Planeación',
-                  badge: 'Segunda capa',
-                  subtitle:
-                      'Zona, duplicidad de viajes, combinación de servicios y uso real de unidades.',
-                  outcome:
-                      'Convierte el histórico operativo en ahorro medible sin complicar la captura diaria.',
-                  onTap: onOpenSavings,
-                ),
-              ] else
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 12) / 2,
-                      icon: Icons.view_kanban_rounded,
-                      title: 'Control Diario',
-                      badge: 'Primero',
-                      subtitle:
-                          'Pantalla operativa principal para ver servicios del día, prioridad, zona, choferes y unidades disponibles.',
-                      outcome:
-                          'Debe resolver la pregunta: a quién mando, en qué unidad, a qué servicio y en qué orden.',
-                      onTap: onOpenControlDiario,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 12) / 2,
-                      icon: Icons.directions_bus_filled_rounded,
-                      title: 'Estado de Unidades',
-                      badge: 'Estado manual',
-                      subtitle:
-                          'Captura del estado de cada unidad y sus observaciones en Logística.',
-                      outcome:
-                          'Mantén visible el estado reportado de cada unidad para planear las asignaciones.',
-                      onTap: onOpenUnits,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 24) / 3,
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Catálogos Operativos',
-                      badge: 'Base maestra',
-                      subtitle:
-                          'Choferes, tipos de unidad, tipos de carga y compatibilidades para asignar sin errores.',
-                      outcome:
-                          'Evita que Logística nazca con reglas libres o dependiente de memoria.',
-                      onTap: onOpenCatalogs,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 24) / 3,
-                      icon: Icons.local_gas_station_rounded,
-                      title: 'Consumo de Diesel',
-                      badge: 'Combustible',
-                      subtitle:
-                          'Fecha, operador, unidad, litros comprados, litros solicitados y saldo operativo.',
-                      outcome:
-                          'Hace visible el consumo diario para empezar a medir ahorro real por combustible.',
-                      onTap: onOpenDiesel,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 24) / 3,
-                      icon: Icons.local_gas_station_outlined,
-                      title: 'Control de Gasolina',
-                      badge: 'Gasolinera',
-                      subtitle:
-                          'Fecha, operador, unidad y litros cargados en compras directas fuera del tanque interno.',
-                      outcome:
-                          'Separa el consumo directo en gasolinera para medirlo sin mezclarlo con el saldo operativo de diesel.',
-                      onTap: onOpenGasoline,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 24) / 3,
-                      icon: Icons.report_problem_outlined,
-                      title: 'Incidencias',
-                      badge: 'Seguimiento',
-                      subtitle:
-                          'Retrasos, material no listo, falla mecánica, cambio de unidad y reprogramación.',
-                      outcome:
-                          'Da visibilidad operativa y evita perder control del día cuando algo cambia.',
-                      onTap: onOpenIncidents,
-                    ),
-                    _LogisticsModuleCard(
-                      width: (moduleGridWidth - 24) / 3,
-                      icon: Icons.insights_outlined,
-                      title: 'Ahorro y Planeación',
-                      badge: 'Segunda capa',
-                      subtitle:
-                          'Zona, duplicidad de viajes, combinación de servicios y uso real de unidades.',
-                      outcome:
-                          'Convierte el histórico operativo en ahorro medible sin complicar la captura diaria.',
-                      onTap: onOpenSavings,
-                    ),
-                  ],
-                ),
-            ],
+          child: LogisticsDashboardMissingCards(
+            onOpen: {
+              LogisticsDashboardModule.units: onOpenUnits,
+              LogisticsDashboardModule.incidents: onOpenIncidents,
+              LogisticsDashboardModule.performance: onOpenPerformance,
+              LogisticsDashboardModule.savings: onOpenSavings,
+              LogisticsDashboardModule.catalogs: onOpenCatalogs,
+            },
           ),
         ),
       ],
@@ -2942,7 +2731,6 @@ String _dashboardInitials(String raw) {
 }
 
 class _LogisticsModuleCard extends StatefulWidget {
-  final double? width;
   final IconData icon;
   final String title;
   final String badge;
@@ -2951,7 +2739,6 @@ class _LogisticsModuleCard extends StatefulWidget {
   final Future<void> Function() onTap;
 
   const _LogisticsModuleCard({
-    this.width,
     required this.icon,
     required this.title,
     required this.badge,
@@ -2979,7 +2766,6 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
         curve: Curves.easeOutCubic,
         scale: _hovered ? 1.012 : 1,
         child: SizedBox(
-          width: widget.width,
           child: Material(
             color: Colors.transparent,
             child: InkWell(

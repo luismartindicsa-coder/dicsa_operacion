@@ -910,6 +910,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
             row.sourceVehicleType,
             row.sourceStatus,
             row.capacityNote,
+            logisticsTankCapacityLabel(row.tankCapacityLiters),
             row.notes,
             logisticsUnitTypeLabel(row.logisticsUnitType),
             ...row.compatibleLoadTypes.map(logisticsLoadTypeLabel),
@@ -2948,6 +2949,12 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           ),
                         ),
                         _CatalogField(
+                          label: 'Capacidad del tanque',
+                          value: logisticsTankCapacityLabel(
+                            row.tankCapacityLiters,
+                          ),
+                        ),
+                        _CatalogField(
                           label: 'Capacidad / nota',
                           value: _vehicleCapacityLabel(row),
                         ),
@@ -4326,6 +4333,8 @@ class _LogisticsVehicleProfileEditorDialog extends StatefulWidget {
 class _LogisticsVehicleProfileEditorDialogState
     extends State<_LogisticsVehicleProfileEditorDialog> {
   late final TextEditingController _capacityController;
+  late final TextEditingController _tankController;
+  String? _tankError;
   late final TextEditingController _notesController;
   late final Set<String> _compatibleLoadTypes;
   late String _planningStatus;
@@ -4337,6 +4346,9 @@ class _LogisticsVehicleProfileEditorDialogState
     _capacityController = TextEditingController(
       text: widget.record.capacityNote,
     );
+    _tankController = TextEditingController(
+      text: logisticsTankCapacityInput(widget.record.tankCapacityLiters),
+    );
     _notesController = TextEditingController(text: widget.record.notes);
     _compatibleLoadTypes = widget.record.compatibleLoadTypes.toSet();
     _planningStatus = widget.record.planningStatus;
@@ -4346,6 +4358,7 @@ class _LogisticsVehicleProfileEditorDialogState
   @override
   void dispose() {
     _capacityController.dispose();
+    _tankController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -4396,6 +4409,13 @@ class _LogisticsVehicleProfileEditorDialogState
   }
 
   void _submit() {
+    double? tank;
+    try {
+      tank = parseLogisticsTankCapacity(_tankController.text);
+    } on FormatException catch (error) {
+      setState(() => _tankError = error.message);
+      return;
+    }
     Navigator.of(context).pop(
       widget.record.copyWith(
         logisticsUnitType: _logisticsUnitType,
@@ -4404,6 +4424,7 @@ class _LogisticsVehicleProfileEditorDialogState
             .toList(growable: false),
         planningStatus: _planningStatus,
         capacityNote: _capacityController.text.trim(),
+        tankCapacityLiters: tank,
         notes: _notesController.text.trim(),
       ),
     );
@@ -4546,6 +4567,23 @@ class _LogisticsVehicleProfileEditorDialogState
                         ),
                       )
                       .toList(growable: false),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  key: const ValueKey('logistics-tank-capacity-input'),
+                  controller: _tankController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: _decoration('Capacidad del tanque (L)').copyWith(
+                    errorText: _tankError,
+                    suffixText: 'L',
+                    hintText: 'Sin capturar',
+                  ),
+                  onChanged: (_) {
+                    if (_tankError != null) setState(() => _tankError = null);
+                  },
+                  onSubmitted: (_) => _submit(),
                 ),
                 const SizedBox(height: 14),
                 TextField(

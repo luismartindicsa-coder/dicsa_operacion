@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/fetch_all_supabase_rows.dart';
+
 const String _kMileageTable = 'logistics_vehicle_mileage';
 
 String logisticsVehicleKey(String value) {
@@ -17,6 +19,8 @@ class LogisticsVehicleMileageRecord {
   final String vehicleKey;
   final double kilometers;
   final String sourceFileName;
+  final double? dieselPricePerLiter;
+  final double? gasolinePricePerLiter;
 
   const LogisticsVehicleMileageRecord({
     required this.id,
@@ -26,6 +30,8 @@ class LogisticsVehicleMileageRecord {
     required this.vehicleKey,
     required this.kilometers,
     required this.sourceFileName,
+    this.dieselPricePerLiter,
+    this.gasolinePricePerLiter,
   });
 
   Map<String, dynamic> toUpsertJson() => <String, dynamic>{
@@ -36,6 +42,11 @@ class LogisticsVehicleMileageRecord {
     'vehicle_key': vehicleKey,
     'kilometers': kilometers,
     'source_file_name': sourceFileName.trim(),
+    // Blank import inputs preserve prices already captured on a previous import.
+    if (dieselPricePerLiter != null)
+      'diesel_price_per_liter': dieselPricePerLiter,
+    if (gasolinePricePerLiter != null)
+      'gasoline_price_per_liter': gasolinePricePerLiter,
   };
 
   factory LogisticsVehicleMileageRecord.fromRemoteRow(
@@ -49,23 +60,24 @@ class LogisticsVehicleMileageRecord {
       vehicleKey: (row['vehicle_key'] ?? '').toString(),
       kilometers: _toDouble(row['kilometers']),
       sourceFileName: (row['source_file_name'] ?? '').toString(),
+      dieselPricePerLiter: _nullableDouble(row['diesel_price_per_liter']),
+      gasolinePricePerLiter: _nullableDouble(row['gasoline_price_per_liter']),
     );
   }
 }
 
 class LogisticsVehicleMileageStore {
   static Future<List<LogisticsVehicleMileageRecord>> loadEntries() async {
-    final rows = await Supabase.instance.client
-        .from(_kMileageTable)
-        .select()
-        .order('entry_date', ascending: false)
-        .order('vehicle_key');
-    return (rows as List)
-        .map(
-          (raw) => LogisticsVehicleMileageRecord.fromRemoteRow(
-            Map<String, dynamic>.from(raw as Map),
-          ),
-        )
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kMileageTable)
+          .select()
+          .order('entry_date', ascending: false)
+          .order('vehicle_key')
+          .range(from, to),
+    );
+    return rows
+        .map(LogisticsVehicleMileageRecord.fromRemoteRow)
         .toList(growable: false);
   }
 
@@ -73,12 +85,20 @@ class LogisticsVehicleMileageStore {
     List<LogisticsVehicleMileageRecord> entries,
   ) async {
     if (entries.isEmpty) return;
-    await Supabase.instance.client
-        .from(_kMileageTable)
-        .upsert(
-          entries.map((entry) => entry.toUpsertJson()).toList(growable: false),
-          onConflict: 'entry_date,vehicle_key',
-        );
+    // PostgREST batches must have identical keys. Group by captured prices so
+    // a blank price cannot become an explicit null and erase a previous price.
+    final batches = <int, List<Map<String, dynamic>>>{};
+    for (final entry in entries) {
+      final key =
+          (entry.dieselPricePerLiter != null ? 1 : 0) +
+          (entry.gasolinePricePerLiter != null ? 2 : 0);
+      batches.putIfAbsent(key, () => []).add(entry.toUpsertJson());
+    }
+    for (final batch in batches.values) {
+      await Supabase.instance.client
+          .from(_kMileageTable)
+          .upsert(batch, onConflict: 'entry_date,vehicle_key');
+    }
   }
 }
 
@@ -97,3 +117,6 @@ double _toDouble(dynamic raw) {
   if (raw is num) return raw.toDouble();
   return double.tryParse(raw?.toString() ?? '') ?? 0;
 }
+
+double? _nullableDouble(dynamic raw) =>
+    raw is num ? raw.toDouble() : double.tryParse(raw?.toString() ?? '');
