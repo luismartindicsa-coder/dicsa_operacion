@@ -15,9 +15,11 @@ Widget hrPrenominaGridForTesting({
   ValueChanged<Uint8List>? onExportBytes,
   HrLoanFundState? loanFund,
   String? loanLoadError,
+  String? draftLoadError,
   bool useClosureReview = false,
   bool useStatusActions = false,
   bool periodClosed = false,
+  List<String> otherPeriods = const [],
   Future<void> Function(Map<String, dynamic>)? onPersistDraft,
   Future<void> Function(Map<String, dynamic>)? onAfterPersistDraft,
 }) => _PrenominaGridFixture(
@@ -32,9 +34,11 @@ Widget hrPrenominaGridForTesting({
   onExportBytes: onExportBytes,
   loanFund: loanFund,
   loanLoadError: loanLoadError,
+  draftLoadError: draftLoadError,
   useClosureReview: useClosureReview,
   useStatusActions: useStatusActions,
   periodClosed: periodClosed,
+  otherPeriods: otherPeriods,
   onPersistDraft: onPersistDraft,
   onAfterPersistDraft: onAfterPersistDraft,
 );
@@ -51,9 +55,11 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
   final ValueChanged<Uint8List>? onExportBytes;
   final HrLoanFundState? loanFund;
   final String? loanLoadError;
+  final String? draftLoadError;
   final bool useClosureReview;
   final bool useStatusActions;
   final bool periodClosed;
+  final List<String> otherPeriods;
   final Future<void> Function(Map<String, dynamic>)? onPersistDraft;
   final Future<void> Function(Map<String, dynamic>)? onAfterPersistDraft;
   const _PrenominaGridFixture({
@@ -68,9 +74,11 @@ class _PrenominaGridFixture extends HumanResourcesPrenominaPage {
     this.onExportBytes,
     this.loanFund,
     this.loanLoadError,
+    this.draftLoadError,
     this.useClosureReview = false,
     this.useStatusActions = false,
     this.periodClosed = false,
+    this.otherPeriods = const [],
     this.onPersistDraft,
     this.onAfterPersistDraft,
   });
@@ -95,6 +103,7 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
     ];
     _loanFund = fixture.loanFund;
     _loanLoadError = fixture.loanLoadError;
+    _draftLoadError = fixture.draftLoadError;
     _employees = fixture.employees
         .map(_HrPrenominaEmployeeMaster.fromRow)
         .toList();
@@ -111,7 +120,7 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
     _permissionEvents = fixture.permissions
         .map(_HrPrenominaPermissionEventRecord.fromRow)
         .toList();
-    _periodOptions = [fixture.period];
+    _periodOptions = [fixture.period, ...fixture.otherPeriods];
     _selectedPeriodLabel = fixture.period;
     _rebuildRows();
   }
@@ -121,6 +130,9 @@ class _PrenominaGridFixtureState extends _HumanResourcesPrenominaPageState {
     super._rebuildRows();
     fixture.onSnapshot({
       'count': _allRows.length,
+      'bonuses': {
+        for (final row in _periodRows) row.employeeId: row.manualBonusAmount,
+      },
       'statuses': {
         for (final row in _periodRows) row.employeeId: row.statusLabel,
       },

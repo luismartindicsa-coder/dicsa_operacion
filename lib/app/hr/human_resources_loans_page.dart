@@ -21,6 +21,8 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -36,6 +38,7 @@ import 'loans/loan_repository.dart';
 
 part 'loans/loan_workspace.dart';
 part 'loans/loan_forms.dart';
+part 'loans/loan_edit_form.dart';
 part 'loans/loan_test_support.dart';
 
 /// Workflow master-detail: loan list, selected account and immutable payments.
@@ -72,7 +75,7 @@ class _HumanResourcesLoansPageState extends State<HumanResourcesLoansPage> {
         throw StateError('Tu perfil no tiene acceso a Recursos Humanos.');
       }
       final results = await Future.wait([
-        _repository.load(),
+        _repository.load(includeChanges: true),
         _repository.employees(),
       ]);
       if (!mounted) return;
@@ -150,6 +153,35 @@ class _HumanResourcesLoansPageState extends State<HumanResourcesLoansPage> {
   Future<void> _navigate(Widget page) async {
     if (_editing) return;
     await Navigator.of(context).pushReplacement(appPageRoute(page: page));
+  }
+
+  Future<void> _editLoan(HrLoan loan) async {
+    if (_fund == null || _editing || _error != null) return;
+    _editing = true;
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AreaThemeScope(
+        tokens: humanResourcesAreaTokens,
+        child: _HrLoanEditDialog(
+          loan: loan,
+          fund: _fund!,
+          onSave: _repository.edit,
+        ),
+      ),
+    );
+    _editing = false;
+    if (!mounted) return;
+    await _load();
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Préstamo actualizado. Revisa la prenómina abierta antes de cerrar.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _changeChannel(HrLoan loan) async {
@@ -245,6 +277,7 @@ class _HumanResourcesLoansPageState extends State<HumanResourcesLoansPage> {
                           fund: _fund!,
                           onCreate: _error == null ? _create : null,
                           onCashPayment: _error == null ? _cashPayment : null,
+                          onEdit: _error == null ? _editLoan : null,
                           onChangeChannel: _error == null
                               ? _changeChannel
                               : null,
@@ -257,6 +290,24 @@ class _HumanResourcesLoansPageState extends State<HumanResourcesLoansPage> {
               onDismiss: () => setState(() => _menuOpen = false),
               canReturnToDirection: _canReturnToDirection,
               sections: buildHumanResourcesAreaSections(
+                openVacancies: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesVacanciesPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
+                openDocumentation: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesDocumentationPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
                 activeScreen: HumanResourcesAreaScreen.loans,
                 openPersonnel: () => _navigate(
                   const HumanResourcesPersonnelPage(instantOpen: true),

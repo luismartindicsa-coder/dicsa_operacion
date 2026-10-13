@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'operations_red_theme.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -614,14 +616,26 @@ class _ServicesShellState extends State<ServicesShell>
               constraints: const BoxConstraints(maxWidth: 760),
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
               decoration: BoxDecoration(
-                color: const Color(0xE6EAF2F9),
+                color: operationsPageColor(
+                  context,
+                  const Color(0xE6EAF2F9),
+                  OperationsRedColors.surface.withAlpha(230),
+                ),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFF90AFC8).withValues(alpha: 0.58),
+                  color: operationsPageColor(
+                    context,
+                    const Color(0xFF90AFC8),
+                    OperationsRedColors.border,
+                  ).withValues(alpha: 0.58),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF5E87A9).withValues(alpha: 0.26),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF5E87A9),
+                      OperationsRedColors.shadow,
+                    ).withValues(alpha: 0.26),
                     blurRadius: 26,
                     offset: const Offset(0, 12),
                   ),
@@ -643,12 +657,16 @@ class _ServicesShellState extends State<ServicesShell>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Ayuda rápida de uso',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF173248),
+                        color: operationsPageColor(
+                          context,
+                          const Color(0xFF173248),
+                          OperationsRedColors.ink,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -656,10 +674,14 @@ class _ServicesShellState extends State<ServicesShell>
                       entriesAndOutputs
                           ? 'Consejos para capturar entradas y salidas'
                           : pageTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF285071),
+                        color: operationsPageColor(
+                          context,
+                          const Color(0xFF285071),
+                          OperationsRedColors.muted,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -695,19 +717,25 @@ class _ServicesShellState extends State<ServicesShell>
                                           begin: Alignment.topLeft,
                                           end: Alignment.bottomRight,
                                           colors: [
-                                            const Color(
-                                              0xFF52CFA6,
+                                            operationsPageColor(
+                                              context,
+                                              const Color(0xFF52CFA6),
+                                              OperationsRedColors.accent,
                                             ).withValues(alpha: 0.92),
-                                            const Color(
-                                              0xFF6CB7E2,
+                                            operationsPageColor(
+                                              context,
+                                              const Color(0xFF6CB7E2),
+                                              OperationsRedColors.accent,
                                             ).withValues(alpha: 0.86),
                                           ],
                                         ),
                                         borderRadius: BorderRadius.circular(10),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: const Color(
-                                              0xFF5FAEC5,
+                                            color: operationsPageColor(
+                                              context,
+                                              const Color(0xFF5FAEC5),
+                                              OperationsRedColors.border,
                                             ).withValues(alpha: 0.32),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
@@ -728,10 +756,14 @@ class _ServicesShellState extends State<ServicesShell>
                                         children: [
                                           Text(
                                             section.title,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w900,
-                                              color: Color(0xFF1C3E5D),
+                                              color: operationsPageColor(
+                                                context,
+                                                const Color(0xFF1C3E5D),
+                                                OperationsRedColors.ink,
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(height: 5),
@@ -752,21 +784,33 @@ class _ServicesShellState extends State<ServicesShell>
                                                     child: Icon(
                                                       point.icon,
                                                       size: 15,
-                                                      color: const Color(
-                                                        0xFF2D5675,
-                                                      ),
+                                                      color:
+                                                          operationsPageColor(
+                                                            context,
+                                                            const Color(
+                                                              0xFF2D5675,
+                                                            ),
+                                                            OperationsRedColors
+                                                                .muted,
+                                                          ),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 6),
                                                   Expanded(
                                                     child: Text(
                                                       point.text,
-                                                      style: const TextStyle(
+                                                      style: TextStyle(
                                                         fontSize: 13,
                                                         height: 1.25,
-                                                        color: Color(
-                                                          0xFF223A4D,
-                                                        ),
+                                                        color:
+                                                            operationsPageColor(
+                                                              context,
+                                                              const Color(
+                                                                0xFF223A4D,
+                                                              ),
+                                                              OperationsRedColors
+                                                                  .ink,
+                                                            ),
                                                       ),
                                                     ),
                                                   ),
@@ -788,7 +832,11 @@ class _ServicesShellState extends State<ServicesShell>
                       alignment: Alignment.centerRight,
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF6A99C7),
+                          backgroundColor: operationsPageColor(
+                            context,
+                            const Color(0xFF6A99C7),
+                            OperationsRedColors.strong,
+                          ),
                           foregroundColor: Colors.white,
                         ),
                         onPressed: () => Navigator.of(dialogContext).pop(),
@@ -967,8 +1015,10 @@ class _HeaderHelpButtonState extends State<_HeaderHelpButton> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(
-                          0xFF9AC5E3,
+                        operationsPageColor(
+                          context,
+                          const Color(0xFF9AC5E3),
+                          OperationsRedColors.glow,
                         ).withValues(alpha: _hovered ? 0.24 : 0.16),
                         Colors.white.withValues(alpha: _hovered ? 0.22 : 0.14),
                       ],
@@ -1038,12 +1088,28 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
               ? const Color(0xFFDCE1E6)
               : const Color(0xFFE2E6EA))
         : isLogout
-        ? const Color(0xFF8DB5D9)
+        ? operationsPageColor(
+            context,
+            const Color(0xFF8DB5D9),
+            OperationsRedColors.glow,
+          )
         : isNavigation
-        ? const Color(0xFF87C0E2)
+        ? operationsPageColor(
+            context,
+            const Color(0xFF87C0E2),
+            OperationsRedColors.glow,
+          )
         : isRefresh
-        ? const Color(0xFF8FCDBD)
-        : const Color(0xFF98BCD9);
+        ? operationsPageColor(
+            context,
+            const Color(0xFF8FCDBD),
+            OperationsRedColors.glow,
+          )
+        : operationsPageColor(
+            context,
+            const Color(0xFF98BCD9),
+            OperationsRedColors.glow,
+          );
 
     return Tooltip(
       message: widget.label,
@@ -1517,7 +1583,11 @@ class _SideMenuTileState extends State<_SideMenuTile> {
                   Icons.check_circle_rounded,
                   color: palette.logisticsSilver
                       ? palette.icon
-                      : const Color(0xFF68F8C6),
+                      : operationsPageColor(
+                          context,
+                          const Color(0xFF68F8C6),
+                          OperationsRedColors.accent,
+                        ),
                 ),
               if (!widget.active)
                 Icon(Icons.chevron_right_rounded, color: palette.menuChevron),
@@ -1665,11 +1735,27 @@ class _DicsaBackground extends StatelessWidget {
     return Stack(
       children: [
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF0B72FF), Color(0xFF21C9A6), Color(0xFF52F59A)],
+              colors: [
+                operationsPageColor(
+                  context,
+                  const Color(0xFF0B72FF),
+                  OperationsRedColors.backgroundTop,
+                ),
+                operationsPageColor(
+                  context,
+                  const Color(0xFF21C9A6),
+                  OperationsRedColors.backgroundMiddle,
+                ),
+                operationsPageColor(
+                  context,
+                  const Color(0xFF52F59A),
+                  OperationsRedColors.backgroundBottom,
+                ),
+              ],
             ),
           ),
         ),
@@ -1678,8 +1764,15 @@ class _DicsaBackground extends StatelessWidget {
           top: -120,
           child: _blurCircle(
             700,
-            const LinearGradient(
-              colors: [Color(0xFFFFFFFF), Color(0xFF7ED0FF)],
+            LinearGradient(
+              colors: [
+                Color(0xFFFFFFFF),
+                operationsPageColor(
+                  context,
+                  const Color(0xFF7ED0FF),
+                  OperationsRedColors.soft,
+                ),
+              ],
             ),
           ),
         ),
@@ -1688,8 +1781,19 @@ class _DicsaBackground extends StatelessWidget {
           top: -80,
           child: _blurCircle(
             600,
-            const LinearGradient(
-              colors: [Color(0xFF4CFFB2), Color(0xFF00A3FF)],
+            LinearGradient(
+              colors: [
+                operationsPageColor(
+                  context,
+                  const Color(0xFF4CFFB2),
+                  OperationsRedColors.glow,
+                ),
+                operationsPageColor(
+                  context,
+                  const Color(0xFF00A3FF),
+                  OperationsRedColors.primary,
+                ),
+              ],
             ),
           ),
         ),
@@ -1698,8 +1802,19 @@ class _DicsaBackground extends StatelessWidget {
           bottom: -250,
           child: _blurCircle(
             600,
-            const LinearGradient(
-              colors: [Color(0xFF0A84FF), Color(0xFF65FFE3)],
+            LinearGradient(
+              colors: [
+                operationsPageColor(
+                  context,
+                  const Color(0xFF0A84FF),
+                  OperationsRedColors.accent,
+                ),
+                operationsPageColor(
+                  context,
+                  const Color(0xFF65FFE3),
+                  OperationsRedColors.soft,
+                ),
+              ],
             ),
           ),
         ),
@@ -1711,10 +1826,21 @@ class _DicsaBackground extends StatelessWidget {
             height: 500,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(200),
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF00E0B0), Color(0xFF0080FF)],
+                colors: [
+                  operationsPageColor(
+                    context,
+                    const Color(0xFF00E0B0),
+                    OperationsRedColors.accent,
+                  ),
+                  operationsPageColor(
+                    context,
+                    const Color(0xFF0080FF),
+                    OperationsRedColors.strong,
+                  ),
+                ],
               ),
             ),
           ),

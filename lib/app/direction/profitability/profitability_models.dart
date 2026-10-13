@@ -383,7 +383,12 @@ class ProfitPurchase {
       signature;
   final DateTime date;
   final double physicalKg, payableKg, amount;
+  final double pieces, payablePieces;
   final bool kgUnit, amountKnown;
+  final bool pieceUnit;
+  double get quantity => pieceUnit ? pieces : physicalKg;
+  double get payableQuantity => pieceUnit ? payablePieces : payableKg;
+  String get unit => pieceUnit ? 'PZA' : 'KG';
   const ProfitPurchase({
     required this.key,
     required this.entityKey,
@@ -398,16 +403,21 @@ class ProfitPurchase {
     required this.amount,
     required this.kgUnit,
     this.amountKnown = true,
+    this.pieces = 0,
+    this.payablePieces = 0,
+    this.pieceUnit = false,
   });
 }
 
 class ProfitBenchmark {
   final String key, material, source;
-  double kg = 0, amount = 0;
+  final String unit;
+  double quantity = 0, amount = 0;
+  double get kg => unit == 'KG' ? quantity : 0;
   int count = 0;
   DateTime? first, last;
-  ProfitBenchmark(this.key, this.material, this.source);
-  double? get price => kg > 0 ? amount / kg : null;
+  ProfitBenchmark(this.key, this.material, this.source, {this.unit = 'KG'});
+  double? get price => quantity > 0 ? amount / quantity : null;
 }
 
 class ProfitCostFact {
@@ -446,6 +456,7 @@ class ProfitMaterialResult {
     required this.issues,
   });
   double get physicalKg => purchases.fold(0, (s, p) => s + p.physicalKg);
+  double get pieces => purchases.fold(0, (s, p) => s + p.pieces);
   double get payableKg => purchases.fold(0, (s, p) => s + p.payableKg);
   double get purchaseAmount => purchases.fold(0, (s, p) => s + p.amount);
   double? get purchasePrice =>
@@ -585,7 +596,8 @@ class ProfitAnalysis {
         ? 'operational-account-v2'
         : 'documentary',
     if (inferOperations) 'payroll_allocation_model': 'activity-proportions-v2',
-    if (inferOperations) 'cost_allocation_model': 'consumption-residual-v2',
+    if (inferOperations) 'cost_allocation_model': 'consumption-residual-v3',
+    'sale_price_model': 'material-weighted-mayoreo-menudeo-v1',
     if (inferOperations) 'historical_cost_evidence': historicalCostEvidence,
     if (inferOperations) 'reporting_scope': reportingScope,
     'non_operating_flows': nonOperatingFlows,
@@ -674,6 +686,7 @@ class ProfitAnalysis {
                 'key': m.key,
                 'label': m.material,
                 'physical_kg': m.physicalKg,
+                'pieces': m.pieces,
                 'payable_kg': m.payableKg,
                 'purchase_amount': m.purchaseAmount,
                 'estimated_value': m.value,
@@ -690,9 +703,13 @@ class ProfitAnalysis {
           'material': b.material,
           'source': b.source,
           'kg': b.kg,
+          'quantity': b.quantity,
+          'unit': b.unit,
           'amount': b.amount,
           'price': b.price,
           'count': b.count,
+          'first_date': b.first == null ? null : profitDateText(b.first!),
+          'last_date': b.last == null ? null : profitDateText(b.last!),
         },
     ],
     'shared_cost_review_evidence': sources.rows('profit_shared_cost_reviews'),
@@ -715,6 +732,9 @@ class ProfitAnalysis {
           'date': profitDateText(p.date),
           'physical_kg': p.physicalKg,
           'payable_kg': p.payableKg,
+          'pieces': p.pieces,
+          'payable_pieces': p.payablePieces,
+          'quantity_unit': p.unit,
           'amount': p.amount,
           'signature': p.signature,
         },

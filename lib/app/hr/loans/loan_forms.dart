@@ -89,6 +89,7 @@ class _HrLoanCreateDialogState extends State<_HrLoanCreateDialog> {
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     final cents = _loanInputCents(_amount.text);
     final fixed = _loanInputCents(_installment.text);
     final terms = _installment.text.trim().isEmpty
@@ -428,6 +429,7 @@ class _HrLoanCashDialogState extends State<_HrLoanCashDialog> {
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     final cents = _loanInputCents(_amount.text);
     if (cents == null || cents <= 0 || cents > widget.balanceCents) {
       setState(
@@ -507,7 +509,7 @@ class _HrLoanCashDialogState extends State<_HrLoanCashDialog> {
         enabled: !_busy,
       ),
       Text(
-        'Este registro confirma efectivo recibido y lo devuelve al fondo. También reduce lo pendiente para los próximos descuentos de nómina.',
+        'El abono cubre las cuotas pendientes del período. Lo que exceda se aplica al saldo para terminar antes, manteniendo las siguientes cuotas habituales.',
         style: _loanText(12, muted: true),
       ),
     ],
@@ -608,6 +610,7 @@ Widget _loanField(
   bool autofocus = false,
   int maxLines = 1,
   ValueChanged<String>? onChanged,
+  VoidCallback? onSubmitted,
 }) => TextField(
   controller: controller,
   enabled: enabled,
@@ -615,6 +618,7 @@ Widget _loanField(
   maxLines: maxLines,
   style: _loanText(15),
   onChanged: onChanged,
+  onSubmitted: onSubmitted == null ? null : (_) => onSubmitted(),
   keyboardType: money || integer
       ? const TextInputType.numberWithOptions(decimal: true)
       : TextInputType.text,

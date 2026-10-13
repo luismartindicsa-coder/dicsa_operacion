@@ -20,6 +20,7 @@ import '../expected_income/expected_income_models.dart';
 import '../expected_income/expected_income_repository.dart';
 import '../operating_program/operating_program_models.dart';
 import 'weekly_projection_models.dart';
+import 'weekly_payment_schedule.dart';
 import 'weekly_projection_payment_catalog.dart';
 import 'weekly_expenses_pdf.dart';
 import 'weekly_projection_pdf.dart';
@@ -136,27 +137,24 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
     final request = ++_request;
     final bundle = widget.bundle;
     final now = _now;
-    final readIncome = widget.flow;
     setState(() => _loading = true);
     try {
       final values = await Future.wait<Object>([
         _repository.load(bundle.weekStartDate),
         _repository.proposal(bundle.weekStartDate, now),
         _repository.menudeoHistory(bundle.weekStartDate, now),
-        if (readIncome) _incomeRepository.load(bundle, now: now),
+        _incomeRepository.load(bundle, now: now),
       ]);
       if (!mounted || request != _request) return;
       setState(() {
         _saved = values[0] as WeeklyExpensePlan;
         _analysis = values[1] as FinanceWeeklyBudgetAnalysis;
         _menudeoHistory = values[2] as MenudeoExpenseHistory;
-        if (readIncome) {
-          _income = projectExpectedIncome(
-            bundle: bundle,
-            data: values[3] as ExpectedIncomeData,
-            now: now,
-          );
-        }
+        _income = projectExpectedIncome(
+          bundle: bundle,
+          data: values[3] as ExpectedIncomeData,
+          now: now,
+        );
         _readAt = now;
         _error = null;
       });
@@ -206,7 +204,26 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
 
   Future<void> _generate({bool resetFinance = false}) => _mutate(() async {
     final plan = _effective!;
-    final analysis = await _repository.proposal(plan.week, _now);
+    final bundle = widget.bundle;
+    final now = _now;
+    final sources = await Future.wait<Object>([
+      _repository.proposal(plan.week, now),
+      _incomeRepository.load(bundle, now: now),
+      _repository.menudeoHistory(plan.week, now),
+    ]);
+    final analysis = sources[0] as FinanceWeeklyBudgetAnalysis;
+    final income = projectExpectedIncome(
+      bundle: bundle,
+      data: sources[1] as ExpectedIncomeData,
+      now: now,
+    );
+    final menudeoHistory = sources[2] as MenudeoExpenseHistory;
+    final menudeo = MenudeoExpenseEstimate(
+      week: plan.week,
+      now: now,
+      history: menudeoHistory,
+      settings: plan.menudeo,
+    );
     final current = paymentProposal(analysis);
     if (!mounted || widget.bundle.weekStartDate != plan.week) return;
     if (resetFinance) {
@@ -232,9 +249,20 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
         return;
       }
     }
-    final payments = resetFinance
+    final selected = resetFinance
         ? resetFinanceProposal(plan.payments, current)
         : incorporateFinanceProposal(plan.payments, current);
+    final schedule = distributePaymentsByIncome(
+      plan: plan.copyWith(
+        payments: selected,
+        menudeoPayments: menudeo.payments,
+      ),
+      income: income,
+      analysis: analysis,
+      now: now,
+      allowLatePayments: true,
+    );
+    final payments = schedule.payments;
     await _save(plan.copyWith(generated: true, payments: payments));
     if (!mounted) return;
     final included = payments
@@ -249,9 +277,13 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
         .length;
     setState(() {
       _analysis = analysis;
+      _income = income;
+      _menudeoHistory = menudeoHistory;
+      _readAt = now;
       if (resetFinance) _onlyIncluded = true;
       _notice =
           '${resetFinance ? 'Propuesta de Finanzas restablecida' : 'Proyección actualizada desde Finanzas'} · ${included.length} pagos incluidos · ${_money(included.fold<int>(0, (s, r) => s + r.total))}.'
+          ' ${schedule.moved} pagos cambiaron de día según la liquidez prevista.'
           '${protected > 0 ? ' Se conservaron $protected exclusiones o borrados.' : ''}';
     });
   });
@@ -746,6 +778,12 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                           ),
                     icon: const Icon(Icons.chevron_right),
                   ),
+                  OutlinedButton.icon(
+                    key: const ValueKey('projection-opening'),
+                    onPressed: disabled || plan == null ? null : _opening,
+                    icon: const Icon(Icons.account_balance_wallet_outlined),
+                    label: const Text('Saldo inicial'),
+                  ),
                   if (!widget.flow) ...[
                     FilledButton.icon(
                       key: const ValueKey('generate-projected-payments'),
@@ -779,12 +817,6 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                       label: const Text('PDF de egresos'),
                     ),
                   ] else ...[
-                    OutlinedButton.icon(
-                      key: const ValueKey('projection-opening'),
-                      onPressed: disabled || plan == null ? null : _opening,
-                      icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: const Text('Saldo inicial'),
-                    ),
                     OutlinedButton.icon(
                       key: const ValueKey('export-weekly-flow'),
                       onPressed: disabled || _income == null || plan == null
@@ -828,6 +860,7 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
 
   Widget _expenses(WeeklyExpensePlan plan, bool disabled) {
     final catalog = _catalog!;
+    final dueDates = paymentDueDates(_analysis!);
     final payments = [...plan.activePayments]
       ..sort((a, b) {
         final date = b.date.compareTo(a.date);
@@ -866,6 +899,10 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
           ],
         ),
         const SizedBox(height: 14),
+        if (_income != null) ...[
+          _dailyPressure(plan),
+          const SizedBox(height: 14),
+        ],
         if (_menudeo != null) ...[
           _menudeoSection(_menudeo!, disabled),
           const SizedBox(height: 14),
@@ -879,6 +916,9 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
               ),
               _text(
                 'Programar aquí no ejecuta pagos. Los saldos pendientes se actualizan desde Finanzas.',
+              ),
+              _text(
+                'Al generar, distribuye los pagos automáticos por liquidez diaria en Efectivo/Fiscal. Si no alcanza antes del vencimiento, busca un día posterior y marca el atraso. Conserva tus fechas e importes editados.',
               ),
               _text(
                 'Generar propuesta de pagos calcula la propuesta de Finanzas. Si ya existe, actualiza los pendientes automáticos y agrega los nuevos. Conserva tus ajustes, exclusiones y borrados.',
@@ -993,6 +1033,13 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                             ),
                           ),
                         if (row.notes.isNotEmpty) _text(row.notes),
+                        if (row.included &&
+                            dueDates[row.id] != null &&
+                            row.date.isAfter(dueDates[row.id]!))
+                          _text(
+                            'Pago tardío · vencimiento ${programDate(dueDates[row.id]!)}',
+                            color: kDirectionWarning,
+                          ),
                         if (row.warning != null)
                           _text(row.warning!, color: kDirectionWarning),
                       ],
@@ -1024,6 +1071,98 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _dailyPressure(WeeklyExpensePlan plan) {
+    final pressure = weeklyPaymentPressure(
+      plan: plan,
+      income: _income!,
+      now: _readAt ?? _now,
+      analysis: _analysis,
+    );
+    final tightDays = pressure.days
+        .where((d) => !d.elapsed && d.shortfall > 0)
+        .length;
+    return ContractGlassCard(
+      key: const ValueKey('daily-payment-pressure'),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: _text('Distribución diaria de pagos', bold: true, size: 20),
+        subtitle: _text(
+          !pressure.openingComplete || !pressure.classified
+              ? 'Presión por validar · revisa saldo inicial y clasificación'
+              : '$tightDays días con faltante previsto',
+        ),
+        children: [
+          _text(
+            'Saldo acumulado con ingresos fechados y pagos pendientes, incluido Menudeo. Se supone que el cobro del día llega antes del pago. Los pagos automáticos se redistribuyen al generar la propuesta.',
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: constraints.maxWidth < 840 ? 840 : constraints.maxWidth,
+                child: Table(
+                  columnWidths: const {0: FlexColumnWidth(1.1)},
+                  children: [
+                    _tableRow([
+                      'Día',
+                      'Ingresos previstos',
+                      'Egresos',
+                      'Saldo Efectivo',
+                      'Saldo Fiscal',
+                      'Presión',
+                    ], heading: true),
+                    for (final d in pressure.days)
+                      _tableRow([
+                        '${const ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][d.date.weekday - 1]} ${programDate(d.date)}',
+                        d.elapsed ? '—' : _money(d.receipts),
+                        d.elapsed ? '—' : _money(d.payments),
+                        for (final type in ['EFECTIVO', 'FISCAL'])
+                          d.elapsed
+                              ? '—'
+                              : (type == 'EFECTIVO'
+                                        ? plan.openingCash
+                                        : plan.openingFiscal) ==
+                                    null
+                              ? 'Sin capturar'
+                              : !pressure.classified
+                              ? 'Por distribuir'
+                              : _money(d.closing[type]!),
+                        d.elapsed
+                            ? 'Transcurrido'
+                            : !pressure.openingComplete || !pressure.classified
+                            ? 'Por validar'
+                            : d.shortfall > 0
+                            ? 'Alta · falta ${_money(d.shortfall)}'
+                            : d.payments == 0
+                            ? 'Sin pagos'
+                            : d.peakUsage >= .85
+                            ? 'Alta'
+                            : d.peakUsage >= .60
+                            ? 'Media'
+                            : 'Baja',
+                      ]),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          _text(
+            'Presión por canal: alta al usar 85% o más del disponible del día; media desde 60%; baja por debajo de 60%.',
+          ),
+          for (final warning in pressure.warnings)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _text(warning, color: kDirectionWarning),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

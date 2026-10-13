@@ -225,6 +225,7 @@ Reglas obligatorias:
 
 #### Paletas congeladas vigentes
 
+- `Pesadas` y `Entradas y Salidas` usan la excepción roja de Operaciones definida en `AREA_PALETTES_CONTRACT.md`; solo esas dos páginas y sus superficies auxiliares reciben `OperationsRedTheme`.
 - `Menudeo` queda congelado en familia `azul royal / navy / midnight`.
 - `Mayoreo` queda aprobado con direccion `amarillo institucional / oro comercial`.
 - `Recursos Humanos` queda congelado en familia `morado corporativo / violeta profundo`.

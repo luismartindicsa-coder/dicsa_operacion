@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import '../../hr/human_resources_compensation.dart';
 import 'profitability_account_models.dart';
 import 'profitability_material_basis.dart';
+import 'profitability_material_units.dart';
 import 'profitability_cost_basis.dart';
 import 'profitability_payroll_allocation.dart';
 import 'profitability_engine.dart'
@@ -74,7 +75,7 @@ Map<String, String> inferProfitIdentities(ProfitSources s) {
   return result;
 }
 
-String _family(String value) {
+String profitMaterialFamily(String value) {
   final n = profitOperationalName(value);
   if (RegExp(r'\b(LENA|PEDACERIA MADERA)\b').hasMatch(n)) return 'LENA';
   if (RegExp(r'BASURA|\bRSU\b|RESIDUO SOLIDO').hasMatch(n)) return 'RSU';
@@ -209,7 +210,9 @@ void populateProfitAccounts(
     if (w == null) continue;
     w.trips.add(r);
     final raw = profitText(r['material_type']);
-    final line = w.line(_family(raw.isEmpty ? 'Materiales varios' : raw));
+    final line = w.line(
+      profitMaterialFamily(raw.isEmpty ? 'Materiales varios' : raw),
+    );
     line.services++;
   }
   for (final fact in a.costFacts) {
@@ -246,7 +249,7 @@ void populateProfitAccounts(
   )) {
     ensure(resolve(rule.company, rule.from));
   }
-  final materialBasis = ProfitMaterialBasis(s, _family);
+  final materialBasis = ProfitMaterialBasis(s, profitMaterialFamily);
   final physical = profitPhysicalBasis(
     a,
     materialBasis,
@@ -325,6 +328,12 @@ void populateProfitAccounts(
     if (w == null) continue;
     final line = materialBasis.family(purchase.material, purchase.materialKey);
     if (purchase.kgUnit) w.line(line).kg += purchase.physicalKg;
+    if (purchase.pieceUnit) {
+      w.line(line).pieces += purchase.pieces;
+      const note =
+          'Tarimas de MONROE por pieza, confirmado por Dirección el 29/09/2026. Las piezas no se suman como kilos ni se convierten a toneladas para repartir gastos.';
+      if (!w.assumptions.contains(note)) w.assumptions.add(note);
+    }
     purchaseLines[purchase.key] = (company: company, line: line);
     final note = physical.notes[purchase.key];
     if (note != null && !w.assumptions.contains(note)) w.assumptions.add(note);
@@ -334,7 +343,7 @@ void populateProfitAccounts(
     for (final l in w.lines.values) {
       if (l.kg > 0) continue;
       final rows = w.trips.where(
-        (r) => _family(profitText(r['material_type'])) == l.key,
+        (r) => profitMaterialFamily(profitText(r['material_type'])) == l.key,
       );
       l.kg = rows.fold(
         0,
@@ -421,24 +430,27 @@ void populateProfitAccounts(
             : 'zero_basis',
       );
     }
-    if (!purchase.kgUnit ||
+    if ((!purchase.kgUnit && !purchase.pieceUnit) ||
         w.line(line).components.any((v) => v.id == '${purchase.key}:value')) {
       continue;
     }
-    final candidates = materialBasis.comparables(
-      a,
-      purchase.material,
-      purchase.materialKey,
-    );
-    final kg = candidates.fold<double>(0, (t, b) => t + b.kg),
-        money = candidates.fold<double>(0, (t, b) => t + b.amount);
-    final price = kg > 0 ? money / kg : 0;
+    final valuation = materialBasis.purchasePrice(a, purchase);
+    final candidates = valuation.benchmarks;
+    if (valuation.inferenceNote.isNotEmpty &&
+        !w.assumptions.contains(valuation.inferenceNote)) {
+      w.assumptions.add(valuation.inferenceNote);
+    }
+    if (valuation.unitWarning.isNotEmpty &&
+        !w.assumptions.contains(valuation.unitWarning)) {
+      w.assumptions.add(valuation.unitWarning);
+    }
+    final quantity = valuation.quantity, price = valuation.price ?? 0;
     final exact =
         candidates.isNotEmpty &&
         candidates.every(
           (b) =>
-              materialBasis.comparableName(b.material) ==
-              materialBasis.comparableName(purchase.material),
+              materialBasis.saleName(b.material) ==
+              materialBasis.saleName(purchase.material),
         );
     final zero = ['LENA', 'RSU'].contains(line);
     final fallbackPurchase = w
@@ -446,8 +458,8 @@ void populateProfitAccounts(
         .components
         .where((v) => v.id == '${purchase.key}:purchase')
         .fold<double>(0, (t, v) => t + v.amount!);
-    final value = kg > 0
-        ? purchase.physicalKg * price
+    final value = quantity > 0
+        ? purchase.quantity * price
         : zero
         ? 0.0
         : fallbackPurchase;
@@ -456,20 +468,23 @@ void populateProfitAccounts(
       line,
       'value',
       value,
-      kg > 0
-          ? '${purchase.physicalKg} kg × ${price.toStringAsFixed(4)}/kg de ${exact ? 'venta comparable por nombre/calidad' : 'promedio ponderado de ventas de la familia $line (mezcla estimada)'}.${line == 'CARTON AMERICANO' ? ' Equivalencia cartón americano → Cartón Celanese confirmada por Dirección el 22/09/2026.' : ''} Recuperación operativa 100% como base sin merma capturada; ajustable.'
+      quantity > 0
+          ? '${purchase.quantity} ${profitUnitLabel(purchase.unit)} × ${price.toStringAsFixed(4)}/${profitUnitLabel(purchase.unit)} de ${exact ? 'venta comparable por nombre/calidad' : 'promedio ponderado de ventas de la familia $line (mezcla estimada)'}. ${valuation.description}. ${valuation.inferenceNote}${line == 'CARTON AMERICANO' ? ' Equivalencia cartón americano → Cartón Celanese confirmada por Dirección el 22/09/2026.' : ''} Recuperación operativa 100% como base sin merma capturada; ajustable.'
           : zero
           ? 'Valor recuperable cero para ${line == 'LENA' ? 'leña sin salida comercial' : 'residuos destinados a disposición'}.'
-          : 'Sin venta comparable: valor de referencia igual a la compra, margen comercial base cero antes de atender la cuenta.',
-      kg > 0
-          ? 'Ventas · ${candidates.map((b) => '${b.key}; ${b.kg} kg; ${b.first} a ${b.last}').join(' | ')}${intake ? ' · ${purchase.key}' : ''}'
+          : 'Sin venta comparable: valor de referencia igual a la compra, margen comercial base cero antes de atender la cuenta. ${valuation.unitWarning}'
+                .trim(),
+      quantity > 0
+          ? 'Ventas · ${valuation.reference}${intake ? ' · ${purchase.key}' : ''}'
           : zero
           ? ref
           : purchase.key,
       date: purchase.date,
       id: '${purchase.key}:value',
-      level: kg > 0
-          ? intake
+      level: quantity > 0
+          ? valuation.inferenceNote.isNotEmpty
+                ? 'material_equivalence_estimate'
+                : intake
                 ? 'intake_estimate'
                 : 'inference'
           : zero
@@ -494,7 +509,7 @@ void populateProfitAccounts(
           .where(
             (t) =>
                 profitDate(t['due_date'] ?? t['service_date']) == d &&
-                (_family(profitText(t['material_type'])) == line ||
+                (profitMaterialFamily(profitText(t['material_type'])) == line ||
                     line == 'Toda la cuenta'),
           )
           .length;
@@ -1394,6 +1409,9 @@ void populateProfitAccounts(
             'coverage_start': profitDateText(coverage(f).start),
             'coverage_end': profitDateText(coverage(f).end),
             'signature': f.signature,
+            if (costBasis.recurrenceCenter(f.key) != costBasis.center(f.key))
+              'reconciliation':
+                  'IMSS julio 2026: misma plantilla que el pago de septiembre en Celaya, confirmado por Dirección el 29/09/2026. Se conserva el centro original en Finanzas.',
           },
       ];
       final total = group.fold<double>(0, (t, f) {
@@ -1618,7 +1636,8 @@ void populateProfitAccounts(
     final key = saleCompany(row, day);
     final w = ensure(key);
     if (w == null) continue;
-    final line = _family(profitText(row['material_name_snapshot'])) == 'RSU'
+    final line =
+        profitMaterialFamily(profitText(row['material_name_snapshot'])) == 'RSU'
         ? 'RSU'
         : 'Otros servicios';
     (serviceSales['$key|$line'] ??= []).add(row);
@@ -1671,7 +1690,7 @@ void populateProfitAccounts(
       final parameterServices = w.trips
           .where(
             (t) =>
-                _family(profitText(t['material_type'])) == 'RSU' &&
+                profitMaterialFamily(profitText(t['material_type'])) == 'RSU' &&
                 parameterDays.contains(
                   profitDate(t['due_date'] ?? t['service_date']),
                 ),
@@ -1684,7 +1703,10 @@ void populateProfitAccounts(
               ]
               .where(
                 (r) =>
-                    _family(profitText(r['material_name_snapshot'])) == 'RSU' &&
+                    profitMaterialFamily(
+                          profitText(r['material_name_snapshot']),
+                        ) ==
+                        'RSU' &&
                     ['SERVICIO', 'VIAJE'].contains(
                       profitKey(
                         saleCatalog[profitText(r['material_id'])]?['unit'],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -8,12 +9,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/app_shell.dart';
+import '../shared/persistence/atomic_save.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/archetypes/grid_editable/grid_editable_shell.dart';
@@ -30,12 +33,15 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_terminations_page.dart';
 import 'human_resources_loans_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -46,22 +52,22 @@ import 'human_resources_permissions_page.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+import 'personnel/hr_job_positions.dart';
+import 'personnel/hr_companies.dart';
+import 'vacancies/hr_staffing.dart';
+import 'vacancies/hr_vacancy_alerts.dart';
+import 'personnel/hr_job_position_picker.dart';
 
 part 'personnel/personnel_test_support.dart';
 
 const double _kHrActionsW = 118;
 const double _kHrPersonnelIdW = 84;
-const double _kHrPersonnelNameW = 420;
-const double _kHrPersonnelCompanyW = 260;
-const double _kHrPersonnelScheduleW = 190;
-const double _kHrPersonnelIngresoW = 210;
-const List<String> _kHrEmpresaOptions = <String>[
-  'DICSA CELAYA',
-  'DICSA APASEO',
-  'MONROE',
-  'WHIRLPOOL',
-  'KS',
-];
+const double _kHrPersonnelNameW = 320;
+const double _kHrPersonnelCompanyW = 220;
+const double _kHrPersonnelPositionW = 220;
+const double _kHrPersonnelScheduleW = 170;
+const double _kHrPersonnelIngresoW = 180;
+const _kHrEmpresaOptions = hrCompanyOptions;
 const List<String> _kHrWeekdayOptions = <String>[
   'Lun',
   'Mar',
@@ -724,6 +730,8 @@ class _HumanResourcesPersonnelPageState
         return row.nombre;
       case 'empresa':
         return row.empresa;
+      case 'puesto':
+        return row.puesto;
       case 'horario':
         return row.horario;
       case 'nss':
@@ -777,13 +785,13 @@ class _HumanResourcesPersonnelPageState
         tokens: humanResourcesAreaTokens,
         child: _HumanResourcesEmployeeDialog.create(
           nextId: _suggestNextEmployeeId(),
+          onSave: (draft) => _persistRow(draft),
           reservedIds: _allRows.map((row) => row.id).toSet(),
         ),
       ),
     );
     if (!mounted || next == null) return;
-    final persisted = await _persistRow(next, creating: true);
-    if (!mounted || persisted == null) return;
+    final persisted = next;
     setState(() {
       _allRows.add(persisted);
       _allRows.sort(_compareHrEmployeeRowsById);
@@ -802,6 +810,7 @@ class _HumanResourcesPersonnelPageState
         tokens: humanResourcesAreaTokens,
         child: _HumanResourcesEmployeeDialog.edit(
           employee: row,
+          onSave: (draft) => _persistRow(draft, original: row),
           reservedIds: _allRows
               .where((item) => item.id != row.id)
               .map((item) => item.id)
@@ -810,31 +819,27 @@ class _HumanResourcesPersonnelPageState
       ),
     );
     if (!mounted || updated == null) return;
-    final persisted = await _persistRow(updated, originalId: row.id);
-    if (!mounted || persisted == null) return;
+    final persisted = updated;
     _replaceRow(persisted, originalId: row.id);
     _showSnack('Registro actualizado: ${persisted.nombre}');
   }
 
   Future<_HumanResourcesEmployeeRow?> _persistRow(
     _HumanResourcesEmployeeRow row, {
-    bool creating = false,
-    String? originalId,
+    _HumanResourcesEmployeeRow? original,
   }) async {
     try {
       final persisted = await _HrPersonnelStore.upsertEmployee(
         row,
-        originalId: originalId,
+        original: original,
       );
       return persisted;
     } catch (error) {
       if (!mounted) return null;
       _showSnack(
-        creating
-            ? 'No se pudo crear en Supabase. Se conserva localmente. $error'
-            : 'No se pudo guardar en Supabase. Se conserva localmente. $error',
+        'No se pudo confirmar el guardado. La captura sigue abierta. $error',
       );
-      return row;
+      return null;
     }
   }
 
@@ -1013,6 +1018,7 @@ class _HumanResourcesPersonnelPageState
           'ID',
           'Nombre',
           'Empresa',
+          'Puesto',
           'Horario',
           'Dias que labora',
           'NSS',
@@ -1039,6 +1045,7 @@ class _HumanResourcesPersonnelPageState
           row.id,
           row.nombre,
           row.empresa,
+          row.puesto,
           row.horario,
           row.diasLabora.join(', '),
           row.nss,
@@ -1232,6 +1239,7 @@ class _HumanResourcesPersonnelPageState
   ) async {
     try {
       await _HrPersonnelStore.deleteEmployees(rowsToDelete);
+      hrStaffingChanges.changed();
     } catch (error) {
       if (mounted) {
         _showSnack('No se pudieron borrar en Supabase. $error');
@@ -1282,6 +1290,7 @@ class _HumanResourcesPersonnelPageState
           'ID',
           'Nombre',
           'Empresa',
+          'Puesto',
           'Horario',
           'Dias que labora',
           'NSS',
@@ -1305,6 +1314,7 @@ class _HumanResourcesPersonnelPageState
           row.id,
           row.nombre,
           row.empresa,
+          row.puesto,
           row.horario,
           row.diasLabora.join(', '),
           row.nss,
@@ -1482,6 +1492,24 @@ class _HumanResourcesPersonnelPageState
               onDismiss: () => setState(() => _menuOpen = false),
               canReturnToDirection: _canReturnToDirection,
               sections: buildHumanResourcesAreaSections(
+                openVacancies: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesVacanciesPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
+                openDocumentation: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesDocumentationPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
                 activeScreen: HumanResourcesAreaScreen.personnel,
                 openPersonnel: () async {},
                 openAttendance: _openAttendance,
@@ -1610,13 +1638,23 @@ class _HumanResourcesPersonnelWorkspace extends StatelessWidget {
               ),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
               child: GridEditableShell(
-                topBar: _HumanResourcesModuleTopBar(
-                  totalRows: totalRows,
-                  selectedCount: selectedCount,
-                  activeCellLabel: 'Celda: $activeColumnLabel',
-                  exportingCsv: exportingCsv,
-                  onExportCsv: () => unawaited(onExportCsv()),
-                  onShowNewRecord: onShowNewRecord,
+                topBar: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerRight,
+                      child: HrVacancyPendingButton(),
+                    ),
+                    const SizedBox(height: 10),
+                    _HumanResourcesModuleTopBar(
+                      totalRows: totalRows,
+                      selectedCount: selectedCount,
+                      activeCellLabel: 'Celda: $activeColumnLabel',
+                      exportingCsv: exportingCsv,
+                      onExportCsv: () => unawaited(onExportCsv()),
+                      onShowNewRecord: onShowNewRecord,
+                    ),
+                  ],
                 ),
                 body: _HumanResourcesPersonnelGrid(
                   rows: rows,
@@ -1857,9 +1895,9 @@ class _HumanResourcesGridHeaderRow extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final widths = _resolveHrGridWidths(constraints.maxWidth);
-            return SizedBox(
-              width: constraints.maxWidth,
+            return ContractGridScaledRow(
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   for (var index = 0; index < _kGridColumns.length; index++)
                     SizedBox(
@@ -2058,9 +2096,9 @@ class _HumanResourcesGridDataRow extends StatelessWidget {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final widths = _resolveHrGridWidths(constraints.maxWidth);
-                    return SizedBox(
-                      width: constraints.maxWidth,
+                    return ContractGridScaledRow(
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           gridFrame(
                             col: 0,
@@ -2110,18 +2148,25 @@ class _HumanResourcesGridDataRow extends StatelessWidget {
                           gridFrame(
                             col: 3,
                             width: widths[3],
-                            centered: true,
-                            child: _HrFitText(row.horario, centered: true),
+                            child: _HrFitText(
+                              row.puesto.isEmpty ? '—' : row.puesto,
+                            ),
                           ),
                           gridFrame(
                             col: 4,
                             width: widths[4],
                             centered: true,
-                            child: _HrFitText(row.fechaIngreso, centered: true),
+                            child: _HrFitText(row.horario, centered: true),
                           ),
                           gridFrame(
                             col: 5,
                             width: widths[5],
+                            centered: true,
+                            child: _HrFitText(row.fechaIngreso, centered: true),
+                          ),
+                          gridFrame(
+                            col: 6,
+                            width: widths[6],
                             centered: true,
                             child: actionButton(),
                           ),
@@ -2196,7 +2241,7 @@ List<double> _resolveHrGridWidths(double maxWidth) {
   if (maxWidth <= baseTotal) return base;
 
   final extra = maxWidth - baseTotal;
-  const flexIndexes = <int>[1, 2, 3, 4, 5];
+  final flexIndexes = [for (var i = 1; i < _kGridColumns.length; i++) i];
   final flexBaseTotal = flexIndexes.fold<double>(
     0,
     (sum, index) => sum + base[index],
@@ -2519,16 +2564,29 @@ class _HumanResourcesEmployeeDialog extends StatefulWidget {
   final String initialId;
   final _HumanResourcesEmployeeRow? existing;
   final Set<String> reservedIds;
+  final Future<_HumanResourcesEmployeeRow?> Function(
+    _HumanResourcesEmployeeRow,
+  )?
+  onSave;
+
+  final Future<List<String>> Function()? loadJobPositions;
+  final Future<String> Function(String)? createJobPosition;
 
   const _HumanResourcesEmployeeDialog.create({
     required String nextId,
     required this.reservedIds,
+    this.onSave,
+    this.loadJobPositions,
+    this.createJobPosition,
   }) : initialId = nextId,
        existing = null;
 
   _HumanResourcesEmployeeDialog.edit({
     required _HumanResourcesEmployeeRow employee,
     required this.reservedIds,
+    this.onSave,
+    this.loadJobPositions,
+    this.createJobPosition,
   }) : initialId = employee.id,
        existing = employee;
 
@@ -2539,6 +2597,7 @@ class _HumanResourcesEmployeeDialog extends StatefulWidget {
 
 class _HumanResourcesEmployeeDialogState
     extends State<_HumanResourcesEmployeeDialog> {
+  bool _saving = false;
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _idController = TextEditingController(
     text: widget.initialId,
@@ -2578,6 +2637,7 @@ class _HumanResourcesEmployeeDialogState
   late final TextEditingController _creditoDetalleController =
       TextEditingController(text: widget.existing?.creditoDetalle ?? '');
   String? _empresa;
+  late String _puesto = widget.existing?.puesto ?? '';
   String? _horario;
   List<String> _diasLabora = <String>[];
   List<_HrLaborSchedule> _additionalLaborSchedules = <_HrLaborSchedule>[];
@@ -2662,6 +2722,20 @@ class _HumanResourcesEmployeeDialogState
     );
     if (!mounted || value == null) return;
     setState(() => _empresa = value);
+  }
+
+  Future<void> _pickPuesto() async {
+    final repository =
+        widget.loadJobPositions == null || widget.createJobPosition == null
+        ? HrJobPositionRepository(Supabase.instance.client)
+        : null;
+    final selected = await showHrJobPositionPicker(
+      context,
+      current: _puesto,
+      load: widget.loadJobPositions ?? repository!.load,
+      create: widget.createJobPosition ?? repository!.create,
+    );
+    if (selected != null && mounted) setState(() => _puesto = selected);
   }
 
   Future<void> _pickHorario() async {
@@ -2859,9 +2933,11 @@ class _HumanResourcesEmployeeDialogState
 
   _HumanResourcesEmployeeRow _draftEmployeeRow() {
     return _HumanResourcesEmployeeRow(
+      remoteProfile: widget.existing?.remoteProfile,
       id: _idController.text.trim(),
       nombre: _nombreController.text.trim().toUpperCase(),
       empresa: (_empresa ?? '').trim(),
+      puesto: _puesto,
       horario: (_horario ?? '').trim(),
       diasLabora: List<String>.of(_diasLabora),
       laborSchedules: _composeLaborSchedules(),
@@ -2896,6 +2972,7 @@ class _HumanResourcesEmployeeDialogState
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_fechaIngreso == null) {
       _showDialogValidationSnack('Fecha de ingreso es obligatoria.');
@@ -2930,7 +3007,17 @@ class _HumanResourcesEmployeeDialogState
       );
       if (confirmed != true || !mounted) return;
     }
-    Navigator.of(context).pop(nextRow);
+    if (widget.onSave == null) {
+      Navigator.of(context).pop(nextRow);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onSave!(nextRow);
+      if (saved != null && mounted) Navigator.of(context).pop(saved);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   void _showDialogValidationSnack(String message) {
@@ -3169,6 +3256,21 @@ class _HumanResourcesEmployeeDialogState
                                                     _empresa ??
                                                     'Selecciona empresa',
                                                 onTap: _pickEmpresa,
+                                              ),
+                                            ),
+                                            _HrDialogField(
+                                              width: 260,
+                                              label: 'Puesto',
+                                              child: KeyedSubtree(
+                                                key: const ValueKey(
+                                                  'personalJobPosition',
+                                                ),
+                                                child: _HrDialogPickerField(
+                                                  label: _puesto.isEmpty
+                                                      ? 'Selecciona o agrega un puesto'
+                                                      : _puesto,
+                                                  onTap: _pickPuesto,
+                                                ),
                                               ),
                                             ),
                                             _HrDialogField(
@@ -3769,7 +3871,7 @@ class _HumanResourcesEmployeeDialogState
           ),
         ),
       ),
-    );
+    ).guardWhileSaving(_saving);
   }
 
   String? _requiredValidator(String? value) {
@@ -6244,6 +6346,11 @@ const List<_HumanResourcesGridColumn> _kGridColumns =
         width: _kHrPersonnelCompanyW,
       ),
       _HumanResourcesGridColumn(
+        id: 'puesto',
+        label: 'Puesto',
+        width: _kHrPersonnelPositionW,
+      ),
+      _HumanResourcesGridColumn(
         id: 'horario',
         label: 'Horario',
         width: _kHrPersonnelScheduleW,
@@ -6379,9 +6486,11 @@ class _HrLaborSchedule {
 }
 
 class _HumanResourcesEmployeeRow {
+  final Map<String, dynamic>? remoteProfile;
   final String id;
   final String nombre;
   final String empresa;
+  final String puesto;
   final String horario;
   final List<String> diasLabora;
   final String nss;
@@ -6412,9 +6521,11 @@ class _HumanResourcesEmployeeRow {
   final String terminatedBy;
 
   const _HumanResourcesEmployeeRow({
+    this.remoteProfile,
     required this.id,
     required this.nombre,
     required this.empresa,
+    this.puesto = '',
     required this.horario,
     this.diasLabora = const <String>[],
     required this.nss,
@@ -6462,6 +6573,8 @@ class _HumanResourcesEmployeeRow {
         return value == nombre ? this : copyWith(nombre: value);
       case 'empresa':
         return value == empresa ? this : copyWith(empresa: value);
+      case 'puesto':
+        return value == puesto ? this : copyWith(puesto: value);
       case 'horario':
         return value == horario ? this : copyWith(horario: value);
       case 'dias_labora':
@@ -6499,9 +6612,11 @@ class _HumanResourcesEmployeeRow {
   }
 
   _HumanResourcesEmployeeRow copyWith({
+    Map<String, dynamic>? remoteProfile,
     String? id,
     String? nombre,
     String? empresa,
+    String? puesto,
     String? horario,
     List<String>? diasLabora,
     String? nss,
@@ -6532,9 +6647,11 @@ class _HumanResourcesEmployeeRow {
     String? terminatedBy,
   }) {
     return _HumanResourcesEmployeeRow(
+      remoteProfile: remoteProfile ?? this.remoteProfile,
       id: id ?? this.id,
       nombre: nombre ?? this.nombre,
       empresa: empresa ?? this.empresa,
+      puesto: puesto ?? this.puesto,
       horario: horario ?? this.horario,
       diasLabora: diasLabora ?? List<String>.of(this.diasLabora),
       nss: nss ?? this.nss,
@@ -6725,6 +6842,7 @@ int _compareHrEmployeeRowsById(
 }
 
 class _HrPersonnelStore {
+  static final _uploadedAttachments = <String, _HrEmployeeAttachment>{};
   static Future<List<_HumanResourcesEmployeeRow>> loadEmployees() async {
     final profileRows = await fetchAllSupabaseRows(
       (from, to) => Supabase.instance.client
@@ -6759,9 +6877,11 @@ class _HrPersonnelStore {
           final documents =
               docsByEmployeeId[employeeId] ?? const <_HrEmployeeAttachment>[];
           return _HumanResourcesEmployeeRow(
+            remoteProfile: Map<String, dynamic>.from(row),
             id: employeeId,
             nombre: (row['nombre'] ?? '').toString(),
             empresa: (row['empresa'] ?? '').toString(),
+            puesto: (row['puesto'] ?? '').toString(),
             horario: (row['horario'] ?? '').toString(),
             diasLabora: _parseHrDiasLaboraValue(row['dias_labora']),
             laborSchedules: _parseHrLaborSchedulesValue(
@@ -6812,21 +6932,9 @@ class _HrPersonnelStore {
 
   static Future<_HumanResourcesEmployeeRow> upsertEmployee(
     _HumanResourcesEmployeeRow row, {
-    String? originalId,
+    _HumanResourcesEmployeeRow? original,
   }) async {
     final client = Supabase.instance.client;
-    final sourceEmployeeId = (originalId == null || originalId == row.id)
-        ? row.id
-        : originalId;
-    final existingDocumentsRows = await client
-        .from(_kHrEmployeeDocumentsTable)
-        .select()
-        .eq('employee_id', sourceEmployeeId);
-    final existingDocuments = (existingDocumentsRows as List)
-        .map((raw) => Map<String, dynamic>.from(raw as Map))
-        .map(_hrAttachmentFromRemoteRow)
-        .toList(growable: false);
-
     _HrEmployeeAttachment? photo = row.photo;
     if (photo != null && photo.fileUrl.trim().isEmpty) {
       photo = await _uploadAttachment(
@@ -6872,114 +6980,71 @@ class _HrPersonnelStore {
       additionalAttachments: syncedAdditional,
     );
 
-    final currentDocIds = {
-      ...syncedRequired.map((doc) => doc.id),
-      ...syncedAdditional.map((doc) => doc.id),
-    };
-    final removedDocs = existingDocuments
-        .where((doc) => !currentDocIds.contains(doc.id))
-        .toList(growable: false);
-    for (final doc in removedDocs) {
-      if (doc.storagePath != null && doc.storagePath!.isNotEmpty) {
-        await client.storage.from(_kHrEmployeeFilesBucket).remove([
-          doc.storagePath!,
-        ]);
-      }
+    final beforeProfile = original == null ? null : _hrProfilePayload(original);
+    final nextProfile = _hrProfilePayload(syncedRow);
+    final operations = <Map<String, dynamic>>[];
+    final renaming = original != null && original.id != row.id;
+    if (renaming) {
+      operations.add({
+        'table': _kHrEmployeeProfilesTable,
+        'action': 'rename',
+        'id': original.id,
+        'values': nextProfile,
+        'expected': original.remoteProfile ?? beforeProfile,
+      });
+    } else {
+      operations.addAll(
+        preservingRowChanges(
+          table: _kHrEmployeeProfilesTable,
+          before: beforeProfile == null ? [] : [beforeProfile],
+          after: [nextProfile],
+          expected: original == null
+              ? []
+              : [original.remoteProfile ?? beforeProfile!],
+        ),
+      );
     }
-    if (removedDocs.isNotEmpty) {
-      await client
-          .from(_kHrEmployeeDocumentsTable)
-          .delete()
-          .eq('employee_id', sourceEmployeeId)
-          .inFilter('id', removedDocs.map((doc) => doc.id).toList());
-    }
-
-    final oldProfileRows = await client
-        .from(_kHrEmployeeProfilesTable)
-        .select('photo_storage_path')
-        .eq('id', sourceEmployeeId)
-        .limit(1);
-    final oldPhotoPath = (oldProfileRows as List).isNotEmpty
-        ? Map<String, dynamic>.from(
-            oldProfileRows.first as Map,
-          )['photo_storage_path']?.toString()
-        : null;
-    if (photo == null && oldPhotoPath != null && oldPhotoPath.isNotEmpty) {
-      await client.storage.from(_kHrEmployeeFilesBucket).remove([oldPhotoPath]);
-    } else if (photo != null &&
-        oldPhotoPath != null &&
-        oldPhotoPath.isNotEmpty &&
-        oldPhotoPath != photo.storagePath) {
-      await client.storage.from(_kHrEmployeeFilesBucket).remove([oldPhotoPath]);
-    }
-
-    await client.from(_kHrEmployeeProfilesTable).upsert(<String, dynamic>{
-      'id': syncedRow.id,
-      'nombre': syncedRow.nombre,
-      'empresa': syncedRow.empresa,
-      'horario': syncedRow.horario,
-      'dias_labora': syncedRow.diasLabora,
-      'labor_schedules': syncedRow.laborSchedules
-          .where((schedule) => schedule.isMeaningful)
-          .map((schedule) => schedule.toJson())
-          .toList(growable: false),
-      'nss': syncedRow.nss,
-      'rfc': syncedRow.rfc,
-      'curp': syncedRow.curp,
-      'fecha_ingreso': syncedRow.fechaIngreso,
-      'fecha_alta': syncedRow.fechaAlta.trim().isEmpty
-          ? null
-          : syncedRow.fechaAlta,
-      'telefono': syncedRow.telefono,
-      'numero_cuenta': syncedRow.numeroCuenta,
-      ...syncedRow.compensation.toRow(),
-      'calzado': syncedRow.calzado,
-      'talla_uniforme': syncedRow.tallaUniforme,
-      'employment_status': syncedRow.employmentStatus,
-      'termination_date': syncedRow.terminationDate.trim().isEmpty
-          ? null
-          : syncedRow.terminationDate,
-      'termination_reason': syncedRow.terminationReason.trim().isEmpty
-          ? null
-          : syncedRow.terminationReason.trim(),
-      'termination_notes': syncedRow.terminationNotes.trim().isEmpty
-          ? null
-          : syncedRow.terminationNotes.trim(),
-      'terminated_at': syncedRow.terminatedAt.trim().isEmpty
-          ? null
-          : syncedRow.terminatedAt,
-      'terminated_by': syncedRow.terminatedBy.trim().isEmpty
-          ? null
-          : syncedRow.terminatedBy,
-      'credito_declarado': syncedRow.creditoDeclarado,
-      'credito_detalle': syncedRow.creditoDetalle.trim().isEmpty
-          ? null
-          : syncedRow.creditoDetalle.trim(),
-      'photo_file_url': photo?.fileUrl,
-      'photo_storage_path': photo?.storagePath,
-      'photo_file_name': photo?.fileName,
-      'photo_mime_type': photo?.mimeType,
-      'photo_uploaded_at': photo?.uploadedAt.toIso8601String(),
-    });
-
-    final docsToUpsert = [
-      ...syncedRequired.map(
-        (doc) => _hrDocumentToInsertJson(doc, employeeId: row.id),
-      ),
-      ...syncedAdditional.map(
-        (doc) => _hrDocumentToInsertJson(doc, employeeId: row.id),
-      ),
+    final beforeDocuments = <Map<String, dynamic>>[
+      for (final doc in [
+        ...?original?.requiredAttachments,
+        ...?original?.additionalAttachments,
+      ])
+        _hrDocumentToInsertJson(doc, employeeId: row.id),
     ];
-    if (docsToUpsert.isNotEmpty) {
-      await client.from(_kHrEmployeeDocumentsTable).upsert(docsToUpsert);
-    }
-    if (sourceEmployeeId != row.id) {
-      await client
-          .from(_kHrEmployeeProfilesTable)
-          .delete()
-          .eq('id', sourceEmployeeId);
-    }
-    return syncedRow;
+    final nextDocuments = <Map<String, dynamic>>[
+      for (final doc in [...syncedRequired, ...syncedAdditional])
+        _hrDocumentToInsertJson(doc, employeeId: row.id),
+    ];
+    operations.addAll(
+      preservingRowChanges(
+        table: _kHrEmployeeDocumentsTable,
+        before: beforeDocuments,
+        after: nextDocuments,
+      ),
+    );
+    // Detached/replaced Storage objects are retained. The transaction receipt
+    // retains the previous metadata, so failure can never destroy the file.
+    final requestId = const Uuid().v5(
+      Namespace.url.value,
+      jsonEncode([original?.remoteProfile, operations]),
+    );
+    final result = await AtomicSave(
+      operations: operations,
+      requestId: requestId,
+    ).commit(client);
+    final savedProfiles = result.where(
+      (r) => r['table'] == _kHrEmployeeProfilesTable,
+    );
+    hrStaffingChanges.changed();
+    return syncedRow.copyWith(
+      puesto: savedProfiles.isEmpty
+          ? syncedRow.puesto
+          : (savedProfiles.last['row']['puesto'] ?? syncedRow.puesto)
+                .toString(),
+      remoteProfile: savedProfiles.isEmpty
+          ? original?.remoteProfile
+          : Map<String, dynamic>.from(savedProfiles.last['row'] as Map),
+    );
   }
 
   static Future<_HumanResourcesEmployeeRow> terminateEmployee(
@@ -7001,6 +7066,7 @@ class _HrPersonnelStore {
           'terminated_by': terminatedBy.isEmpty ? null : terminatedBy,
         })
         .eq('id', row.id);
+    hrStaffingChanges.changed();
     return row.copyWith(
       employmentStatus: kHrEmployeeStatusTerminated,
       terminationDate: terminationDate,
@@ -7018,6 +7084,7 @@ class _HrPersonnelStore {
         .from(_kHrEmployeeProfilesTable)
         .update(<String, dynamic>{'employment_status': kHrEmployeeStatusActive})
         .eq('id', row.id);
+    hrStaffingChanges.changed();
     return row.copyWith(employmentStatus: kHrEmployeeStatusActive);
   }
 
@@ -7054,6 +7121,9 @@ class _HrPersonnelStore {
     required _HrEmployeeAttachment attachment,
     required String segment,
   }) async {
+    final cacheKey = '$employeeId/$segment/${attachment.id}';
+    final uploaded = _uploadedAttachments[cacheKey];
+    if (uploaded != null) return uploaded;
     final sanitized = attachment.fileName.replaceAll(
       RegExp(r'[^a-zA-Z0-9._-]'),
       '_',
@@ -7096,7 +7166,7 @@ class _HrPersonnelStore {
         .getPublicUrl(storagePath);
     final user = Supabase.instance.client.auth.currentUser;
     final now = DateTime.now();
-    return attachment.copyWith(
+    return _uploadedAttachments[cacheKey] = attachment.copyWith(
       fileUrl: url,
       storagePath: storagePath,
       uploadedAt: now,
@@ -7210,4 +7280,57 @@ String _hrAttachmentSizeLabel(int sizeBytes) {
 String _csvCell(String value) {
   final escaped = value.replaceAll('"', '""');
   return '"$escaped"';
+}
+
+Map<String, dynamic> _hrProfilePayload(
+  _HumanResourcesEmployeeRow row,
+) => <String, dynamic>{
+  'id': row.id,
+  'nombre': row.nombre,
+  'empresa': row.empresa,
+  'puesto': row.puesto,
+  'horario': row.horario,
+  'dias_labora': row.diasLabora,
+  'labor_schedules': row.laborSchedules
+      .where((schedule) => schedule.isMeaningful)
+      .map((schedule) => schedule.toJson())
+      .toList(growable: false),
+  'nss': row.nss,
+  'rfc': row.rfc,
+  'curp': row.curp,
+  'fecha_ingreso': row.fechaIngreso,
+  'fecha_alta': row.fechaAlta.trim().isEmpty ? null : row.fechaAlta,
+  'telefono': row.telefono,
+  'numero_cuenta': row.numeroCuenta,
+  ...row.compensation.toRow(),
+  'calzado': row.calzado,
+  'talla_uniforme': row.tallaUniforme,
+  'employment_status': row.employmentStatus,
+  'termination_date': row.terminationDate.trim().isEmpty
+      ? null
+      : row.terminationDate,
+  'termination_reason': row.terminationReason.trim().isEmpty
+      ? null
+      : row.terminationReason.trim(),
+  'termination_notes': row.terminationNotes.trim().isEmpty
+      ? null
+      : row.terminationNotes.trim(),
+  'terminated_at': row.terminatedAt.trim().isEmpty ? null : row.terminatedAt,
+  'terminated_by': row.terminatedBy.trim().isEmpty ? null : row.terminatedBy,
+  'credito_declarado': row.creditoDeclarado,
+  'credito_detalle': row.creditoDetalle.trim().isEmpty
+      ? null
+      : row.creditoDetalle.trim(),
+  'photo_file_url': row.photo?.fileUrl,
+  'photo_storage_path': row.photo?.storagePath,
+  'photo_file_name': row.photo?.fileName,
+  'photo_mime_type': row.photo?.mimeType,
+  'photo_uploaded_at': row.photo?.uploadedAt.toIso8601String(),
+};
+
+extension _HrSaveGuard on Widget {
+  Widget guardWhileSaving(bool saving) => PopScope(
+    canPop: !saving,
+    child: AbsorbPointer(absorbing: saving, child: this),
+  );
 }

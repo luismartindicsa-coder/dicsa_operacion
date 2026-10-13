@@ -4,12 +4,14 @@ class HrLoansWorkspace extends StatefulWidget {
   final HrLoanFundState fund;
   final Future<void> Function()? onCreate;
   final Future<void> Function(HrLoan)? onCashPayment;
+  final Future<void> Function(HrLoan)? onEdit;
   final Future<void> Function(HrLoan)? onChangeChannel;
   const HrLoansWorkspace({
     super.key,
     required this.fund,
     this.onCreate,
     this.onCashPayment,
+    this.onEdit,
     this.onChangeChannel,
   });
   @override
@@ -263,6 +265,9 @@ class _HrLoansWorkspaceState extends State<HrLoansWorkspace> {
                 key: ValueKey(chosen.id),
                 fund: fund,
                 loan: chosen,
+                onEdit: widget.onEdit == null
+                    ? null
+                    : () => widget.onEdit!(chosen),
                 onChangeChannel:
                     widget.onChangeChannel == null ||
                         fund.balanceCents(chosen) == 0
@@ -363,12 +368,14 @@ class _HrLoanDetail extends StatelessWidget {
   final HrLoanFundState fund;
   final HrLoan loan;
   final Future<void> Function()? onCashPayment;
+  final Future<void> Function()? onEdit;
   final Future<void> Function()? onChangeChannel;
   const _HrLoanDetail({
     super.key,
     required this.fund,
     required this.loan,
     this.onCashPayment,
+    this.onEdit,
     this.onChangeChannel,
   });
   @override
@@ -381,20 +388,28 @@ class _HrLoanDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  loan.employeeName,
-                  style: _loanText(19, strong: true),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton.icon(
-                onPressed: onCashPayment,
-                style: contractPrimaryButtonStyle(context),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Abono en efectivo'),
+              Text(loan.employeeName, style: _loanText(19, strong: true)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onEdit,
+                    style: contractSecondaryButtonStyle(context),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Editar préstamo'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: onCashPayment,
+                    style: contractPrimaryButtonStyle(context),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Abono en efectivo'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -472,10 +487,13 @@ class _HrLoanDetail extends StatelessWidget {
                     for (var i = 0; i < loan.installments; i++)
                       Builder(
                         builder: (_) {
-                          final amount = loan.installmentCents(i);
+                          final amount = fund.scheduledAmountCents(loan, i);
                           final paidBefore = loan.paidBeforeInstallment(i);
                           final settled = math.min(
-                            math.max(0, paid - paidBefore),
+                            math.max(
+                              0,
+                              fund.scheduledPaidCents(loan) - paidBefore,
+                            ),
                             amount,
                           );
                           return Padding(
@@ -505,7 +523,9 @@ class _HrLoanDetail extends StatelessWidget {
                                 SizedBox(
                                   width: 130,
                                   child: Text(
-                                    settled == amount
+                                    amount == 0
+                                        ? 'Retirada por extra'
+                                        : settled == amount
                                         ? 'Cubierta'
                                         : settled > 0
                                         ? 'Pendiente ${_loanMoney(amount - settled)}'
@@ -523,6 +543,18 @@ class _HrLoanDetail extends StatelessWidget {
                 ),
                 ListView(
                   children: [
+                    if (loan.paidAdjustmentCents != 0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Corrección acumulada de lo aportado: ${_loanMoney(loan.paidAdjustmentCents)}',
+                          style: _loanText(14, strong: true),
+                        ),
+                      ),
+                    for (final change in fund.changes.where(
+                      (c) => c['loan_id'] == loan.id,
+                    ))
+                      _loanChangeTile(change),
                     if (loan.isHistorical)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -563,7 +595,7 @@ class _HrLoanDetail extends StatelessWidget {
                           style: _loanText(14, strong: true),
                         ),
                         subtitle: Text(
-                          '${hrLoanDate(payment.paidOn)}${payment.periodLabel.isEmpty ? '' : '\n${payment.periodLabel}'}${payment.notes.isEmpty ? '' : '\n${payment.notes}'}',
+                          '${hrLoanDate(payment.paidOn)}${payment.principalOnlyCents == 0 ? '' : '\nExtra al saldo: ${_loanMoney(payment.principalOnlyCents)}'}${payment.periodLabel.isEmpty ? '' : '\n${payment.periodLabel}'}${payment.notes.isEmpty ? '' : '\n${payment.notes}'}',
                           style: _loanText(12, muted: true),
                         ),
                       ),
@@ -576,4 +608,39 @@ class _HrLoanDetail extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _loanChangeTile(Map<String, dynamic> change) {
+  final before = Map<String, dynamic>.from(
+    change['before_values'] as Map? ?? const {},
+  );
+  final after = Map<String, dynamic>.from(
+    change['after_values'] as Map? ?? const {},
+  );
+  String requested(Map<String, dynamic> row) =>
+      '${(row['opening_snapshot'] as Map?)?['requested_on'] ?? row['issued_on']}';
+  final details = <String>[
+    if (before['principal'] != after['principal'])
+      'Monto: ${_loanMoney(hrLoanCents(before['principal']))} a ${_loanMoney(hrLoanCents(after['principal']))}',
+    if (before['paid_amount'] != after['paid_amount'])
+      'Aportado: ${_loanMoney(hrLoanCents(before['paid_amount']))} a ${_loanMoney(hrLoanCents(after['paid_amount']))}',
+    if (requested(before) != requested(after))
+      'Fecha: ${requested(before)} a ${requested(after)}',
+    if (before['first_due_on'] != after['first_due_on'])
+      'Primer vencimiento: ${before['first_due_on']} a ${after['first_due_on']}',
+    if (before['notes'] != after['notes']) 'Comentarios: ${after['notes']}',
+  ];
+  final date = DateTime.tryParse('${change['created_at']}')?.toLocal();
+  return ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(
+      Icons.edit_note_rounded,
+      color: humanResourcesAreaTokens.accent,
+    ),
+    title: Text(
+      'Corrección de RH${date == null ? '' : ' · ${hrLoanDate(date)}'}',
+      style: _loanText(14, strong: true),
+    ),
+    subtitle: Text(details.join('\n'), style: _loanText(12, muted: true)),
+  );
 }

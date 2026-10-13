@@ -7,6 +7,7 @@ import '../../shared/utils/fetch_all_supabase_rows.dart';
 import '../direction_shipments_store.dart';
 import '../operating_program/operating_program_models.dart';
 import 'expected_income_models.dart';
+import 'palomar_materials.dart';
 
 class ExpectedIncomeRepository {
   final SupabaseClient? _client;
@@ -55,7 +56,10 @@ class ExpectedIncomeRepository {
         (from, to) => client
             .from('direction_income_palomar_adjustments')
             .select()
-            .gte('expected_date', programDate(week))
+            .gte(
+              'expected_date',
+              programDate(today.isBefore(week) ? today : week),
+            )
             .lt('expected_date', programDate(week.add(const Duration(days: 7))))
             .order('expected_date')
             .order('id')
@@ -91,6 +95,19 @@ class ExpectedIncomeRepository {
                   .order('shipment_id')
                   .range(from, to),
             ),
+      client
+          .from('direction_income_palomar_schedule')
+          .select()
+          .eq('week_start', programDate(week)),
+      fetchAllSupabaseRows(
+        (from, to) => client
+            .from('direction_shipment_plans')
+            .select()
+            .lt('ship_date', programDate(week.add(const Duration(days: 7))))
+            .order('ship_date')
+            .order('id')
+            .range(from, to),
+      ),
     ]);
     return assembleExpectedIncomeData(
       bundle: bundle,
@@ -182,6 +199,27 @@ class ExpectedIncomeRepository {
       .from('direction_income_palomar_adjustments')
       .delete()
       .eq('id', id);
+
+  Future<void> savePalomarSchedule(PalomarReceiptSchedule schedule) async {
+    if (!schedule.valid) {
+      throw ArgumentError(
+        'Las fechas deben pertenecer a la semana seleccionada.',
+      );
+    }
+    await client.rpc(
+      'direction_income_save_palomar_schedule',
+      params: {
+        'p_week': programDate(schedule.week),
+        'p_cash_date': schedule.cashDate == null
+            ? null
+            : programDate(schedule.cashDate!),
+        'p_fiscal_date': schedule.fiscalDate == null
+            ? null
+            : programDate(schedule.fiscalDate!),
+        'p_expected_revision': schedule.revision,
+      },
+    );
+  }
 }
 
 /// Pure adapter for source validation and deterministic integration tests.
@@ -214,6 +252,9 @@ ExpectedIncomeData assembleExpectedIncomeData({
     for (final row in tables[4])
       row['id']:
           incomeMaterial('${row['code']}') ?? incomeMaterial('${row['name']}'),
+  };
+  final coverageCodes = {
+    for (final row in tables[4]) row['id']: palomarCatalogCode(row),
   };
   final clientsById = {for (final row in clients) row['id']: row};
   final catalogPrices = <String, List<double>>{};
@@ -252,7 +293,8 @@ ExpectedIncomeData assembleExpectedIncomeData({
     final account = accounts[row['id']];
     final material =
         materialCodes[row['material_id']] ??
-        incomeMaterial('${row['material_name_snapshot']}');
+        coverageCodes[row['material_id']] ??
+        palomarKnownMaterial('${row['material_name_snapshot']}');
     if (material == null) continue;
     // Null means not approved; zero is a valid explicit price. A report's
     // default zero approved_amount is not evidence of a free/collected sale.
@@ -413,6 +455,22 @@ ExpectedIncomeData assembleExpectedIncomeData({
     palomarConfig: tables[9].isEmpty
         ? const PalomarIncomeConfig()
         : PalomarIncomeConfig.fromJson(tables[9].single),
+    palomarSchedule: tables.length > 16 && tables[16].isNotEmpty
+        ? PalomarReceiptSchedule.fromJson(tables[16].single)
+        : null,
+    palomarCoverageShipments: tables.length > 17
+        ? tables[17].map(DirectionShipmentPlanRecord.fromRow).toList()
+        : bundle.shipments,
+    palomarCoverageLinks: {
+      for (final row in tables[6])
+        row['shipment_id'] as String: row['sale_report_id'] as String,
+    },
+    palomarCoverageMaterials: palomarCatalogQuotes(
+      materials: tables[4],
+      prices: tables[3],
+      clients: clients,
+      rule: ruleFor('EL PALOMAR'),
+    ),
     palomarMovements: [
       ...tables[10].map(PalomarIncomeMovement.fromLedger),
       for (final row in tables[11])

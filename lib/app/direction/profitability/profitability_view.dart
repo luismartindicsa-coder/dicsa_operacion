@@ -8,6 +8,9 @@ import '../../shared/utils/file_download_save.dart';
 import '../direction_theme.dart';
 import '../expected_income/expected_income_forms.dart';
 import 'profitability_engine.dart';
+import 'profitability_material_units.dart';
+import 'profitability_material_basis.dart';
+import 'profitability_inference.dart' show profitMaterialFamily;
 import 'profitability_export.dart';
 import 'profitability_forms.dart';
 import 'profitability_models.dart';
@@ -983,7 +986,7 @@ class _ProfitabilityViewState extends State<ProfitabilityView> {
         _card([
           _heading(m.material),
           _text(
-            '${m.purchases.length} tickets · ${_qty(m.physicalKg)} kg físicos · ${_qty(m.payableKg)} kg pagables',
+            '${m.purchases.length} tickets · ${_qty(m.physicalKg)} kg físicos · ${_qty(m.payableKg)} kg pagables${m.pieces > 0 ? ' · ${_qty(m.pieces)} piezas separadas de los kg' : ''}',
           ),
           _text(
             'Compra ponderada: ${_price(m.purchasePrice)}/kg pagable · Compra: ${_money(m.purchaseAmount)}',
@@ -992,7 +995,7 @@ class _ProfitabilityViewState extends State<ProfitabilityView> {
           if (m.recipe != null) ...[
             for (final output in m.recipe!.outputs)
               _text(
-                '${_analysis!.benchmarks[output.benchmark]?.material ?? output.benchmark}: ${_qty(output.yieldFraction * 100)}% × ${_price(_analysis!.benchmarks[output.benchmark]?.price)}/kg',
+                '${_qty(output.yieldFraction * 100)}% × ${ProfitMaterialBasis(_analysis!.sources, profitMaterialFamily).outputPrice(_analysis!.benchmarks, output.benchmark, unit: m.purchases.first.unit).description}',
               ),
             _text('Fundamento: ${m.recipe!.note}'),
           ],
@@ -1007,7 +1010,7 @@ class _ProfitabilityViewState extends State<ProfitabilityView> {
                 ListTile(
                   title: Text('${p.reference} · ${profitDateText(p.date)}'),
                   subtitle: Text(
-                    '${p.source} · ${_qty(p.physicalKg)} kg físicos · ${_money(p.amount)}',
+                    '${p.source} · ${_qty(p.quantity)} ${profitUnitLabel(p.unit)} · ${_money(p.amount)}',
                   ),
                   trailing: IconButton(
                     tooltip: 'Excluir del análisis',
@@ -1237,12 +1240,12 @@ class _ProfitabilityViewState extends State<ProfitabilityView> {
           ),
         ]),
         _card([
-          _heading('Precios de venta ponderados elegibles'),
+          _heading('Precios de venta por material y unidad'),
           for (final b in a.benchmarks.values)
             ListTile(
               title: Text('${b.material} · ${b.source}'),
               subtitle: Text(
-                '${b.count} ventas · ${_qty(b.kg)} kg · ${_money(b.amount)} / ${_qty(b.kg)} = ${_price(b.price)}/kg',
+                '${b.count} ventas · ${_qty(b.quantity)} ${profitUnitLabel(b.unit)} · ${_money(b.amount)} / ${_qty(b.quantity)} = ${_price(b.price)}/${profitUnitLabel(b.unit)}',
               ),
             ),
         ]),

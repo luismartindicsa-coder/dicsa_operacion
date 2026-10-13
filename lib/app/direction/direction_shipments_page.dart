@@ -1124,6 +1124,8 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                                               : DirectionExecutionView(
                                                   kind: 'shipment',
                                                   bundle: _bundle!,
+                                                  refreshReference:
+                                                      _refreshProgramReference,
                                                   onWeekChanged:
                                                       _changeVisibleWeek,
                                                   onChanged: () async {

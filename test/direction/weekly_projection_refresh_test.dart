@@ -226,6 +226,7 @@ void main() {
           WeeklyProjectionView(
             bundle: f.incomeBundle(),
             repository: repo,
+            incomeRepository: income.MemoryIncomeRepository(),
             flow: false,
             active: true,
             clock: () => f.incomeWeek,
@@ -294,6 +295,7 @@ void main() {
           WeeklyProjectionView(
             bundle: f.incomeBundle(),
             repository: repo,
+            incomeRepository: income.MemoryIncomeRepository(),
             flow: false,
             active: true,
             clock: () => f.incomeWeek,
@@ -367,6 +369,7 @@ void main() {
           WeeklyProjectionView(
             bundle: f.incomeBundle(),
             repository: repo,
+            incomeRepository: income.MemoryIncomeRepository(),
             flow: false,
             active: true,
             clock: () => f.incomeWeek,

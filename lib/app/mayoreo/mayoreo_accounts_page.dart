@@ -2048,6 +2048,17 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     final selectedRow = _rows
         .where((row) => row.id == _selectedRowId)
         .firstOrNull;
+    final selectedFilteredRows = filteredRows
+        .where((row) => _selectedRowIds.contains(row.id))
+        .toList(growable: false);
+    final selectedApprovedWeight = selectedFilteredRows.fold<double>(
+      0,
+      (sum, row) => sum + row.approvedWeight,
+    );
+    final selectedPendingBalance = selectedFilteredRows.fold<double>(
+      0,
+      (sum, row) => sum + _pendingContributionForRow(row),
+    );
     final pendingTotal = baseFilteredRows.fold<double>(
       0,
       (sum, row) => sum + _pendingContributionForRow(row),
@@ -2189,9 +2200,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                           TapRegion(
                             groupId: _selectionTapRegionGroup,
                             child: _AccountsTopBar(
-                              selectedRow: selectedRow,
                               visibleCount: filteredRows.length,
-                              selectedCount: _selectedRowIds.length,
+                              selectedCount: selectedFilteredRows.length,
+                              selectedApprovedWeight: selectedApprovedWeight,
+                              selectedPendingBalance: selectedPendingBalance,
                               pendingTotal: pendingTotal,
                               paidTotal: paidTotal,
                               toInvoiceTotal: toInvoiceTotal,
@@ -2353,9 +2365,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
 }
 
 class _AccountsTopBar extends StatelessWidget {
-  final _MayoreoAccountRow? selectedRow;
   final int visibleCount;
   final int selectedCount;
+  final double selectedApprovedWeight;
+  final double selectedPendingBalance;
   final double pendingTotal;
   final double paidTotal;
   final double toInvoiceTotal;
@@ -2369,9 +2382,10 @@ class _AccountsTopBar extends StatelessWidget {
   final Future<void> Function() onReconcileInvoice;
 
   const _AccountsTopBar({
-    required this.selectedRow,
     required this.visibleCount,
     required this.selectedCount,
+    required this.selectedApprovedWeight,
+    required this.selectedPendingBalance,
     required this.pendingTotal,
     required this.paidTotal,
     required this.toInvoiceTotal,
@@ -2456,9 +2470,10 @@ class _AccountsTopBar extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               _AccountsSelectionInfo(
-                selectedRow: selectedRow,
                 visibleCount: visibleCount,
                 selectedCount: selectedCount,
+                selectedApprovedWeight: selectedApprovedWeight,
+                selectedPendingBalance: selectedPendingBalance,
               ),
             ],
           ),
@@ -2515,14 +2530,16 @@ class _AccountsTopBar extends StatelessWidget {
 }
 
 class _AccountsSelectionInfo extends StatelessWidget {
-  final _MayoreoAccountRow? selectedRow;
   final int visibleCount;
   final int selectedCount;
+  final double selectedApprovedWeight;
+  final double selectedPendingBalance;
 
   const _AccountsSelectionInfo({
-    required this.selectedRow,
     required this.visibleCount,
     required this.selectedCount,
+    required this.selectedApprovedWeight,
+    required this.selectedPendingBalance,
   });
 
   @override
@@ -2540,9 +2557,9 @@ class _AccountsSelectionInfo extends StatelessWidget {
             color: kMayoreoMutedInk,
           ),
         ),
-        if (selectedRow != null)
+        if (selectedCount > 0)
           Text(
-            '${selectedRow!.ticket} · ${formatMoney(selectedRow!.pendingBalance, decimals: 0)} saldo',
+            'Peso aprobado: ${formatDecimal(selectedApprovedWeight)} KG · Saldo: ${formatMoney(selectedPendingBalance)}',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,

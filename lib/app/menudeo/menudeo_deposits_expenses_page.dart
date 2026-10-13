@@ -9,15 +9,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
-import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/dicsa_logo_mark.dart';
-import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
@@ -27,20 +24,15 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
-import 'menudeo_catalog_page.dart';
-import 'menudeo_cash_taxonomy_page.dart';
 import 'menudeo_cash_taxonomy_store.dart';
-import 'menudeo_dashboard_page.dart';
 import 'menudeo_delete_confirm_dialog.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
-import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
 import 'menudeo_sorting.dart';
-import 'menudeo_sales_page.dart';
-import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 
 class MenudeoDepositsExpensesPage extends StatefulWidget {
   final bool instantOpen;
@@ -627,7 +619,6 @@ class _MenudeoDepositsExpensesPageState
   bool _pointerDownAdditiveSelection = false;
   bool _suppressNextRowTap = false;
   bool _menuOpen = false;
-  bool _canReturnToDirection = false;
   bool _loadingRows = true;
   bool _exportingCsv = false;
   int _currentPage = 0;
@@ -645,7 +636,6 @@ class _MenudeoDepositsExpensesPageState
   void initState() {
     super.initState();
     _pendingInitialVoucherId = widget.initialVoucherId;
-    unawaited(_resolveNavigationAccess());
     unawaited(_syncVoucherSequences());
     unawaited(_loadVouchers());
     unawaited(_loadCatalogOptions());
@@ -656,21 +646,6 @@ class _MenudeoDepositsExpensesPageState
     _dragAutoScrollTimer?.cancel();
     _voucherRowsScrollC.dispose();
     super.dispose();
-  }
-
-  Future<void> _resolveNavigationAccess() async {
-    final profile = await AuthAccess.resolveCurrentProfile();
-    if (!mounted) return;
-    setState(() {
-      _canReturnToDirection = AuthAccess.isDirectionRole(profile);
-    });
-  }
-
-  Future<void> _openDirectionDashboard() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
-    );
   }
 
   Future<void> _loadCatalogOptions() async {
@@ -980,101 +955,6 @@ class _MenudeoDepositsExpensesPageState
       _pendingInitialVoucherId = null;
       await _openVoucherDialog(initial: row, index: rowIndex);
     });
-  }
-
-  Future<void> _goBack() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const MenudeoDashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  Future<void> _openCatalogPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoCatalogPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openTicketsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoTicketsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openSalesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoSalesPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openCashTaxonomyPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoCashTaxonomyPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  void _handleNavigationAction(String label) {
-    switch (label) {
-      case 'Dashboard Dirección':
-        unawaited(_openDirectionDashboard());
-        return;
-      case 'Dashboard Menudeo':
-        unawaited(_goBack());
-        return;
-      case 'Catálogo':
-        unawaited(_openCatalogPage());
-        return;
-      case 'Ajuste de precios':
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Tickets de menudeo':
-        unawaited(_openTicketsPage());
-        return;
-      case 'Ventas menudeo':
-        unawaited(_openSalesPage());
-        return;
-      case 'Catálogo efectivo':
-        unawaited(_openCashTaxonomyPage());
-        return;
-      case 'Depósitos y gastos':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-    }
   }
 
   DateTime? _tryParseVoucherDate(String raw) {
@@ -2038,10 +1918,9 @@ class _MenudeoDepositsExpensesPageState
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, anim) => _DepositsHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          leadingBuilder: (_, anim) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
             contentAnim: contentAnim,
@@ -2275,35 +2154,10 @@ class _MenudeoDepositsExpensesPageState
                 ),
               ),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _DepositsSidePanel(
-                    canReturnToDirection: _canReturnToDirection,
-                    onBack: _goBack,
-                    onNavigate: _handleNavigationAction,
-                  ),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: MenudeoDestination.depositsExpenses,
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -2318,13 +2172,11 @@ class _DepositsHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _DepositsHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -2337,7 +2189,7 @@ class _DepositsHeaderButtonState extends State<_DepositsHeaderButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
+    final enabled = widget.onTap != null;
     final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -2356,8 +2208,6 @@ class _DepositsHeaderButtonState extends State<_DepositsHeaderButton> {
                 : () async {
                     if (widget.onTap != null) {
                       await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
                     }
                   },
             child: AnimatedContainer(
@@ -2410,291 +2260,6 @@ class _DepositsHeaderButtonState extends State<_DepositsHeaderButton> {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DepositsSidePanel extends StatelessWidget {
-  final bool canReturnToDirection;
-  final Future<void> Function() onBack;
-  final ValueChanged<String> onNavigate;
-
-  const _DepositsSidePanel({
-    required this.canReturnToDirection,
-    required this.onBack,
-    required this.onNavigate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return ContractGlassCard(
-      borderRadius: BorderRadius.circular(28),
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Menudeo',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: tokens.primaryStrong,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (canReturnToDirection) ...[
-              _DepositsSidePanelItem(
-                icon: Icons.arrow_back_rounded,
-                title: 'Volver a Dirección',
-                onTapSync: () => onNavigate('Dashboard Dirección'),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const _DepositsSectionHeader(label: 'MENU'),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: tokens.primarySoft.withValues(alpha: 0.34),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: tokens.primaryStrong.withValues(alpha: 0.14),
-                ),
-              ),
-              child: Column(
-                children: [
-                  _DepositsSidePanelItem(
-                    icon: Icons.receipt_long_rounded,
-                    title: 'Compras',
-                    subtitle: 'Tickets virtuales de compra',
-                    onTapSync: () => onNavigate('Tickets de menudeo'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.point_of_sale_rounded,
-                    title: 'Ventas',
-                    subtitle: 'Tickets virtuales de venta',
-                    onTapSync: () => onNavigate('Ventas menudeo'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.account_balance_wallet_rounded,
-                    title: 'Depósitos y gastos',
-                    subtitle: 'Vouchers de caja y egresos',
-                    highlighted: true,
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.auto_graph_rounded,
-                    title: 'Ajuste de precios',
-                    subtitle: 'Cambios e historial',
-                    onTapSync: () => onNavigate('Ajuste de precios'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.price_check_rounded,
-                    title: 'Catálogo',
-                    subtitle: 'Materiales, grupos y precios',
-                    onTapSync: () => onNavigate('Catálogo'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            const _DepositsSectionHeader(label: 'ACCESOS'),
-            const SizedBox(height: 8),
-            if (canReturnToDirection) ...[
-              _DepositsSidePanelItem(
-                icon: Icons.tune_rounded,
-                title: 'Catálogo efectivo',
-                subtitle: 'Conceptos y parametros',
-                onTapSync: () => onNavigate('Catálogo efectivo'),
-              ),
-              const SizedBox(height: 8),
-              _DepositsSidePanelItem(
-                icon: Icons.assessment_outlined,
-                title: 'Dashboard Dirección',
-                subtitle: 'Vista global del negocio',
-                onTapSync: () => onNavigate('Dashboard Dirección'),
-              ),
-              const SizedBox(height: 8),
-            ],
-            _DepositsSidePanelItem(
-              icon: Icons.space_dashboard_rounded,
-              title: 'Dashboard Menudeo',
-              subtitle: 'Vista general del área',
-              accented: true,
-              onTap: onBack,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DepositsSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _DepositsSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DepositsSidePanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-  final bool highlighted;
-  final bool accented;
-
-  const _DepositsSidePanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-    this.onTapSync,
-    this.highlighted = false,
-    this.accented = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final enabled = onTap != null || onTapSync != null;
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: !enabled
-              ? null
-              : () async {
-                  if (onTap != null) {
-                    await onTap!();
-                  } else {
-                    onTapSync?.call();
-                  }
-                },
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: accented
-                  ? kMenudeoPanelAccentGradient
-                  : highlighted
-                  ? kMenudeoPanelHighlightGradient
-                  : kMenudeoPanelGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : highlighted
-                    ? tokens.primaryStrong.withValues(alpha: 0.18)
-                    : Colors.white.withValues(alpha: 0.58),
-              ),
-              boxShadow: accented
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : highlighted
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.18),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: tokens.primaryStrong,
-                        ),
-                      ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: tokens.badgeText,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (highlighted && !accented) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: tokens.primarySoft,
-                    size: 22,
-                  ),
-                ] else ...[
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ],
-              ],
             ),
           ),
         ),

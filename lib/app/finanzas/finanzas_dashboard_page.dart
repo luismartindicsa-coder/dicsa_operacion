@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +24,7 @@ import 'finanzas_catalog_page.dart';
 import 'finanzas_company_identity.dart';
 import 'finanzas_company_directory_page.dart';
 import 'finanzas_due_alerts_store.dart';
+import 'finanzas_due_notification_dialog.dart';
 import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_fixed_payments_store.dart';
 import 'finanzas_financial_rules.dart';
@@ -107,7 +107,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
     FinanzasDueAlertsSummary dueAlerts,
   ) async {
     if (!mounted || _dueNotificationPresented) return;
-    if (dueAlerts.totalCount <= 0 || dueAlerts.items.isEmpty) return;
+    if (dueAlerts.notificationCount <= 0) return;
     if (!FinanzasDueAlertsSessionGate.registerPresentation(
       FinanzasDueAlertsSessionScope.finanzasDashboard,
     )) {
@@ -118,10 +118,11 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return _FinanzasDueNotificationDialog(
+        return FinanzasDueNotificationDialog(
           summary: dueAlerts,
-          visibleItems: dueAlerts.items.toList(growable: false),
-          onOpenPaymentCenter: () async {
+          tokens: finanzasAreaTokens,
+          actionLabel: 'Abrir pagos',
+          onOpenPayments: () async {
             Navigator.of(dialogContext).pop();
             await _openPaymentCenter();
           },
@@ -132,17 +133,18 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
 
   Future<void> _openDueAlertsDialog() async {
     final dueAlerts = _summary.dueAlerts;
-    if (!mounted || dueAlerts.totalCount <= 0 || dueAlerts.items.isEmpty) {
+    if (!mounted || dueAlerts.notificationCount <= 0) {
       return;
     }
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return _FinanzasDueNotificationDialog(
+        return FinanzasDueNotificationDialog(
           summary: dueAlerts,
-          visibleItems: dueAlerts.items.toList(growable: false),
-          onOpenPaymentCenter: () async {
+          tokens: finanzasAreaTokens,
+          actionLabel: 'Abrir pagos',
+          onOpenPayments: () async {
             Navigator.of(dialogContext).pop();
             await _openPaymentCenter();
           },
@@ -283,7 +285,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
               _FinanzasHeaderButton(
                 label: 'Pendientes',
                 icon: Icons.notifications_none_rounded,
-                notificationCount: _summary.dueAlerts.totalCount,
+                notificationCount: _summary.dueAlerts.notificationCount,
                 onTap: _openDueAlertsDialog,
               ),
               const SizedBox(width: 10),
@@ -1874,401 +1876,6 @@ class _RefreshBadge extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _FinanzasDueNotificationDialog extends StatefulWidget {
-  final FinanzasDueAlertsSummary summary;
-  final List<FinanzasDueAlertItem> visibleItems;
-  final Future<void> Function() onOpenPaymentCenter;
-
-  const _FinanzasDueNotificationDialog({
-    required this.summary,
-    required this.visibleItems,
-    required this.onOpenPaymentCenter,
-  });
-
-  @override
-  State<_FinanzasDueNotificationDialog> createState() =>
-      _FinanzasDueNotificationDialogState();
-}
-
-class _FinanzasDueNotificationDialogState
-    extends State<_FinanzasDueNotificationDialog> {
-  final ScrollController _commitmentsScrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _commitmentsScrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final primaryItem = widget.visibleItems.first;
-    final agreementItems = widget.visibleItems
-        .where((item) => item.sourceType == 'CONVENIO')
-        .toList(growable: false);
-    final invoiceItems = widget.visibleItems
-        .where((item) => item.sourceType == 'FACTURA')
-        .toList(growable: false);
-    final fixedPaymentItems = widget.visibleItems
-        .where((item) => item.sourceType == 'PAGO_FIJO')
-        .toList(growable: false);
-    final accent = switch (primaryItem.severity) {
-      FinanzasDueAlertSeverity.critical => kFinanzasCoral,
-      FinanzasDueAlertSeverity.warning => kFinanzasAmber,
-      FinanzasDueAlertSeverity.info => kFinanzasCopper,
-    };
-    final commitmentsListMaxHeight = MediaQuery.of(context).size.height * 0.38;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(28, 26, 28, 22),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(34),
-                color: const Color(0xFF10264A).withValues(alpha: 0.96),
-                border: Border.all(color: accent.withValues(alpha: 0.42)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 34,
-                    offset: const Offset(0, 18),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: accent.withValues(alpha: 0.16),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.24),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.notifications_active_rounded,
-                          color: accent,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Finanzas requiere atención',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _finanzasDueDialogHeadline(widget.summary),
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.88),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _FinanzasNotificationPill(
-                        label: 'Hoy: ${widget.summary.dueTodayCount}',
-                      ),
-                      _FinanzasNotificationPill(
-                        label: '2 días: ${widget.summary.dueIn2DaysCount}',
-                      ),
-                      _FinanzasNotificationPill(
-                        label: '1 semana: ${widget.summary.dueIn7DaysCount}',
-                      ),
-                      _FinanzasNotificationPill(
-                        label:
-                            'Monto: ${formatMoney(widget.summary.totalAmount)}',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      color: Colors.white.withValues(alpha: 0.06),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Compromisos prioritarios por origen',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: commitmentsListMaxHeight,
-                          ),
-                          child: Scrollbar(
-                            controller: _commitmentsScrollController,
-                            thumbVisibility: widget.visibleItems.length > 3,
-                            child: SingleChildScrollView(
-                              controller: _commitmentsScrollController,
-                              child: Column(
-                                children: [
-                                  if (agreementItems.isNotEmpty)
-                                    _FinanzasDueNotificationSection(
-                                      title: 'Convenios por vencer',
-                                      items: agreementItems,
-                                      accent: accent,
-                                    ),
-                                  if (invoiceItems.isNotEmpty) ...[
-                                    if (agreementItems.isNotEmpty)
-                                      const SizedBox(height: 14),
-                                    _FinanzasDueNotificationSection(
-                                      title: 'Facturas fuera de convenio',
-                                      items: invoiceItems,
-                                      accent: accent,
-                                    ),
-                                  ],
-                                  if (fixedPaymentItems.isNotEmpty) ...[
-                                    if (agreementItems.isNotEmpty ||
-                                        invoiceItems.isNotEmpty)
-                                      const SizedBox(height: 14),
-                                    _FinanzasDueNotificationSection(
-                                      title: 'Pagos fijos por vencer',
-                                      items: fixedPaymentItems,
-                                      accent: accent,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.24),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 16,
-                          ),
-                        ),
-                        child: const Text('Después'),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: widget.onOpenPaymentCenter,
-                        icon: const Icon(Icons.open_in_new_rounded),
-                        label: const Text('Abrir pagos'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFEA8F4B),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FinanzasDueNotificationSection extends StatelessWidget {
-  final String title;
-  final List<FinanzasDueAlertItem> items;
-  final Color accent;
-
-  const _FinanzasDueNotificationSection({
-    required this.title,
-    required this.items,
-    required this.accent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: accent,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (var index = 0; index < items.length; index++) ...[
-          _FinanzasDueNotificationItemCard(item: items[index], accent: accent),
-          if (index != items.length - 1) const SizedBox(height: 10),
-        ],
-      ],
-    );
-  }
-}
-
-class _FinanzasDueNotificationItemCard extends StatelessWidget {
-  final FinanzasDueAlertItem item;
-  final Color accent;
-
-  const _FinanzasDueNotificationItemCard({
-    required this.item,
-    required this.accent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: Colors.white.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _finanzasAlertSourceLabel(item),
-            style: TextStyle(
-              color: accent,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            item.title,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.90),
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            item.subtitle,
-            style: const TextStyle(
-              color: Color(0xFFF8EBDD),
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            '${item.reminderLabel} · ${formatMoney(item.amount)}',
-            style: TextStyle(
-              color: accent,
-              fontSize: 12.8,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FinanzasNotificationPill extends StatelessWidget {
-  final String label;
-
-  const _FinanzasNotificationPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withValues(alpha: 0.08),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-String _finanzasDueDialogHeadline(FinanzasDueAlertsSummary summary) {
-  if (summary.dueTodayCount > 0) {
-    return 'Hay ${summary.dueTodayCount} pagos que vencen hoy y conviene resolver durante esta jornada.';
-  }
-  if (summary.dueIn2DaysCount > 0) {
-    return 'Hay ${summary.dueIn2DaysCount} compromisos que vencen en 48 horas y ya entraron a foco.';
-  }
-  return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
-}
-
-String _finanzasAlertSourceLabel(FinanzasDueAlertItem item) {
-  switch (item.sourceType) {
-    case 'FACTURA':
-      return 'Factura fuera de convenio';
-    case 'PAGO_FIJO':
-      return 'Pago fijo';
-    case 'CONVENIO':
-      return 'Convenio activo';
-    default:
-      return 'Compromiso';
   }
 }
 

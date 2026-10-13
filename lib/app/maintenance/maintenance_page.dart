@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import '../shared/persistence/atomic_save.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -21,6 +23,7 @@ import '../gerencia/gerencia_dashboard_page.dart';
 import '../gerencia/gerencia_operational_viewer_side_menu.dart';
 import '../maintenance/maintenance_ot_purchase_link_service.dart';
 import '../maintenance/maintenance_statuses.dart';
+import 'maintenance_order_persistence.dart';
 import '../maintenance/purchase_orders_page.dart';
 import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
@@ -35,6 +38,9 @@ import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
 import '../shared/page_routes.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
+
+part 'maintenance_preservation_test_support.dart';
+part 'maintenance_quick_create.dart';
 
 const List<String> _kStatusFlow = kMaintenanceVisibleStatusFlow;
 const List<String> _kSelectableStatuses = kMaintenanceSelectableStatuses;
@@ -302,22 +308,6 @@ bool _isMissingOperationDirectoryContactsForMaintenanceError(
   return error.message.toLowerCase().contains('operation_directory_contacts');
 }
 
-bool _isMissingMaintenanceCategorySnapshotColumnError(
-  PostgrestException error,
-) {
-  final message = [
-    error.code,
-    error.message,
-    error.details,
-    error.hint,
-  ].whereType<String>().join(' ').toLowerCase();
-  return message.contains('category_snapshot') &&
-      (message.contains('column') ||
-          message.contains('schema cache') ||
-          message.contains('42703') ||
-          message.contains('pgrst'));
-}
-
 String _normEnum(dynamic value) =>
     (value ?? '').toString().toLowerCase().trim();
 
@@ -367,6 +357,13 @@ class _MaintenancePageState extends State<MaintenancePage>
   bool _maintenanceCategorySnapshotColumnAvailable = true;
   bool _suspendAutosave = false;
   bool _autosavePending = false;
+  bool _autosaveConflict = false;
+  String? _lastRejectedFingerprint;
+  int _detailLoadRevision = 0;
+  Map<String, dynamic>? _persistedOrder;
+  Map<String, List<Map<String, dynamic>>> _persistedDetails = {};
+  AtomicSave? _pendingAtomicSave;
+  String? _pendingSaveFingerprint;
   DateTime? _lastBackgroundRefreshAt;
   Timer? _autosaveTimer;
   String? _lastSavedFingerprint;
@@ -379,7 +376,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   final Map<String, int> _pendingApprovalsByOt = <String, int>{};
 
   String _search = '';
-  String? _statusFilter;
+  String? _statusFilter = 'open';
   AuthResolvedProfile? _resolvedProfile;
   String _profileRole = 'viewer';
   String _profileName = '';
@@ -398,6 +395,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   DirectionMaintenanceSummary? _alertsSummary;
   String? _alertsError;
 
+  final TextEditingController _orderSearchC = TextEditingController();
   final TextEditingController _areaC = TextEditingController();
   final TextEditingController _equipmentC = TextEditingController();
   final TextEditingController _serialC = TextEditingController();
@@ -437,6 +435,8 @@ class _MaintenancePageState extends State<MaintenancePage>
   Set<String> _reportTypeFilters = <String>{};
   DateTimeRange? _reportDateRange;
   bool _consumedInitialOrderSelection = false;
+  bool _reportsLoaded = false, _reportsLoading = false;
+  String? _reportsError;
 
   @override
   void initState() {
@@ -459,6 +459,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     _detailScrollController.dispose();
     _reportsScrollController.dispose();
     _detachAutosaveListeners();
+    _orderSearchC.dispose();
     _areaC.dispose();
     _equipmentC.dispose();
     _serialC.dispose();
@@ -481,11 +482,12 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Future<void> _bootstrap() async {
     await _loadProfile();
-    await _loadVehicleCatalog();
-    await _loadDirectoryTaxonomyOptions();
-    await _loadDirectoryContacts();
+    await Future.wait([
+      _loadVehicleCatalog(),
+      _loadDirectoryTaxonomyOptions(),
+      _loadDirectoryContacts(),
+    ]);
     await _loadOrders();
-    await _loadAlertsSummary();
     if (!mounted) return;
     setState(() => _loading = false);
   }
@@ -513,7 +515,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   String get _maintenanceOrderListFields =>
-      'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,equipment_label,assigned_to_name,updated_at,mechanic_name,mechanic_contact,requester_name,cost_estimated_total,cost_actual_total';
+      'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,equipment_label,assigned_to_name,problem_description,updated_at,mechanic_name,mechanic_contact,requester_name,cost_estimated_total,cost_actual_total';
 
   Future<Map<String, dynamic>?> _fetchMaintenanceOrderListRow(
     String orderId,
@@ -619,7 +621,14 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   bool get _shouldDeferBackgroundRefresh =>
-      _loading || _saving || _creating || _exportingPdf || _isEditableFocused();
+      _loading ||
+      _saving ||
+      _creating ||
+      _exportingPdf ||
+      _isEditableFocused() ||
+      _autosavePending ||
+      _pendingAtomicSave != null ||
+      _autosaveConflict;
 
   void _queueDeferredAutoReload([Duration? delay]) {
     if (!mounted) return;
@@ -636,7 +645,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   void _requestAutoReload({bool force = false}) {
     if (!mounted) return;
-    if (!force && (_autoReloading || _shouldDeferBackgroundRefresh)) {
+    if (_autoReloading || _shouldDeferBackgroundRefresh) {
       _queueDeferredAutoReload();
       return;
     }
@@ -659,7 +668,9 @@ class _MaintenancePageState extends State<MaintenancePage>
     _autoReloading = true;
     try {
       await _loadOrders(refreshSelectedDetails: _selectedOrderId != null);
-      await _loadAlertsSummary(silent: true);
+      if (_workspace == _MaintenanceWorkspace.alerts) {
+        await _loadAlertsSummary(silent: true);
+      }
       _lastBackgroundRefreshAt = DateTime.now();
     } finally {
       _autoReloading = false;
@@ -755,9 +766,9 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   List<String> _maintenanceSpecialtyOptions() {
     return _normalizeMaintenanceNames(<String>[
+      _selectedSpecialty,
       ..._kCategoryLabel.keys,
       ..._directorySpecialtyOptions,
-      _selectedSpecialty,
     ]);
   }
 
@@ -816,7 +827,9 @@ class _MaintenancePageState extends State<MaintenancePage>
           : _assignedToC.text.trim(),
       'assigned_at': _assignedToC.text.trim().isEmpty
           ? null
-          : DateTime.now().toIso8601String(),
+          : (_selectedOrder?['assigned_to_name'] == _assignedToC.text.trim()
+                ? (_selectedOrder?['assigned_at'])
+                : DateTime.now().toIso8601String()),
       'cost_estimated_total': estTotal,
       'cost_actual_total': realTotal,
     };
@@ -825,14 +838,6 @@ class _MaintenancePageState extends State<MaintenancePage>
       payload['category_snapshot'] = _categorySnapshot;
     }
     return payload;
-  }
-
-  String _selectedDirectoryContactDisplayValue() {
-    final name = _mechanicNameC.text.trim();
-    final contact = _mechanicContactC.text.trim();
-    if (name.isEmpty) return 'Seleccionar contacto';
-    final suffix = contact.isEmpty ? '' : ' · $contact';
-    return '$name$suffix';
   }
 
   bool get _isAccountingRestrictedMaintenanceUser =>
@@ -935,6 +940,7 @@ class _MaintenancePageState extends State<MaintenancePage>
           .from('maintenance_orders')
           .select(_maintenanceOrderListFields)
           .order('requested_at', ascending: false)
+          .order('ot_folio')
           .limit(400);
 
       final list = (rows as List).cast<Map<String, dynamic>>().map((row) {
@@ -986,37 +992,11 @@ class _MaintenancePageState extends State<MaintenancePage>
           if (otId.isEmpty) continue;
           _pendingApprovalsByOt[otId] = (_pendingApprovalsByOt[otId] ?? 0) + 1;
         }
-
-        final timeLogRows = await _supa
-            .from('maintenance_time_logs')
-            .select('ot_id,start_at,end_at,minutes,tech_name')
-            .inFilter('ot_id', ids);
-        _reportTimeLogs = (timeLogRows as List)
-            .cast<Map<String, dynamic>>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
-
-        final taskRows = await _supa
-            .from('maintenance_tasks')
-            .select('ot_id,is_done')
-            .inFilter('ot_id', ids);
-        _reportTasks = (taskRows as List)
-            .cast<Map<String, dynamic>>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
-
-        final materialRows = await _supa
-            .from('maintenance_materials')
-            .select('ot_id')
-            .inFilter('ot_id', ids);
-        _reportMaterials = (materialRows as List)
-            .cast<Map<String, dynamic>>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
+      }
+      if (_workspace == _MaintenanceWorkspace.reports) {
+        await _loadReportDetails();
       } else {
-        _reportTimeLogs = <Map<String, dynamic>>[];
-        _reportTasks = <Map<String, dynamic>>[];
-        _reportMaterials = <Map<String, dynamic>>[];
+        _reportsLoaded = false;
       }
 
       if (_selectedOrderId != null) {
@@ -1028,8 +1008,8 @@ class _MaintenancePageState extends State<MaintenancePage>
         }
       }
 
-      if (_selectedOrderId == null && _orders.isNotEmpty) {
-        _selectedOrderId = _orders.first['id']?.toString();
+      if (_selectedOrderId == null && _filteredOrders.isNotEmpty) {
+        _selectedOrderId = _filteredOrders.first['id']?.toString();
       }
 
       if (!_consumedInitialOrderSelection &&
@@ -1037,6 +1017,7 @@ class _MaintenancePageState extends State<MaintenancePage>
           _orders.any(
             (row) => (row['id'] ?? '').toString() == targetInitialOrderId,
           )) {
+        _statusFilter = null;
         _selectedOrderId = targetInitialOrderId;
         _consumedInitialOrderSelection = true;
       }
@@ -1060,38 +1041,69 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _loadOrderDetails(String orderId) async {
-    final row = await _supa
-        .from('maintenance_orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
+    final loadRevision = ++_detailLoadRevision;
+    final fingerprintAtStart = _buildAutosaveFingerprint();
+    final details = await Future.wait<dynamic>([
+      _supa.from('maintenance_orders').select('*').eq('id', orderId).single(),
+      _supa
+          .from('maintenance_tasks')
+          .select('*')
+          .eq('ot_id', orderId)
+          .order('line_no'),
+      _supa
+          .from('maintenance_materials')
+          .select('*')
+          .eq('ot_id', orderId)
+          .order('line_no'),
+      _supa
+          .from('maintenance_time_logs')
+          .select('*')
+          .eq('ot_id', orderId)
+          .order('start_at'),
+      _supa
+          .from('maintenance_evidence')
+          .select('*')
+          .eq('ot_id', orderId)
+          .order('uploaded_at', ascending: false),
+      _supa
+          .from('maintenance_approvals')
+          .select('*')
+          .eq('ot_id', orderId)
+          .order('created_at'),
+    ]);
+    final row = Map<String, dynamic>.from(details[0] as Map);
+    final tasks = details[1],
+        materials = details[2],
+        timeLogs = details[3],
+        evidences = details[4],
+        approvals = details[5];
 
-    final tasks = await _supa
-        .from('maintenance_tasks')
-        .select('*')
-        .eq('ot_id', orderId)
-        .order('line_no');
-    final materials = await _supa
-        .from('maintenance_materials')
-        .select('*')
-        .eq('ot_id', orderId)
-        .order('line_no');
-    final timeLogs = await _supa
-        .from('maintenance_time_logs')
-        .select('*')
-        .eq('ot_id', orderId)
-        .order('start_at');
-    final evidences = await _supa
-        .from('maintenance_evidence')
-        .select('*')
-        .eq('ot_id', orderId)
-        .order('uploaded_at', ascending: false);
-    final approvals = await _supa
-        .from('maintenance_approvals')
-        .select('*')
-        .eq('ot_id', orderId)
-        .order('created_at');
-
+    if (loadRevision != _detailLoadRevision ||
+        _saving ||
+        _pendingAtomicSave != null ||
+        _buildAutosaveFingerprint() != fingerprintAtStart ||
+        (_selectedOrderId != null && _selectedOrderId != orderId)) {
+      return;
+    }
+    _maintenanceCategorySnapshotColumnAvailable = row.containsKey(
+      'category_snapshot',
+    );
+    _persistedOrder = Map<String, dynamic>.from(row);
+    _persistedDetails = {
+      'maintenance_tasks': (tasks as List)
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList(),
+      'maintenance_materials': (materials as List)
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList(),
+      'maintenance_time_logs': (timeLogs as List)
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList(),
+    };
+    _autosaveConflict = false;
+    _lastRejectedFingerprint = null;
+    _pendingAtomicSave = null;
+    _pendingSaveFingerprint = null;
     _selectedOrder = Map<String, dynamic>.from(row)
       ..['status'] = normalizeMaintenanceStatus(row['status'])
       ..['priority'] = _normEnum(row['priority'])
@@ -1103,13 +1115,9 @@ class _MaintenancePageState extends State<MaintenancePage>
           .replaceAll(RegExp(r'\s+'), ' ')
       ..['impact'] = _normEnum(row['impact'])
       ..['provider_type'] = _normEnum(row['provider_type']);
-    _tasks = (tasks as List).map((e) => Map<String, dynamic>.from(e)).toList();
-    _materials = (materials as List)
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-    _timeLogs = (timeLogs as List)
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    _tasks = (tasks).map((e) => Map<String, dynamic>.from(e)).toList();
+    _materials = (materials).map((e) => Map<String, dynamic>.from(e)).toList();
+    _timeLogs = (timeLogs).map((e) => Map<String, dynamic>.from(e)).toList();
     _evidences = (evidences as List)
         .map(
           (e) => Map<String, dynamic>.from(e)
@@ -1151,6 +1159,9 @@ class _MaintenancePageState extends State<MaintenancePage>
       _priority = (order['priority'] ?? 'media').toString();
       _type = (order['type'] ?? 'correctivo').toString();
       _applySelectedSpecialty(_specialtySelectionFromOrder(order));
+      // Loading a historical classification must not rewrite its stored values.
+      _category = (order['category'] ?? 'otros').toString();
+      _categorySnapshot = order['category_snapshot']?.toString();
       _impact = (order['impact'] ?? 'sin_impacto').toString();
 
       _selectedVehicleId = (order['equipment_id'] ?? '').toString().trim();
@@ -1280,9 +1291,9 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   void _scheduleAutosave({bool immediate = false}) {
-    if (_suspendAutosave || !mounted) return;
+    if (_suspendAutosave || !mounted || _autosaveConflict) return;
     final fingerprint = _buildAutosaveFingerprint();
-    if (fingerprint == null) return;
+    if (fingerprint == null || fingerprint == _lastRejectedFingerprint) return;
     if (!immediate && fingerprint == _lastSavedFingerprint) {
       _autosavePending = false;
       return;
@@ -1315,8 +1326,17 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   List<Map<String, dynamic>> get _filteredOrders {
     return _orders.where((order) {
-      if (_statusFilter != null && _statusFilter != 'all') {
-        if ((order['status'] ?? '').toString() != _statusFilter) return false;
+      final status = (order['status'] ?? '').toString();
+      if (_statusFilter == 'open' && isMaintenanceClosedStatus(status)) {
+        return false;
+      }
+      if (_statusFilter == 'closed' && !isMaintenanceClosedStatus(status)) {
+        return false;
+      }
+      if (_statusFilter != null &&
+          !['all', 'open', 'closed'].contains(_statusFilter) &&
+          status != _statusFilter) {
+        return false;
       }
 
       final query = _search.trim().toLowerCase();
@@ -1327,6 +1347,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         (order['equipment_label'] ?? '').toString(),
         (order['area_label'] ?? '').toString(),
         (order['assigned_to_name'] ?? '').toString(),
+        (order['problem_description'] ?? '').toString(),
       ].join(' ').toLowerCase();
 
       return haystack.contains(query);
@@ -1341,13 +1362,45 @@ class _MaintenancePageState extends State<MaintenancePage>
     return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
-  void _selectOrderByIndex(List<Map<String, dynamic>> rows, int index) {
+  Future<void> _selectOrderByIndex(
+    List<Map<String, dynamic>> rows,
+    int index,
+  ) async {
     if (rows.isEmpty || index < 0 || index >= rows.length) return;
     final id = (rows[index]['id'] ?? '').toString();
     if (id.isEmpty) return;
-    if (_selectedOrderId != id) {
-      setState(() => _selectedOrderId = id);
+    if (_saving) return;
+    if (_autosaveConflict) {
+      final reload = await _showMaintenanceDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('La OT cambió en otro equipo'),
+          content: const Text(
+            'No se sobrescribió el trabajo guardado. Puedes conservar tu edición en pantalla o recargar la versión actual. Al recargar se descartarán tus cambios pendientes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Conservar mi edición'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Recargar versión guardada'),
+            ),
+          ],
+        ),
+      );
+      if (reload != true || !mounted) return;
+      _autosaveConflict = false;
+      _autosavePending = false;
+      _lastSavedFingerprint = _buildAutosaveFingerprint();
     }
+    if (_buildAutosaveFingerprint() != _lastSavedFingerprint &&
+        !await _saveCurrentOrder(showToast: false, refreshAfterSave: false)) {
+      return;
+    }
+    if (!mounted) return;
+    if (_selectedOrderId != id) setState(() => _selectedOrderId = id);
     _ordersListFocusNode.requestFocus();
     unawaited(_loadOrderDetails(id));
   }
@@ -1388,7 +1441,10 @@ class _MaintenancePageState extends State<MaintenancePage>
     List<Map<String, dynamic>> rows,
   ) async {
     if (rowIndex < 0 || rowIndex >= rows.length) return;
-    _selectOrderByIndex(rows, rowIndex);
+    await _selectOrderByIndex(rows, rowIndex);
+    if (!mounted || _selectedOrderId != rows[rowIndex]['id']?.toString()) {
+      return;
+    }
     _ordersListFocusNode.requestFocus();
 
     final orderId = (rows[rowIndex]['id'] ?? '').toString();
@@ -1484,28 +1540,53 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _createOrder() async {
+    if (_isViewerMode) return;
     if (_isAccountingRestrictedMaintenanceUser) {
       _toastAccountingMaterialsOnlyRestriction();
       return;
     }
-    if (_creating) return;
+    if (_creating || _saving || _autosaveConflict) return;
     final user = _supa.auth.currentUser;
     if (user == null) return;
-
+    if (_selectedOrder != null &&
+        _buildAutosaveFingerprint() != _lastSavedFingerprint &&
+        !await _saveCurrentOrder(showToast: false, refreshAfterSave: false)) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _creating = true);
     try {
-      final now = DateTime.now();
-      final inserted = await _insertNewOrderWithConsecutiveFolio(user.id, now);
-
-      final id = inserted['id']?.toString();
+      final id = await _showMaintenanceDialog<String>(
+        context: context,
+        builder: (_) => _MaintenanceQuickCreateDialog(
+          areas: _normalizeMaintenanceNames([
+            ..._kFixedAreas,
+            ..._directoryAreaOptions,
+          ]),
+          vehicles: _vehicleCatalog,
+          requester: _profileName,
+          onCreate: (draft) async {
+            final inserted = await _insertNewOrderWithConsecutiveFolio(
+              user.id,
+              DateTime.now(),
+              draft,
+            );
+            return inserted['id'].toString();
+          },
+        ),
+      );
+      if (id == null || !mounted) return;
+      _statusFilter = 'open';
+      _search = '';
+      _orderSearchC.clear();
+      _selectedOrderId = id;
       await _loadOrders();
-      if (id != null) {
-        _selectedOrderId = id;
-        await _loadOrderDetails(id);
+      if (mounted) {
+        if (_detailScrollController.hasClients) {
+          _detailScrollController.jumpTo(0);
+        }
+        _toast('OT creada');
       }
-      _toast('OT creada');
-    } catch (e) {
-      _toast('No se pudo crear OT: $e');
     } finally {
       if (mounted) setState(() => _creating = false);
     }
@@ -1514,6 +1595,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   Future<Map<String, dynamic>> _insertNewOrderWithConsecutiveFolio(
     String userId,
     DateTime now,
+    Map<String, dynamic> draft,
   ) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       final folio = await _nextConsecutiveOtFolio(now.year);
@@ -1531,6 +1613,7 @@ class _MaintenancePageState extends State<MaintenancePage>
               'requester_user_id': userId,
               'created_by': userId,
               'requested_at': now.toIso8601String(),
+              ...draft,
             })
             .select('id')
             .single();
@@ -1567,113 +1650,100 @@ class _MaintenancePageState extends State<MaintenancePage>
     bool showToast = true,
     bool refreshAfterSave = true,
   }) async {
-    final order = _selectedOrder;
-    if (order == null || _saving) return false;
-    final orderId = order['id']?.toString();
-    if (orderId == null || orderId.isEmpty) return false;
-    final fingerprintBeforeSave = _buildAutosaveFingerprint();
-    var saved = false;
-
+    final orderId = _selectedOrder?['id']?.toString();
+    if (orderId == null ||
+        _saving ||
+        _persistedOrder?['id'] != orderId ||
+        _autosaveConflict) {
+      return false;
+    }
+    // Keep row identities stable across edits and retries.
+    for (final row in [..._tasks, ..._materials, ..._timeLogs]) {
+      row['id'] ??= const Uuid().v4();
+    }
+    ++_detailLoadRevision;
     setState(() => _saving = true);
     try {
-      final estTotal = _materials.fold<double>(
-        0,
-        (sum, row) => sum + (_toDouble(row['cost_estimated']) ?? 0),
-      );
-      final realTotal = _materials.fold<double>(
-        0,
-        (sum, row) => sum + (_toDouble(row['cost_actual']) ?? 0),
-      );
-      final editablePayload = _buildEditableOrderPayload(
-        estTotal: estTotal,
-        realTotal: realTotal,
-      );
-
-      try {
-        await _supa
-            .from('maintenance_orders')
-            .update(
-              _isAccountingRestrictedMaintenanceUser
-                  ? <String, dynamic>{
-                      'cost_estimated_total': estTotal,
-                      'cost_actual_total': realTotal,
-                    }
-                  : editablePayload,
-            )
-            .eq('id', orderId);
-      } on PostgrestException catch (e) {
-        if (_isAccountingRestrictedMaintenanceUser ||
-            !_maintenanceCategorySnapshotColumnAvailable ||
-            !_isMissingMaintenanceCategorySnapshotColumnError(e)) {
-          rethrow;
-        }
-        _maintenanceCategorySnapshotColumnAvailable = false;
-        await _supa
-            .from('maintenance_orders')
-            .update(
-              _buildEditableOrderPayload(
+      if (_pendingAtomicSave == null) {
+        final materialsOnly = _isAccountingRestrictedMaintenanceUser;
+        final estTotal = _materials.fold<double>(
+          0,
+          (n, r) => n + (_toDouble(r['cost_estimated']) ?? 0),
+        );
+        final realTotal = _materials.fold<double>(
+          0,
+          (n, r) => n + (_toDouble(r['cost_actual']) ?? 0),
+        );
+        final header = materialsOnly
+            ? <String, dynamic>{
+                'cost_estimated_total': estTotal,
+                'cost_actual_total': realTotal,
+              }
+            : _buildEditableOrderPayload(
                 estTotal: estTotal,
                 realTotal: realTotal,
-                includeCategorySnapshot: false,
-              ),
-            )
-            .eq('id', orderId);
+              );
+        _pendingAtomicSave = prepareMaintenanceSave(
+          originalOrder: _persistedOrder!,
+          header: header,
+          originalDetails: _persistedDetails,
+          details: _buildChildPayloads(orderId, materialsOnly: materialsOnly),
+        );
+        _pendingSaveFingerprint = _buildAutosaveFingerprint();
       }
-
-      await _replaceChildRows(
-        orderId,
-        materialsOnly: _isAccountingRestrictedMaintenanceUser,
-      );
-      _lastSavedFingerprint = fingerprintBeforeSave;
-      _autosavePending = false;
-      if (refreshAfterSave) {
-        await _loadOrders();
-        await _loadOrderDetails(orderId);
-      } else if (mounted) {
-        setState(() {
-          _selectedOrder = _isAccountingRestrictedMaintenanceUser
-              ? {
-                  ...?_selectedOrder,
-                  'cost_estimated_total': estTotal,
-                  'cost_actual_total': realTotal,
-                }
-              : {
-                  ...?_selectedOrder,
-                  ..._buildEditableOrderPayload(
-                    estTotal: estTotal,
-                    realTotal: realTotal,
-                  ),
-                  'category_snapshot': _categorySnapshot,
-                };
-        });
+      final result = await _pendingAtomicSave!.commit(_supa);
+      final unchangedWhileSaving =
+          _buildAutosaveFingerprint() == _pendingSaveFingerprint;
+      for (final change in result) {
+        final table = change['table'].toString();
+        final row = Map<String, dynamic>.from(change['row'] as Map);
+        if (table == 'maintenance_orders') {
+          _persistedOrder = row;
+          _selectedOrder = {...?_selectedOrder, ...row};
+        } else {
+          final rows = _persistedDetails[table]!;
+          rows.removeWhere((r) => r['id'] == row['id']);
+          if (change['action'] != 'delete') rows.add(row);
+        }
       }
+      _lastSavedFingerprint = _pendingSaveFingerprint;
+      _pendingAtomicSave = null;
+      _pendingSaveFingerprint = null;
+      _autosavePending = !unchangedWhileSaving;
+      if (refreshAfterSave) await _loadOrders(refreshSelectedDetails: false);
       if (showToast) _toast('OT guardada');
-      saved = true;
+      return true;
+    } on PostgrestException catch (e) {
+      if (e.code == '40001') _autosaveConflict = true;
+      if (e.code != '55P03' && e.code != '57014') {
+        _lastRejectedFingerprint = _buildAutosaveFingerprint();
+      }
+      // Database rejection is certain: the transaction did not commit.
+      _pendingAtomicSave = null;
+      _pendingSaveFingerprint = null;
+      _toast(
+        'No se pudo guardar. Se conservan tus cambios en pantalla: ${e.message}',
+      );
+      return false;
     } catch (e) {
-      _toast('No se pudo guardar: $e');
+      // Retain the exact request so a retry can recover a lost acknowledgement.
+      _toast(
+        'Guardado pendiente de confirmar. Se conservan tus cambios en pantalla: $e',
+      );
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
-      final currentFingerprint = _buildAutosaveFingerprint();
-      if (currentFingerprint != null &&
-          currentFingerprint != _lastSavedFingerprint) {
+      if (!_autosaveConflict &&
+          _buildAutosaveFingerprint() != _lastSavedFingerprint) {
         _scheduleAutosave();
       }
     }
-    return saved;
   }
 
-  Future<void> _replaceChildRows(
+  Map<String, List<Map<String, dynamic>>> _buildChildPayloads(
     String orderId, {
     bool materialsOnly = false,
-  }) async {
-    if (!materialsOnly) {
-      await _supa.from('maintenance_tasks').delete().eq('ot_id', orderId);
-    }
-    await _supa.from('maintenance_materials').delete().eq('ot_id', orderId);
-    if (!materialsOnly) {
-      await _supa.from('maintenance_time_logs').delete().eq('ot_id', orderId);
-    }
-
+  }) {
     final tasks = <Map<String, dynamic>>[];
     if (!materialsOnly) {
       for (var i = 0; i < _tasks.length; i++) {
@@ -1681,6 +1751,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         final desc = (row['description'] ?? '').toString().trim();
         if (desc.isEmpty) continue;
         tasks.add({
+          'id': row['id'],
           'ot_id': orderId,
           'line_no': i + 1,
           'description': desc,
@@ -1689,7 +1760,7 @@ class _MaintenancePageState extends State<MaintenancePage>
           'is_done': row['is_done'] == true,
           'notes': _emptyAsNull(row['notes']),
           'done_at': row['is_done'] == true
-              ? DateTime.now().toIso8601String()
+              ? (row['done_at'] ??= DateTime.now().toIso8601String())
               : null,
         });
       }
@@ -1701,6 +1772,7 @@ class _MaintenancePageState extends State<MaintenancePage>
       final name = (row['name'] ?? '').toString().trim();
       if (name.isEmpty) continue;
       materials.add({
+        'id': row['id'],
         'ot_id': orderId,
         'line_no': i + 1,
         'name': name,
@@ -1731,6 +1803,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             : null;
 
         timeLogs.add({
+          'id': row['id'],
           'ot_id': orderId,
           'tech_name': _emptyAsNull(row['tech_name']),
           'start_at': startAt,
@@ -1741,15 +1814,11 @@ class _MaintenancePageState extends State<MaintenancePage>
       }
     }
 
-    if (tasks.isNotEmpty) {
-      await _supa.from('maintenance_tasks').insert(tasks);
-    }
-    if (materials.isNotEmpty) {
-      await _supa.from('maintenance_materials').insert(materials);
-    }
-    if (timeLogs.isNotEmpty) {
-      await _supa.from('maintenance_time_logs').insert(timeLogs);
-    }
+    return {
+      if (!materialsOnly) 'maintenance_tasks': tasks,
+      'maintenance_materials': materials,
+      if (!materialsOnly) 'maintenance_time_logs': timeLogs,
+    };
   }
 
   Future<void> _changeStatus() async {
@@ -3008,36 +3077,12 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   String? _validateStatusChange(String current, String next) {
-    if (next == 'supervision') {
-      if (_diagnosisC.text.trim().isEmpty) {
-        return 'No se puede completar sin diagnostico';
-      }
-      final validTasks = _tasks
-          .where((e) => (e['description'] ?? '').toString().trim().isNotEmpty)
-          .toList();
-      if (validTasks.isEmpty) {
-        return 'Agrega al menos una actividad antes de completar';
-      }
+    // Documentation is optional; closing remains restricted to authorized roles.
+    if (next == 'cerrado' &&
+        !_isOpsManagerRole(_profileRole) &&
+        _profileRole != 'admin') {
+      return 'Solo Jefe Operativo o Admin puede cerrar';
     }
-
-    if (next == 'cerrado') {
-      if (!_isOpsManagerRole(_profileRole) && _profileRole != 'admin') {
-        return 'Solo Jefe Operativo o Admin puede cerrar';
-      }
-      if (_diagnosisC.text.trim().isEmpty) {
-        return 'No se puede cerrar sin diagnostico';
-      }
-      final validTasks = _tasks
-          .where((e) => (e['description'] ?? '').toString().trim().isNotEmpty)
-          .toList();
-      if (validTasks.isEmpty) {
-        return 'No se puede cerrar sin actividades';
-      }
-      if (_evidences.isEmpty) {
-        return 'No se puede cerrar sin al menos una evidencia';
-      }
-    }
-
     return null;
   }
 
@@ -3507,7 +3552,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     }
     final row = await _showTaskDialog(initial: _tasks[index]);
     if (row == null) return;
-    setState(() => _tasks[index] = row);
+    setState(() => _tasks[index] = {..._tasks[index], ...row});
     _scheduleAutosave(immediate: true);
   }
 
@@ -3539,56 +3584,71 @@ class _MaintenancePageState extends State<MaintenancePage>
               ),
               content: SizedBox(
                 width: 520,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: descC,
-                      decoration: _maintenanceInputDecoration(
-                        labelText: 'Actividad',
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: descC,
+                        autofocus: true,
+                        decoration: _maintenanceInputDecoration(
+                          labelText: 'Actividad',
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: unitC,
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: isDone,
+                        onChanged: (v) => setLocal(() => isDone = v == true),
+                        title: const Text('Actividad completada'),
+                      ),
+                      ExpansionTile(
+                        title: const Text('Cantidad y notas'),
+                        tilePadding: EdgeInsets.zero,
+                        childrenPadding: const EdgeInsets.only(top: 8),
+                        textColor: kOperationalMetricText,
+                        collapsedTextColor: kOperationalMetricText,
+                        iconColor: kOperationalMetricAccent,
+                        maintainState: true,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: unitC,
+                                  decoration: _maintenanceInputDecoration(
+                                    labelText: 'Unidad',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: qtyC,
+                                  decoration: _maintenanceInputDecoration(
+                                    labelText: 'Cantidad',
+                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: notesC,
+                            minLines: 2,
+                            maxLines: 3,
                             decoration: _maintenanceInputDecoration(
-                              labelText: 'Unidad',
+                              labelText: 'Notas',
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: qtyC,
-                            decoration: _maintenanceInputDecoration(
-                              labelText: 'Cantidad',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: notesC,
-                      minLines: 2,
-                      maxLines: 3,
-                      decoration: _maintenanceInputDecoration(
-                        labelText: 'Notas',
+                        ],
                       ),
-                    ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: isDone,
-                      onChanged: (v) => setLocal(() => isDone = v == true),
-                      title: const Text('Actividad completada'),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -3630,7 +3690,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   Future<void> _editMaterial(int index) async {
     final row = await _showMaterialDialog(initial: _materials[index]);
     if (row == null) return;
-    setState(() => _materials[index] = row);
+    setState(() => _materials[index] = {..._materials[index], ...row});
     _scheduleAutosave(immediate: true);
   }
 
@@ -3984,7 +4044,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     }
     final row = await _showTimeDialog(initial: _timeLogs[index]);
     if (row == null) return;
-    setState(() => _timeLogs[index] = row);
+    setState(() => _timeLogs[index] = {..._timeLogs[index], ...row});
     _scheduleAutosave(immediate: true);
   }
 
@@ -4760,7 +4820,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         children: [
           Expanded(
             child: _workspaceSwitchChip(
-              title: 'Operacion OT',
+              title: 'Órdenes',
               subtitle: 'Captura y seguimiento',
               icon: Icons.fact_check_outlined,
               selected: isOrders,
@@ -4771,23 +4831,27 @@ class _MaintenancePageState extends State<MaintenancePage>
           const SizedBox(width: 8),
           Expanded(
             child: _workspaceSwitchChip(
-              title: 'Reportes OT',
+              title: 'Reportes',
               subtitle: 'Resumenes y analitica',
               icon: Icons.insights_rounded,
               selected: isReports,
-              onTap: () =>
-                  setState(() => _workspace = _MaintenanceWorkspace.reports),
+              onTap: () {
+                setState(() => _workspace = _MaintenanceWorkspace.reports);
+                if (!_reportsLoaded) unawaited(_loadReportDetails());
+              },
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: _workspaceSwitchChip(
-              title: 'Alertas OT',
+              title: 'Alertas',
               subtitle: 'Seguimiento y faltantes',
               icon: Icons.notifications_active_rounded,
               selected: isAlerts,
-              onTap: () =>
-                  setState(() => _workspace = _MaintenanceWorkspace.alerts),
+              onTap: () {
+                setState(() => _workspace = _MaintenanceWorkspace.alerts);
+                unawaited(_loadAlertsSummary());
+              },
             ),
           ),
         ],
@@ -4801,111 +4865,71 @@ class _MaintenancePageState extends State<MaintenancePage>
     required IconData icon,
     required bool selected,
     required VoidCallback onTap,
-  }) {
-    return InkWell(
+  }) => Tooltip(
+    message: subtitle,
+    child: InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          gradient: selected
-              ? const LinearGradient(
-                  colors: [Color(0xFF103A42), Color(0xFF256A7A)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : null,
-          color: selected ? null : Colors.white.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected
-                ? Colors.white.withValues(alpha: 0.42)
-                : const Color(0xFF6AA3B3).withValues(alpha: 0.25),
-          ),
+          color: selected
+              ? kOperationalMetricText
+              : Colors.white.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: selected
-                    ? Colors.white.withValues(alpha: 0.15)
-                    : const Color(0xFFE8F5F4),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                color: selected ? Colors.white : const Color(0xFF1F5B66),
-              ),
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? Colors.white : kOperationalMetricText,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: selected ? Colors.white : const Color(0xFF103A42),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: selected
-                          ? Colors.white.withValues(alpha: 0.82)
-                          : const Color(0xFF43656C),
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: selected ? Colors.white : kOperationalMetricText,
+                ),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
 
-  Widget _buildOrdersWorkspace() {
-    return LayoutBuilder(
-      builder: (context, c) {
-        if (c.maxWidth < 1180) {
-          return Column(
-            children: [
-              _buildDashboardCards(),
-              const SizedBox(height: 10),
-              SizedBox(height: 300, child: _buildOrdersTable()),
-              const SizedBox(height: 10),
-              Expanded(child: _buildOrderSheet()),
-            ],
-          );
-        }
-
+  Widget _buildOrdersWorkspace() => LayoutBuilder(
+    builder: (context, c) {
+      if (c.maxWidth < 900) {
         return Column(
           children: [
-            _buildDashboardCards(),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Row(
-                children: [
-                  SizedBox(width: 470, child: _buildOrdersTable()),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildOrderSheet()),
-                ],
-              ),
+            SizedBox(
+              height: (c.maxHeight * .34).clamp(160.0, 230.0),
+              child: _buildOrdersTable(),
             ),
+            const SizedBox(height: 10),
+            Expanded(child: _buildOrderSheet()),
           ],
         );
-      },
-    );
-  }
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: c.maxWidth < 1100 ? 320 : 360,
+            child: _buildOrdersTable(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: _buildOrderSheet()),
+        ],
+      );
+    },
+  );
 
   List<Map<String, dynamic>> get _filteredReportOrders {
     return _orders.where((order) {
@@ -5054,7 +5078,68 @@ class _MaintenancePageState extends State<MaintenancePage>
     }).length;
   }
 
+  Future<void> _loadReportDetails() async {
+    if (_reportsLoading) return;
+    if (mounted) {
+      setState(() {
+        _reportsLoading = true;
+        _reportsError = null;
+      });
+    }
+    try {
+      final ids = _orders.map((o) => o['id'].toString()).toList();
+      final results = ids.isEmpty
+          ? <List<Map<String, dynamic>>>[[], [], []]
+          : await Future.wait([
+              _supa
+                  .from('maintenance_time_logs')
+                  .select('ot_id,start_at,end_at,minutes,tech_name')
+                  .inFilter('ot_id', ids),
+              _supa
+                  .from('maintenance_tasks')
+                  .select('ot_id,is_done')
+                  .inFilter('ot_id', ids),
+              _supa
+                  .from('maintenance_materials')
+                  .select('ot_id')
+                  .inFilter('ot_id', ids),
+            ]);
+      if (!mounted) return;
+      setState(() {
+        _reportTimeLogs = results[0];
+        _reportTasks = results[1];
+        _reportMaterials = results[2];
+        _reportsLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _reportsError = 'No se pudieron cargar los reportes de OT.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reportsLoading = false);
+    }
+  }
+
   Widget _buildReportsWorkspace() {
+    if (_reportsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_reportsError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_reportsError!),
+            TextButton(
+              onPressed: _loadReportDetails,
+              child: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      );
+    }
     final rows = _filteredReportOrders;
     final totalReal = _sumOrderCost(rows, 'cost_actual_total');
     final totalEstimated = _sumOrderCost(rows, 'cost_estimated_total');
@@ -6985,7 +7070,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Este modulo administra la OT completa: aviso, diagnostico, ejecucion, evidencia, aprobaciones y cierre. No es solo una lista de tickets.',
+                    'Crea una OT con el problema y el área. Da seguimiento al trabajo desde la lista de pendientes y agrega el detalle que necesites.',
                   ),
                   const SizedBox(height: 14),
                   const Text(
@@ -7015,7 +7100,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: Icons.fact_check_rounded,
                     title: '2) Diagnosticar y documentar',
                     body:
-                        'Antes de cerrar, la OT debe tener diagnostico claro, actividades realizadas, materiales usados y tiempos registrados. Eso convierte la OT en evidencia operativa, no solo administrativa.',
+                        'Captura diagnóstico, resumen, actividades y materiales cuando aporten información sobre el trabajo. Los tiempos y las aprobaciones están en Más detalles.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
@@ -7043,14 +7128,14 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: Icons.rule_rounded,
                     title: '6) Reglas de cierre',
                     body:
-                        'No cierres una OT sin diagnostico, actividades capturadas y evidencia final cuando el trabajo lo requiera. Si faltan materiales o aprobaciones, la OT debe quedarse en el estado operativo correspondiente.',
+                        'Jefe Operativo o Admin puede cerrar la OT al concluir el trabajo. Diagnóstico, actividades y evidencias son opcionales; tampoco se exigen para pasar a supervisión.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
                     icon: Icons.checklist_rounded,
                     title: '7) Secuencia recomendada',
                     body:
-                        '1. Crear OT. 2. Seleccionar equipo y describir falla. 3. Diagnosticar. 4. Capturar actividades, materiales y tiempos. 5. Subir evidencias. 6. Mover estado segun avance real. 7. Cerrar solo cuando el trabajo este concluido y documentado.',
+                        '1. Crear OT. 2. Asignar responsable y equipo. 3. Registrar el trabajo y los costos que apliquen. 4. Cambiar el estado conforme al avance. 5. Cerrar al concluir el trabajo.',
                   ),
                 ],
               ),
@@ -7146,37 +7231,6 @@ class _MaintenancePageState extends State<MaintenancePage>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildDashboardCards() {
-    final openStates = _orders.where((e) {
-      final st = (e['status'] ?? '').toString();
-      return !isMaintenanceClosedStatus(st);
-    }).length;
-    final inProcessStates = _orders.where((e) {
-      final st = (e['status'] ?? '').toString();
-      return isMaintenanceExecutionStatus(st);
-    }).length;
-
-    return Row(
-      children: [
-        _metricCard('Abiertas', '$openStates', Icons.inventory_2_rounded),
-        const SizedBox(width: 8),
-        _metricCard('En proceso', '$inProcessStates', Icons.build_rounded),
-        const SizedBox(width: 8),
-        _metricCard(
-          'Pend. aprobacion',
-          '${_orders.where((o) => _pendingApprovalsByOt[(o['id'] ?? '').toString()] != null && (_pendingApprovalsByOt[(o['id'] ?? '').toString()] ?? 0) > 0).length}',
-          Icons.approval_rounded,
-        ),
-        const SizedBox(width: 8),
-        _metricCard(
-          'Cerradas',
-          '${_countStatus('cerrado')}',
-          Icons.check_circle_rounded,
-        ),
-      ],
     );
   }
 
@@ -7493,11 +7547,12 @@ class _MaintenancePageState extends State<MaintenancePage>
                           return KeyEventResult.ignored;
                         },
                         child: TextField(
+                          controller: _orderSearchC,
                           onChanged: (v) => setState(() => _search = v),
                           decoration: _maintenanceInputDecoration(
                             isDense: true,
                             prefixIcon: const Icon(Icons.search_rounded),
-                            hintText: 'Buscar OT/equipo/area/responsable',
+                            hintText: 'Buscar…',
                           ),
                         ),
                       ),
@@ -7505,6 +7560,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonFormField<String>(
+                        key: ValueKey(_statusFilter),
                         initialValue: _statusFilter ?? 'all',
                         isExpanded: true,
                         isDense: true,
@@ -7514,7 +7570,15 @@ class _MaintenancePageState extends State<MaintenancePage>
                         items: [
                           const DropdownMenuItem(
                             value: 'all',
-                            child: Text('Todos los estados'),
+                            child: Text('Todas las órdenes'),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'open',
+                            child: Text('Pendientes'),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'closed',
+                            child: Text('Finalizadas'),
                           ),
                           ..._kSelectableStatuses
                               .map(
@@ -7773,325 +7837,250 @@ class _MaintenancePageState extends State<MaintenancePage>
   Widget _buildOrderSheet() {
     final order = _selectedOrder;
     if (order == null) {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
-        ),
-        alignment: Alignment.center,
-        child: const Text('Selecciona una OT o crea una nueva'),
-      );
+      return const Center(child: Text('Selecciona una OT o crea una nueva'));
     }
-
+    final id = order['id'].toString();
     final status = (order['status'] ?? '').toString();
-
+    final editable = !_isViewerMode && !_isAccountingRestrictedMaintenanceUser;
+    final busy = _saving || _creating || _exportingPdf;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.77),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.66)),
       ),
-      child: Scrollbar(
-        controller: _detailScrollController,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _detailScrollController,
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 1150;
-              final medium = constraints.maxWidth >= 860;
-              const topHeight = 242.0;
-              const middleHeight = 250.0;
-              const costsHeight = 102.0;
-              const approvalsHeight = 150.0;
-              const evidenceHeight = 128.0;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Orden ${order['ot_folio'] ?? ''}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'Orden ${order['ot_folio'] ?? ''}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    _statusChip(status),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  [
+                    _areaC.text,
+                    _equipmentC.text,
+                    if (_assignedToC.text.isNotEmpty)
+                      'Responsable: ${_assignedToC.text}',
+                  ].where((v) => v.isNotEmpty).join(' · '),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (!_isViewerMode)
+                      FilledButton.icon(
+                        style: _maintenanceActionFilledButtonStyle(),
+                        onPressed: busy
+                            ? null
+                            : () => _runOrderAction(id, 'save'),
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(
+                          _saving
+                              ? 'Guardando…'
+                              : _isAccountingRestrictedMaintenanceUser
+                              ? 'Guardar materiales'
+                              : 'Guardar',
                         ),
                       ),
-                      _statusChip(status),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildStepper(status),
-                  const SizedBox(height: 12),
-                  if (wide) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Datos generales',
-                            Icons.badge_outlined,
-                            _buildGeneralSection(),
-                            height: topHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Clasificacion',
-                            Icons.rule_rounded,
-                            _buildClassificationSection(),
-                            height: topHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Descripcion / Diagnostico',
-                            Icons.description_outlined,
-                            _buildTextSections(),
-                            height: topHeight,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Actividades',
-                            Icons.checklist_rounded,
-                            _buildTasksSection(),
-                            height: middleHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Materiales / Refacciones / Mano de obra',
-                            Icons.handyman_rounded,
-                            _buildMaterialsSection(),
-                            height: middleHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Registro de tiempo',
-                            Icons.av_timer_rounded,
-                            _buildTimeSection(),
-                            height: middleHeight,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: _sectionWithIcon(
-                            'Costos totales',
-                            Icons.payments_outlined,
-                            _buildCostsSection(),
-                            height: costsHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              _sectionWithIcon(
-                                'Aprobaciones',
-                                Icons.fact_check_outlined,
-                                _buildApprovalsSection(),
-                                height: approvalsHeight,
-                              ),
-                              _sectionWithIcon(
-                                'Evidencias',
-                                Icons.photo_camera_outlined,
-                                _buildEvidenceSection(),
-                                height: evidenceHeight,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else if (medium) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Datos generales',
-                            Icons.badge_outlined,
-                            _buildGeneralSection(),
-                            height: topHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Clasificacion',
-                            Icons.rule_rounded,
-                            _buildClassificationSection(),
-                            height: topHeight,
-                          ),
-                        ),
-                      ],
-                    ),
-                    _sectionWithIcon(
-                      'Descripcion / Diagnostico',
-                      Icons.description_outlined,
-                      _buildTextSections(),
-                      height: topHeight,
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Actividades',
-                            Icons.checklist_rounded,
-                            _buildTasksSection(),
-                            height: middleHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Materiales / Refacciones / Mano de obra',
-                            Icons.handyman_rounded,
-                            _buildMaterialsSection(),
-                            height: middleHeight,
-                          ),
-                        ),
-                      ],
-                    ),
-                    _sectionWithIcon(
-                      'Registro de tiempo',
-                      Icons.av_timer_rounded,
-                      _buildTimeSection(),
-                      height: middleHeight,
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Costos totales',
-                            Icons.payments_outlined,
-                            _buildCostsSection(),
-                            height: costsHeight,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _sectionWithIcon(
-                            'Aprobaciones',
-                            Icons.fact_check_outlined,
-                            _buildApprovalsSection(),
-                            height: approvalsHeight,
-                          ),
-                        ),
-                      ],
-                    ),
-                    _sectionWithIcon(
-                      'Evidencias',
-                      Icons.photo_camera_outlined,
-                      _buildEvidenceSection(),
-                      height: evidenceHeight,
-                    ),
-                  ] else ...[
-                    _sectionWithIcon(
-                      'Datos generales',
-                      Icons.badge_outlined,
-                      _buildGeneralSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Clasificacion',
-                      Icons.rule_rounded,
-                      _buildClassificationSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Descripcion / Diagnostico',
-                      Icons.description_outlined,
-                      _buildTextSections(),
-                    ),
-                    _sectionWithIcon(
-                      'Actividades',
-                      Icons.checklist_rounded,
-                      _buildTasksSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Materiales / Refacciones / Mano de obra',
-                      Icons.handyman_rounded,
-                      _buildMaterialsSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Registro de tiempo',
-                      Icons.av_timer_rounded,
-                      _buildTimeSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Costos totales',
-                      Icons.payments_outlined,
-                      _buildCostsSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Aprobaciones',
-                      Icons.fact_check_outlined,
-                      _buildApprovalsSection(),
-                    ),
-                    _sectionWithIcon(
-                      'Evidencias',
-                      Icons.photo_camera_outlined,
-                      _buildEvidenceSection(),
+                    if (editable)
+                      OutlinedButton.icon(
+                        style: _maintenanceActionOutlinedButtonStyle(),
+                        onPressed: busy
+                            ? null
+                            : () => _runOrderAction(id, 'status'),
+                        icon: const Icon(Icons.swap_horiz),
+                        label: const Text('Cambiar estado'),
+                      ),
+                    if (!_isAccountingRestrictedMaintenanceUser)
+                      OutlinedButton.icon(
+                        style: _maintenanceActionOutlinedButtonStyle(),
+                        onPressed: busy
+                            ? null
+                            : () => _runOrderAction(id, 'evidence'),
+                        icon: const Icon(Icons.photo_camera_outlined),
+                        label: Text('Fotos (${_evidences.length})'),
+                      ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: kOperationalMetricMuted,
+                      ),
+                      onPressed: busy ? null : () => _runOrderAction(id, 'pdf'),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('PDF'),
                     ),
                   ],
-                ],
-              );
-            },
+                ),
+              ],
+            ),
           ),
-        ),
+          const Divider(height: 1),
+          Expanded(
+            child: Scrollbar(
+              controller: _detailScrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _detailScrollController,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _descriptionC,
+                      readOnly: !editable,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: _maintenanceInputDecoration(
+                        labelText: 'Descripción del problema',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _orderDisclosure(
+                      'Datos de la orden',
+                      Icons.badge_outlined,
+                      _orderSectionBody(
+                        'Datos generales',
+                        _buildGeneralSection(),
+                      ),
+                    ),
+                    _orderDisclosure(
+                      'Trabajo realizado',
+                      Icons.checklist_rounded,
+                      _orderSectionBody(
+                        'Actividades',
+                        Column(
+                          children: [
+                            _buildTextSections(),
+                            const SizedBox(height: 12),
+                            _buildTasksSection(),
+                          ],
+                        ),
+                      ),
+                      summary: _tasks.isEmpty
+                          ? null
+                          : '${_tasks.where((t) => t['is_done'] == true).length}/${_tasks.length} actividades',
+                    ),
+                    _orderDisclosure(
+                      'Materiales y costos',
+                      Icons.handyman_rounded,
+                      _orderSectionBody(
+                        'Materiales / Refacciones / Mano de obra',
+                        _buildMaterialsSection(),
+                      ),
+                      summary: _materials.isEmpty
+                          ? null
+                          : '${_materials.length} conceptos',
+                      initiallyExpanded: _isAccountingRestrictedMaintenanceUser,
+                    ),
+                    if (_approvals.any((a) => a['status'] == 'pendiente'))
+                      _orderDisclosure(
+                        'Aprobaciones pendientes',
+                        Icons.fact_check_outlined,
+                        _orderSectionBody(
+                          'Aprobaciones',
+                          _buildApprovalsSection(),
+                        ),
+                        summary:
+                            '${_approvals.where((a) => a['status'] == 'pendiente').length} pendientes',
+                      ),
+                    _orderDisclosure(
+                      'Más detalles',
+                      Icons.more_horiz,
+                      Column(
+                        children: [
+                          _orderDisclosure(
+                            'Registro de tiempo',
+                            Icons.av_timer_rounded,
+                            _orderSectionBody(
+                              'Registro de tiempo',
+                              _buildTimeSection(),
+                            ),
+                            summary: _timeLogs.isEmpty
+                                ? null
+                                : '${_timeLogs.length} registros',
+                          ),
+                          if (!_approvals.any(
+                            (a) => a['status'] == 'pendiente',
+                          ))
+                            _orderDisclosure(
+                              'Aprobaciones',
+                              Icons.fact_check_outlined,
+                              _orderSectionBody(
+                                'Aprobaciones',
+                                _buildApprovalsSection(),
+                              ),
+                              summary: _approvals.isEmpty
+                                  ? null
+                                  : '${_approvals.length} registros',
+                            ),
+                        ],
+                      ),
+                      summary: _approvals.any((a) => a['status'] == 'pendiente')
+                          ? 'Registro de tiempo'
+                          : 'Tiempos y aprobaciones',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildStepper(String status) {
-    final activeIndex = _kStatusFlow.indexOf(status);
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: _kStatusFlow.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final key = entry.value;
-        final done = activeIndex >= 0 && idx <= activeIndex;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: done ? const Color(0xFF1E4F80) : Colors.blueGrey.shade100,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Text(
-            _kStatusLabel[key] ?? key,
-            style: TextStyle(
-              fontSize: 11,
-              color: done ? Colors.white : Colors.black87,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
+  Widget _orderDisclosure(
+    String title,
+    IconData icon,
+    Widget child, {
+    String? summary,
+    bool initiallyExpanded = false,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: kOperationalMetricAccent.withValues(alpha: 0.2),
+        ),
+      ),
+      child: ExpansionTile(
+        key: PageStorageKey('${_selectedOrderId}_$title'),
+        initiallyExpanded: initiallyExpanded,
+        maintainState: true,
+        textColor: kOperationalMetricText,
+        collapsedTextColor: kOperationalMetricText,
+        iconColor: kOperationalMetricAccent,
+        collapsedIconColor: kOperationalMetricMuted,
+        leading: Icon(icon, size: 20),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: summary == null ? null : Text(summary),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        childrenPadding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+        children: [child],
+      ),
+    ),
+  );
 
   Widget _statusChip(String status) {
     final closed = status == 'cerrado';
@@ -8115,487 +8104,226 @@ class _MaintenancePageState extends State<MaintenancePage>
     );
   }
 
-  Widget _sectionWithIcon(
-    String title,
-    IconData icon,
-    Widget child, {
-    double? height,
-  }) {
-    final lockedForAccounting = _isSectionLockedForAccounting(title);
-    final lockedForViewer = _isViewerMode;
-    final locked = lockedForAccounting || lockedForViewer;
-    final content = height == null
-        ? child
-        : SizedBox(
-            height: height,
-            child: SingleChildScrollView(primary: false, child: child),
-          );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: const Color(0xFF0F4B8F)),
-              const SizedBox(width: 6),
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-            ],
-          ),
-          if (locked) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4D6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE9CA6B)),
-              ),
-              child: Text(
-                lockedForViewer
-                    ? 'Solo lectura para Gerencia. Esta sección se consulta desde Operación.'
-                    : 'Solo lectura para contabilidad. Esta sección la mantiene Operación.',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF7A5A00),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          ExcludeFocus(
-            excluding: locked,
-            child: IgnorePointer(
-              ignoring: locked,
-              child: Opacity(opacity: locked ? 0.74 : 1, child: content),
-            ),
-          ),
-        ],
+  Widget _orderSectionBody(String permissionKey, Widget child) {
+    final locked =
+        _isViewerMode || _isSectionLockedForAccounting(permissionKey);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ExcludeFocus(
+        excluding: locked,
+        child: IgnorePointer(
+          ignoring: locked,
+          child: Opacity(opacity: locked ? 0.74 : 1, child: child),
+        ),
       ),
     );
   }
 
-  Widget _buildCostsSection() {
-    final estTotal = _materials.fold<double>(
-      0,
-      (sum, e) => sum + (_toDouble(e['cost_estimated']) ?? 0),
-    );
-    final realTotal = _materials.fold<double>(
-      0,
-      (sum, e) => sum + (_toDouble(e['cost_actual']) ?? 0),
-    );
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.50),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFF6BA8FF).withValues(alpha: 0.35),
-              ),
-            ),
-            child: Text(
-              'Estimado: ${_fmtMoney(estTotal)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
+  Widget _orderFieldPair(Widget first, Widget second) => LayoutBuilder(
+    builder: (context, constraints) => constraints.maxWidth < 420
+        ? Column(children: [first, const SizedBox(height: 10), second])
+        : Row(
+            children: [
+              Expanded(child: first),
+              const SizedBox(width: 10),
+              Expanded(child: second),
+            ],
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.50),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFF6BA8FF).withValues(alpha: 0.35),
-              ),
-            ),
-            child: Text(
-              'Real: ${_fmtMoney(realTotal)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
+  );
+
+  Widget _orderChoice(
+    String label,
+    String value,
+    Map<String, String> options,
+    ValueChanged<String> onChanged,
+  ) => DropdownButtonFormField<String>(
+    key: ValueKey('$_selectedOrderId/$label/$value'),
+    initialValue: value,
+    isExpanded: true,
+    menuMaxHeight: 360,
+    borderRadius: BorderRadius.circular(12),
+    dropdownColor: const Color(0xFFF4FAF8),
+    items: options.entries
+        .map(
+          (e) => DropdownMenuItem(
+            value: e.key,
+            child: Text(e.value, overflow: TextOverflow.ellipsis),
           ),
-        ),
-      ],
+        )
+        .toList(),
+    onChanged: (v) {
+      if (v == null) return;
+      setState(() => onChanged(v));
+      _scheduleAutosave();
+    },
+    decoration: _maintenanceInputDecoration(labelText: label),
+  );
+
+  Future<void> _pickOrderVehicle() async {
+    if (_isViewerMode || _isAccountingRestrictedMaintenanceUser) return;
+    final picked = await shared_picker.showSearchablePickerDialog<String>(
+      context,
+      title: 'Seleccionar unidad',
+      initialValue: _selectedVehicleId,
+      options: _vehicleCatalog
+          .map(
+            (v) => shared_picker.SearchablePickerOption(
+              value: v['id'].toString(),
+              label: (v['code'] ?? '').toString(),
+            ),
+          )
+          .toList(),
     );
+    if (picked == null || !mounted) return;
+    final vehicle = _vehicleCatalog.firstWhere(
+      (v) => v['id'].toString() == picked,
+    );
+    setState(() {
+      _selectedVehicleId = picked;
+      _equipmentC.text = (vehicle['code'] ?? '').toString();
+      _serialC.text = (vehicle['serial_number'] ?? '').toString();
+    });
+    _scheduleAutosave();
   }
 
   Widget _buildGeneralSection() {
-    final requestedAt = _fmtDateTimeNullable(_selectedOrder?['requested_at']);
-    final areaOptions = _normalizeMaintenanceNames(<String>[
+    final areas = _normalizeMaintenanceNames([
+      _areaC.text,
       ..._kFixedAreas,
       ..._directoryAreaOptions,
-      _areaC.text,
     ]);
-    final selectedArea = areaOptions.contains(_areaC.text.trim())
-        ? _areaC.text.trim()
-        : areaOptions.first;
-    if (_areaC.text != selectedArea) {
-      _areaC.text = selectedArea;
-    }
-
-    final vehicleOptions = _vehicleCatalog
-        .map(
-          (v) => DropdownMenuItem<String>(
-            value: (v['id'] ?? '').toString(),
-            child: Text((v['code'] ?? '').toString()),
-          ),
-        )
-        .toList();
-
-    if (_selectedVehicleId != null &&
-        _selectedVehicleId!.isNotEmpty &&
-        !_vehicleCatalog.any(
-          (v) => (v['id'] ?? '').toString() == _selectedVehicleId,
-        )) {
-      _selectedVehicleId = null;
-    }
-
+    final specialties = _maintenanceSpecialtyOptions();
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: selectedArea,
-                isExpanded: true,
-                menuMaxHeight: 360,
-                borderRadius: BorderRadius.circular(12),
-                dropdownColor: const Color(0xFFF4FAF8),
-                items: areaOptions
-                    .map(
-                      (a) => DropdownMenuItem<String>(value: a, child: Text(a)),
-                    )
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _areaC.text = v);
-                  _scheduleAutosave();
-                },
-                decoration: _maintenanceInputDecoration(labelText: 'Area'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _selectedVehicleId,
-                isExpanded: true,
-                menuMaxHeight: 360,
-                borderRadius: BorderRadius.circular(12),
-                dropdownColor: const Color(0xFFF4FAF8),
-                items: vehicleOptions,
-                onChanged: (v) {
-                  setState(() {
-                    _selectedVehicleId = v;
-                    final match = _vehicleCatalog
-                        .cast<Map<String, dynamic>?>()
-                        .firstWhere(
-                          (e) => (e?['id'] ?? '').toString() == v,
-                          orElse: () => null,
-                        );
-                    _equipmentC.text = (match?['code'] ?? '').toString();
-                    _serialC.text = (match?['serial_number'] ?? '').toString();
-                  });
-                  _scheduleAutosave();
-                },
-                decoration: _maintenanceInputDecoration(
-                  labelText: 'Equipo (unidades)',
+        _orderFieldPair(
+          _orderChoice('Área', _areaC.text.trim(), {
+            for (final a in areas) a: a,
+          }, (v) => _areaC.text = v),
+          TextField(
+            controller: _equipmentC,
+            onChanged: (_) {
+              if (_selectedVehicleId != null) {
+                setState(() {
+                  _selectedVehicleId = null;
+                  _serialC.clear();
+                });
+              }
+              _scheduleAutosave();
+            },
+            decoration:
+                _maintenanceInputDecoration(
+                  labelText: 'Equipo o ubicación',
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    tooltip: 'Seleccionar unidad',
+                    onPressed: _vehicleCatalog.isEmpty
+                        ? null
+                        : _pickOrderVehicle,
+                    icon: const Icon(Icons.local_shipping_outlined),
+                  ),
                 ),
-              ),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _serialC,
-                decoration: _maintenanceInputDecoration(labelText: 'Serie'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _requesterC,
-                decoration: _maintenanceInputDecoration(
-                  labelText: 'Solicitante',
+        const SizedBox(height: 10),
+        _orderFieldPair(
+          TextField(
+            controller: _assignedToC,
+            decoration: _maintenanceInputDecoration(labelText: 'Responsable'),
+          ),
+          TextField(
+            controller: _mechanicNameC,
+            decoration: _maintenanceInputDecoration(labelText: 'Mecánico')
+                .copyWith(
+                  suffixIcon: IconButton(
+                    tooltip: 'Buscar en directorio',
+                    onPressed: _directoryContacts.isEmpty
+                        ? null
+                        : _pickDirectoryContactForOt,
+                    icon: const Icon(Icons.contacts_outlined),
+                  ),
                 ),
-              ),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _assignedToC,
-                decoration: _maintenanceInputDecoration(
-                  labelText: 'Responsable',
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _readOnlyInfoField(
-                label: 'Fecha solicitud',
-                value: requestedAt,
-              ),
-            ),
-          ],
+        const SizedBox(height: 10),
+        _orderFieldPair(
+          _orderChoice(
+            'Prioridad',
+            _priority,
+            _kPriorityLabel,
+            (v) => _priority = v,
+          ),
+          _orderChoice('Impacto', _impact, _kImpactLabel, (v) => _impact = v),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: _directoryContacts.isEmpty
-                    ? null
-                    : _pickDirectoryContactForOt,
-                child: InputDecorator(
+        const SizedBox(height: 10),
+        TextField(
+          controller: _mechanicContactC,
+          keyboardType: TextInputType.phone,
+          decoration: _maintenanceInputDecoration(
+            labelText: 'Contacto del mecánico',
+          ),
+        ),
+        const SizedBox(height: 10),
+        _orderDisclosure(
+          'Más datos de la orden',
+          Icons.tune,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _orderFieldPair(
+                TextField(
+                  controller: _requesterC,
                   decoration: _maintenanceInputDecoration(
-                    labelText: 'Directorio',
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _selectedDirectoryContactDisplayValue(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.unfold_more_rounded,
-                        size: 18,
-                        color: _directoryContacts.isEmpty
-                            ? const Color(0xFF9AAAB8)
-                            : const Color(0xFF17324A),
-                      ),
-                    ],
+                    labelText: 'Solicitante',
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _mechanicNameC,
-                decoration: _maintenanceInputDecoration(labelText: 'Mecanico'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        const Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: EdgeInsets.only(left: 2),
-            child: Text(
-              'El directorio solo autollena la OT. Se guarda snapshot para no afectar órdenes antiguas.',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF5A7287),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _mechanicContactC,
-                keyboardType: TextInputType.phone,
-                decoration: _maintenanceInputDecoration(
-                  labelText: 'Contacto mecanico',
+                TextField(
+                  controller: _serialC,
+                  decoration: _maintenanceInputDecoration(labelText: 'Serie'),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _readOnlyInfoField(
-                label: 'Modo guardado',
-                value: 'Snapshot OT',
+              const SizedBox(height: 10),
+              _orderFieldPair(
+                _orderChoice('Tipo', _type, _kTypeLabel, (v) => _type = v),
+                _orderChoice('Especialidad', _selectedSpecialty, {
+                  for (final v in specialties) v: _maintenanceSpecialtyLabel(v),
+                }, _applySelectedSpecialty),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                'Solicitud: ${_fmtDateTimeNullable(_selectedOrder?['requested_at'])}',
+                style: const TextStyle(
+                  color: kOperationalMetricMuted,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+          summary: 'Solicitante, serie, tipo y especialidad',
         ),
       ],
     );
   }
 
-  Widget _buildClassificationSection() {
-    final specialtyOptions = _maintenanceSpecialtyOptions();
-    return Column(
-      children: [
-        _classificationRow(
-          'Tipo',
-          DropdownButtonFormField<String>(
-            initialValue: _type,
-            isExpanded: true,
-            menuMaxHeight: 360,
-            borderRadius: BorderRadius.circular(12),
-            dropdownColor: const Color(0xFFF4FAF8),
-            items: _kTypeLabel.entries
-                .map(
-                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                )
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _type = v);
-              _scheduleAutosave();
-            },
-            decoration: _maintenanceInputDecoration(),
-          ),
-        ),
-        const SizedBox(height: 6),
-        _classificationRow(
-          'Prioridad',
-          DropdownButtonFormField<String>(
-            initialValue: _priority,
-            isExpanded: true,
-            menuMaxHeight: 360,
-            borderRadius: BorderRadius.circular(12),
-            dropdownColor: const Color(0xFFF4FAF8),
-            items: _kPriorityLabel.entries
-                .map(
-                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                )
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _priority = v);
-              _scheduleAutosave();
-            },
-            decoration: _maintenanceInputDecoration(),
-          ),
-        ),
-        const SizedBox(height: 6),
-        _classificationRow(
-          'Especialidad',
-          DropdownButtonFormField<String>(
-            initialValue: _selectedSpecialty,
-            isExpanded: true,
-            menuMaxHeight: 360,
-            borderRadius: BorderRadius.circular(12),
-            dropdownColor: const Color(0xFFF4FAF8),
-            items: specialtyOptions
-                .map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(_maintenanceSpecialtyLabel(value)),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _applySelectedSpecialty(v));
-              _scheduleAutosave();
-            },
-            decoration: _maintenanceInputDecoration(),
-          ),
-        ),
-        const SizedBox(height: 6),
-        _classificationRow(
-          'Impacto',
-          DropdownButtonFormField<String>(
-            initialValue: _impact,
-            isExpanded: true,
-            menuMaxHeight: 360,
-            borderRadius: BorderRadius.circular(12),
-            dropdownColor: const Color(0xFFF4FAF8),
-            items: _kImpactLabel.entries
-                .map(
-                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                )
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _impact = v);
-              _scheduleAutosave();
-            },
-            decoration: _maintenanceInputDecoration(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _classificationRow(String label, Widget field) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 104,
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: field),
-      ],
-    );
-  }
-
-  Widget _readOnlyInfoField({required String label, required String value}) {
-    return InputDecorator(
-      decoration: _maintenanceInputDecoration(labelText: label),
-      child: Text(
-        value.isEmpty ? '-' : value,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+  Widget _buildTextSections() => Column(
+    children: [
+      TextField(
+        controller: _diagnosisC,
+        minLines: 2,
+        maxLines: 4,
+        decoration: _maintenanceInputDecoration(labelText: 'Diagnóstico'),
       ),
-    );
-  }
-
-  Widget _buildTextSections() {
-    return Column(
-      children: [
-        TextField(
-          controller: _descriptionC,
-          minLines: 3,
-          maxLines: 5,
-          decoration: _maintenanceInputDecoration(
-            labelText: 'Descripcion del problema',
-          ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: _summaryC,
+        minLines: 2,
+        maxLines: 4,
+        decoration: _maintenanceInputDecoration(
+          labelText: 'Resumen de trabajo',
         ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _diagnosisC,
-          minLines: 3,
-          maxLines: 5,
-          decoration: _maintenanceInputDecoration(labelText: 'Diagnostico'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _summaryC,
-          minLines: 2,
-          maxLines: 4,
-          decoration: _maintenanceInputDecoration(
-            labelText: 'Resumen de trabajo',
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
 
   Widget _buildTasksSection() {
     return Column(
@@ -8607,8 +8335,6 @@ class _MaintenancePageState extends State<MaintenancePage>
               icon: const Icon(Icons.add_rounded),
               label: const Text('Agregar actividad'),
             ),
-            const SizedBox(width: 8),
-            Text('Total: ${_tasks.length}'),
           ],
         ),
         const SizedBox(height: 8),
@@ -8620,17 +8346,30 @@ class _MaintenancePageState extends State<MaintenancePage>
         ..._tasks.asMap().entries.map((entry) {
           final i = entry.key;
           final row = entry.value;
+          final measures = [
+            if ((row['qty'] ?? '').toString().isNotEmpty) 'Cant: ${row['qty']}',
+            if ((row['unit'] ?? '').toString().trim().isNotEmpty)
+              row['unit'].toString(),
+          ].join(' · ');
           return Card(
             margin: const EdgeInsets.only(bottom: 6),
             child: ListTile(
-              title: Text((row['description'] ?? '').toString()),
-              subtitle: Text(
-                'Cant: ${(row['qty'] ?? '').toString()} · Unidad: ${(row['unit'] ?? '').toString()} · ${row['is_done'] == true ? 'Hecho' : 'Pendiente'}',
+              leading: Checkbox(
+                value: row['is_done'] == true,
+                activeColor: kOperationalMetricAccent,
+                semanticLabel: 'Completar actividad',
+                onChanged: (v) {
+                  setState(() => _tasks[i] = {...row, 'is_done': v == true});
+                  _scheduleAutosave(immediate: true);
+                },
               ),
+              title: Text((row['description'] ?? '').toString()),
+              subtitle: measures.isEmpty ? null : Text(measures),
               trailing: Wrap(
                 spacing: 2,
                 children: [
                   IconButton(
+                    tooltip: 'Editar actividad',
                     onPressed: () => _editTask(i),
                     icon: const Icon(Icons.edit_outlined),
                   ),
@@ -8662,27 +8401,6 @@ class _MaintenancePageState extends State<MaintenancePage>
 
     return Column(
       children: [
-        if (_isAccountingRestrictedMaintenanceUser)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF6FF),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFF9EC8E8).withValues(alpha: 0.9),
-              ),
-            ),
-            child: const Text(
-              'Contabilidad puede editar esta sección para capturar materiales, refacciones, mano de obra y costos, sin modificar el resto de la OT.',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF214B6B),
-              ),
-            ),
-          ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -8718,6 +8436,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                 spacing: 2,
                 children: [
                   IconButton(
+                    tooltip: 'Editar material',
                     onPressed: () => _editMaterial(i),
                     icon: const Icon(Icons.edit_outlined),
                   ),
@@ -8795,37 +8514,6 @@ class _MaintenancePageState extends State<MaintenancePage>
             ),
           );
         }),
-      ],
-    );
-  }
-
-  Widget _buildEvidenceSection() {
-    final orderId =
-        _selectedOrderId ?? (_selectedOrder?['id'] ?? '').toString();
-    final grouped = <String, int>{};
-    for (final row in _evidences) {
-      final key = (row['category'] ?? 'otros').toString();
-      grouped[key] = (grouped[key] ?? 0) + 1;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _kEvidenceCategoryLabel.entries
-              .map(
-                (e) => Chip(label: Text('${e.value}: ${grouped[e.key] ?? 0}')),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.tonalIcon(
-          onPressed: orderId.isEmpty ? null : () => _addEvidence(orderId),
-          icon: const Icon(Icons.add_photo_alternate_rounded),
-          label: const Text('Agregar evidencia'),
-        ),
       ],
     );
   }

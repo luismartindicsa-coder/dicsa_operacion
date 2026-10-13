@@ -56,7 +56,7 @@ bool _prenominaMatchesDashboardFilters(
   _HrPrenominaSummaryRow row,
   _PrenominaAttendanceDiagnostic? attendance, {
   required String query,
-  required String? company,
+  required Set<String> companies,
   required bool incidencesOnly,
 }) {
   final term = query.trim().toLowerCase();
@@ -64,7 +64,7 @@ bool _prenominaMatchesDashboardFilters(
           '${row.employeeId} ${row.displayName} ${row.empresa}'
               .toLowerCase()
               .contains(term)) &&
-      (company == null || row.empresa == company) &&
+      (companies.isEmpty || companies.contains(row.empresa)) &&
       (!incidencesOnly || _prenominaHasIncidences(row, attendance));
 }
 
@@ -261,12 +261,12 @@ class _PrenominaFilters extends StatefulWidget {
   final List<_HrPrenominaSummaryRow> rows;
   final Map<String, _PrenominaAttendanceDiagnostic> diagnostics;
   final String search;
-  final String? company;
+  final Set<String> companies;
   final bool incidencesOnly;
   final Set<String> statuses;
   final bool hasFilters;
   final ValueChanged<String> onSearch;
-  final ValueChanged<String?> onCompany;
+  final ValueChanged<Set<String>> onCompany;
   final ValueChanged<bool> onIncidences;
   final ValueChanged<Set<String>> onStatuses;
   final VoidCallback onClear;
@@ -276,7 +276,7 @@ class _PrenominaFilters extends StatefulWidget {
     required this.rows,
     required this.diagnostics,
     required this.search,
-    required this.company,
+    required this.companies,
     required this.incidencesOnly,
     required this.statuses,
     required this.hasFilters,
@@ -441,28 +441,37 @@ class _PrenominaFiltersState extends State<_PrenominaFilters> {
                         .toSet()
                         .toList()
                       ..sort();
-                final selected = await showSearchablePickerDialog<String>(
-                  context,
-                  title: 'Empresa',
-                  initialValue: widget.company ?? '',
-                  options: [
-                    const SearchablePickerOption(
-                      value: '',
-                      label: 'Todas las empresas',
+                final selected = await showDialog<GridFilterState>(
+                  context: context,
+                  builder: (_) => AreaThemeScope(
+                    tokens: humanResourcesAreaTokens,
+                    child: GridFilterDialog(
+                      title: 'Empresas',
+                      keyboardNavigation: true,
+                      initialState: GridFilterState(
+                        options: [
+                          for (final company in companies)
+                            GridFilterOption(
+                              value: company,
+                              label: company,
+                              selected: widget.companies.contains(company),
+                            ),
+                        ],
+                      ),
                     ),
-                    for (final company in companies)
-                      SearchablePickerOption(value: company, label: company),
-                  ],
+                  ),
                 );
                 if (selected != null && mounted) {
-                  widget.onCompany(selected.isEmpty ? null : selected);
+                  widget.onCompany(selected.selectedValues);
                 }
               },
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      widget.company ?? 'Todas las empresas',
+                      widget.companies.isEmpty
+                          ? 'Todas las empresas'
+                          : (widget.companies.toList()..sort()).join(', '),
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12),
                     ),

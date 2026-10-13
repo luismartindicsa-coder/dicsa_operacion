@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../../../ui_contract_core/theme/area_theme_scope.dart';
@@ -12,6 +13,7 @@ class GridFilterDialog extends StatefulWidget {
   final ValueChanged<GridFilterState>? onApply;
   final VoidCallback? onClear;
   final VoidCallback? onCancel;
+  final bool keyboardNavigation;
 
   const GridFilterDialog({
     super.key,
@@ -20,6 +22,7 @@ class GridFilterDialog extends StatefulWidget {
     this.onApply,
     this.onClear,
     this.onCancel,
+    this.keyboardNavigation = false,
   });
 
   @override
@@ -29,6 +32,8 @@ class GridFilterDialog extends StatefulWidget {
 class _GridFilterDialogState extends State<GridFilterDialog> {
   late GridFilterState _state;
   late final TextEditingController _searchController;
+  final _searchFocus = FocusNode();
+  final _optionFocus = <String, FocusNode>{};
 
   @override
   void initState() {
@@ -40,7 +45,47 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocus.dispose();
+    for (final focus in _optionFocus.values) {
+      focus.dispose();
+    }
     super.dispose();
+  }
+
+  void _apply() {
+    widget.onApply?.call(_state);
+    Navigator.of(context).maybePop(_state);
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (!widget.keyboardNavigation || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
+    if (key != LogicalKeyboardKey.arrowDown &&
+        key != LogicalKeyboardKey.arrowUp) {
+      return KeyEventResult.ignored;
+    }
+    final visible = _state.visibleOptions;
+    final index = visible.indexWhere(
+      (o) => _optionFocus[o.value]?.hasFocus == true,
+    );
+    if (index < 0 && !_searchFocus.hasFocus) return KeyEventResult.ignored;
+    final next = index + (key == LogicalKeyboardKey.arrowDown ? 1 : -1);
+    if (next < 0) {
+      _searchFocus.requestFocus();
+    } else if (next < visible.length) {
+      final focus = _optionFocus[visible[next].value];
+      focus?.requestFocus();
+      if (focus?.context != null) {
+        Scrollable.ensureVisible(focus!.context!, alignment: .5);
+      }
+    }
+    return KeyEventResult.handled;
   }
 
   void _toggleOption(String value) {
@@ -92,7 +137,7 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
     final allVisibleSelected =
         _state.visibleOptions.isNotEmpty &&
         _state.visibleOptions.every((option) => option.selected);
-    return Dialog(
+    final dialog = Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
       child: ContractPopupSurface(
@@ -112,17 +157,20 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w900,
-                color: tokens.primaryStrong,
+                color: tokens.onGlass,
               ),
             ),
             const SizedBox(height: 12),
             TextField(
+              autofocus: widget.keyboardNavigation,
+              focusNode: _searchFocus,
+              onSubmitted: widget.keyboardNavigation ? (_) => _apply() : null,
               controller: _searchController,
               style: TextStyle(
                 color: tokens.onGlass,
                 fontWeight: FontWeight.w700,
               ),
-              cursorColor: tokens.primaryStrong,
+              cursorColor: tokens.accent,
               onChanged: (value) {
                 setState(() {
                   _state = _state.copyWith(search: value);
@@ -141,22 +189,24 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
             const SizedBox(height: 8),
             Row(
               children: [
-                TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: tokens.primarySoft,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 0,
-                      vertical: 6,
+                Expanded(
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: tokens.primarySoft,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 0,
+                        vertical: 6,
+                      ),
+                    ),
+                    onPressed: _toggleVisibleSelection,
+                    child: Text(
+                      allVisibleSelected
+                          ? 'Deseleccionar visibles'
+                          : 'Seleccionar visibles',
                     ),
                   ),
-                  onPressed: _toggleVisibleSelection,
-                  child: Text(
-                    allVisibleSelected
-                        ? 'Deseleccionar visibles'
-                        : 'Seleccionar visibles',
-                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 Text(
                   '${_state.selectedValues.length} seleccionados',
                   style: TextStyle(
@@ -169,7 +219,10 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
             const SizedBox(height: 12),
             Flexible(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 250, maxHeight: 280),
+                constraints: const BoxConstraints(
+                  minHeight: 250,
+                  maxHeight: 280,
+                ),
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _state.visibleOptions.length,
@@ -177,6 +230,12 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
                   itemBuilder: (_, index) {
                     final option = _state.visibleOptions[index];
                     return _GridFilterOptionTile(
+                      focusNode: widget.keyboardNavigation
+                          ? _optionFocus.putIfAbsent(
+                              option.value,
+                              () => FocusNode(),
+                            )
+                          : null,
                       label: option.label,
                       selected: option.selected,
                       onTap: () => _toggleOption(option.value),
@@ -186,8 +245,10 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton(
                   style: contractSecondaryButtonStyle(context),
@@ -197,19 +258,14 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
                   },
                   child: const Text('Cancelar'),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton(
                   style: contractSecondaryButtonStyle(context),
                   onPressed: _clear,
                   child: const Text('Limpiar'),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton(
                   style: contractPrimaryButtonStyle(context),
-                  onPressed: () {
-                    widget.onApply?.call(_state);
-                    Navigator.of(context).maybePop(_state);
-                  },
+                  onPressed: _apply,
                   child: const Text('Aplicar'),
                 ),
               ],
@@ -218,6 +274,7 @@ class _GridFilterDialogState extends State<GridFilterDialog> {
         ),
       ),
     );
+    return Focus(onKeyEvent: _handleKey, child: dialog);
   }
 }
 
@@ -225,11 +282,13 @@ class _GridFilterOptionTile extends StatefulWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _GridFilterOptionTile({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
@@ -250,6 +309,7 @@ class _GridFilterOptionTileState extends State<_GridFilterOptionTile> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          focusNode: widget.focusNode,
           borderRadius: BorderRadius.circular(18),
           onTap: widget.onTap,
           child: AnimatedContainer(
@@ -287,7 +347,7 @@ class _GridFilterOptionTileState extends State<_GridFilterOptionTile> {
                       ? Icon(
                           Icons.check_rounded,
                           size: 15,
-                          color: tokens.primaryStrong,
+                          color: tokens.accent,
                         )
                       : null,
                 ),

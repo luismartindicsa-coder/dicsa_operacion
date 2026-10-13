@@ -13,6 +13,7 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'menudeo_cash_taxonomy_store.dart';
 import 'menudeo_dashboard_page.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 
 class MenudeoCashTaxonomyPage extends StatefulWidget {
   final bool instantOpen;
@@ -104,20 +105,6 @@ class _MenudeoCashTaxonomyPageState extends State<MenudeoCashTaxonomyPage> {
     );
   }
 
-  void _handleNavigationAction(String label) {
-    switch (label) {
-      case 'Dashboard Menudeo':
-        unawaited(_openDashboard());
-        return;
-      case 'Catálogo efectivo':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-      default:
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-    }
-  }
-
   Future<void> _addConcept() async {
     final created = await showDialog<String>(
       context: context,
@@ -179,12 +166,11 @@ class _MenudeoCashTaxonomyPageState extends State<MenudeoCashTaxonomyPage> {
           wrapBodyInGlass: false,
           animateHeaderSlots: false,
           animateBody: !widget.instantOpen,
-          headerBodySpacing: 8,
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => _TaxonomyHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          headerBodySpacing: 6,
+          padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
+          leadingBuilder: (_, _) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
             contentAnim: contentAnim,
@@ -476,32 +462,10 @@ class _MenudeoCashTaxonomyPageState extends State<MenudeoCashTaxonomyPage> {
                 ),
               ),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _TaxonomySidePanel(
-                    onNavigate: _handleNavigationAction,
-                  ),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: MenudeoDestination.cashTaxonomy,
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -1115,13 +1079,11 @@ class _TaxonomyHeaderButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _TaxonomyHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -1134,8 +1096,6 @@ class _TaxonomyHeaderButton extends StatelessWidget {
         onTap: () async {
           if (onTap != null) {
             await onTap!();
-          } else {
-            onTapSync?.call();
           }
         },
         child: Ink(
@@ -1188,122 +1148,6 @@ class _TaxonomyBackground extends StatelessWidget {
           child: const SizedBox.expand(),
         ),
       ],
-    );
-  }
-}
-
-class _TaxonomySidePanel extends StatelessWidget {
-  final ValueChanged<String> onNavigate;
-
-  const _TaxonomySidePanel({required this.onNavigate});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Menudeo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'ACCESOS',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              _TaxonomyNavItem(
-                icon: Icons.tune_rounded,
-                title: 'Catálogo efectivo',
-                subtitle: 'Conceptos y parámetros',
-                highlighted: true,
-              ),
-              const SizedBox(height: 8),
-              _TaxonomyNavItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Menudeo',
-                subtitle: 'Vista general del área',
-                onTapSync: () => onNavigate('Dashboard Menudeo'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TaxonomyNavItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool highlighted;
-  final VoidCallback? onTapSync;
-
-  const _TaxonomyNavItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.highlighted = false,
-    this.onTapSync,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTapSync,
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: highlighted ? kMenudeoPanelGradient : null,
-            color: highlighted ? null : Colors.white.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: tokens.border.withValues(alpha: 0.48)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: tokens.primaryStrong),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: tokens.primaryStrong,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

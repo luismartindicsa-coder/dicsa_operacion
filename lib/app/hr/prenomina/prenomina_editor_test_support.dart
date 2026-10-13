@@ -13,6 +13,7 @@ hrPrenominaEditorForTesting({
   required String period,
   required Map<String, dynamic> employee,
   Map<String, dynamic>? storedDraft,
+  List<Map<String, dynamic>> priorDrafts = const [],
   List<Map<String, dynamic>> attendanceRows = const [],
   List<Map<String, dynamic>> vacationRows = const [],
   List<Map<String, dynamic>> permissionRows = const [],
@@ -35,9 +36,10 @@ hrPrenominaEditorForTesting({
             .map(_HrPrenominaPermissionEventRecord.fromRow)
             .toList(),
         eventPeriodImpacts: [],
-        draftRows: draft == null
-            ? []
-            : [_HrPrenominaDraftRowRecord.fromRow(draft)],
+        draftRows: [
+          ...priorDrafts.map(_HrPrenominaDraftRowRecord.fromRow),
+          if (draft != null) _HrPrenominaDraftRowRecord.fromRow(draft),
+        ],
         activePeriodLabel: period,
         activeContpaqRawPeriodLabel: '',
       ).single;

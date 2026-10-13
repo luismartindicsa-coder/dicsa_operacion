@@ -283,7 +283,7 @@ extension _ProfitSimple on _ProfitabilityViewState {
         _statementCards(generated, cost, generated - cost),
         _historicalReserveNote(rows),
         _text(
-          'Estimación operativa: el valor del material usa ventas comparables; el aporte incluye el reparto de soporte compartido.',
+          'El material comercial se valora como recuperable aunque todavía no se haya vendido: recuperación del 100% por defecto, salvo regla específica. El aporte incluye soporte compartido.',
         ),
         _scopeReconciliation(),
         if (_analysis!.nonOperatingFlows.isNotEmpty)
@@ -490,20 +490,48 @@ extension _ProfitSimple on _ProfitabilityViewState {
   }
 
   Widget _historicalReserveNote(Iterable<ProfitCompanyResult> rows) {
+    final basis = {for (final key in profitCostBasisLabels.keys) key: 0.0};
+    for (final c in rows) {
+      for (final e in (c.account?.costBasis ?? <String, double>{}).entries) {
+        basis[e.key] = basis[e.key]! + e.value;
+      }
+    }
+    final total = basis.values.fold<double>(0, (a, b) => a + b);
+    final estimates = total - basis['documents']!;
     final historical = rows.fold<double>(
       0,
       (t, c) => t + (c.account?.historicalCostEstimate ?? 0),
     );
-    if (historical <= 0) return const SizedBox.shrink();
+    if (estimates <= .001) return const SizedBox.shrink();
     final contribution = rows.fold<double>(
       0,
       (t, c) => t + (c.account?.contribution ?? 0),
     );
-    return _text(
-      'El costo ya incluye ${_mxn(historical)} de complemento histórico, descontando el gasto actual comparable. '
-      'El aporte antes de esas reservas es ${_mxn(contribution + historical)}. '
-      'No son cargos nuevos comprobados en este periodo.',
-    );
+    return _card([
+      ExpansionTile(
+        title: Text(
+          'El costo incluye ${_mxn(estimates)} estimados',
+          style: const TextStyle(color: kDirectionSurfaceText),
+        ),
+        subtitle: const Text(
+          'Ver qué está documentado y qué se está infiriendo',
+          style: TextStyle(color: kDirectionMutedText),
+        ),
+        children: [
+          for (final e in profitCostBasisLabels.entries)
+            _statementRow(e.value, basis[e.key]!),
+          const Divider(),
+          _statementRow('MISMO COSTO TOTAL', total, emphasized: true),
+          _text(
+            'Este desglose explica el total de arriba; no agrega cargos. Un reparto documental también depende de una base de atribución.',
+          ),
+          if (historical > 0)
+            _text(
+              'El aporte antes de complementos históricos es ${_mxn(contribution + historical)}. Esas reservas descuentan el gasto actual comparable; no son comprobantes nuevos.',
+            ),
+        ],
+      ),
+    ]);
   }
 
   Widget _simpleAccount(
@@ -563,6 +591,8 @@ extension _ProfitSimple on _ProfitabilityViewState {
             runSpacing: 8,
             children: [
               _text('${_kg(a.kg / 1000)} t atendidas'),
+              if (a.pieces > 0)
+                _text('${_kg(a.pieces)} piezas, separadas de los kg'),
               _text('${_kg(a.serviceCount)} servicios'),
               _text('${_kg(a.kilometers)} km atribuidos'),
               _text('Aporte / t: ${_mxn(a.perKg * 1000)}'),
@@ -585,7 +615,7 @@ extension _ProfitSimple on _ProfitabilityViewState {
                 dataTextStyle: const TextStyle(color: kDirectionSurfaceText),
                 columns: const [
                   DataColumn(label: Text('Material / servicio')),
-                  DataColumn(label: Text('Kg'), numeric: true),
+                  DataColumn(label: Text('Cantidad'), numeric: true),
                   DataColumn(label: Text('Genera'), numeric: true),
                   DataColumn(label: Text('Costos atribuidos'), numeric: true),
                   DataColumn(label: Text('Aporte'), numeric: true),
@@ -595,7 +625,13 @@ extension _ProfitSimple on _ProfitabilityViewState {
                     DataRow(
                       cells: [
                         DataCell(Text(l.label)),
-                        DataCell(Text(_kg(l.kg))),
+                        DataCell(
+                          Text(
+                            l.pieces > 0
+                                ? '${l.kg > 0 ? '${_kg(l.kg)} kg + ' : ''}${_kg(l.pieces)} pzas'
+                                : '${_kg(l.kg)} kg',
+                          ),
+                        ),
                         DataCell(Text(_mxn(l.generated))),
                         DataCell(Text(_mxn(l.costs))),
                         DataCell(
@@ -622,6 +658,10 @@ extension _ProfitSimple on _ProfitabilityViewState {
               a.contribution,
               emphasized: true,
             ),
+            for (final note in a.assumptions.where(
+              (n) => n.startsWith('Equivalencia provisional'),
+            ))
+              _text(note, warning: true),
             if (a.block('overhead') > 0)
               _statementRow('Después de estructura adicional', a.afterOverhead),
           ]),

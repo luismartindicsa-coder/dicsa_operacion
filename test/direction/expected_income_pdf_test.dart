@@ -159,14 +159,31 @@ void main() {
         9310000,
       ]);
       expect(data.fileName, 'ingreso_proyectado_embarques_2026-09-21.pdf');
+      expect(data.collectionReport.receivables.map((r) => r.document), [
+        'FACT-190',
+        'Venta REM-420',
+      ]);
+      expect(
+        data.collectionReport.receivables.fold<int>(
+          0,
+          (n, r) => n + r.pendingCents,
+        ),
+        3400000,
+      );
+      expect(data.collectionReport.expected, hasLength(3));
+      expect(data.collectionReport.total, 22685000);
+      expect(
+        data.collectionReport.total + data.projection.current.financingTotal,
+        data.projection.current.total,
+      );
     },
   );
 
   test(
-    'exports the executive summary on exactly one A4 landscape page',
+    'exports one executive page plus the weekly collection checklist in landscape',
     () async {
       final bytes = await buildExpectedIncomePdf(reportFixture());
-      expect(pages(bytes), 1);
+      expect(pages(bytes), 2);
       expect(
         latin1.decode(bytes),
         matches(RegExp(r'/MediaBox\s*\[\s*0\s+0\s+841\.\d+\s+595\.\d+\s*\]')),
@@ -178,7 +195,7 @@ void main() {
   );
 
   test(
-    'large weeks aggregate every shipment onto the same single page',
+    'unvalued shipments stay in summary without inventing collection documents',
     () async {
       final data = reportFixture(extraRows: 100);
       expect(data.activeRows.length, 107);
@@ -186,7 +203,7 @@ void main() {
       expect(data.materials.map((m) => m.bales), [217, 72, 35]);
       expect(data.projection.generated, 60893000);
       final bytes = await buildExpectedIncomePdf(data);
-      expect(pages(bytes), 1);
+      expect(pages(bytes), 2);
       if (Platform.environment['DICSA_INCOME_PDF_QA'] == '1') {
         await File('/private/tmp/dicsa-income-long.pdf').writeAsBytes(bytes);
       }

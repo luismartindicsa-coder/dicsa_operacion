@@ -138,6 +138,23 @@ class ProfitCostBasis {
     );
   }
 
+  String recurrenceCenter(String key) {
+    final b = banks[key];
+    // Dirección confirmed on 29/09/2026 that this July IMSS payment belongs
+    // to the same workforce as September's Celaya payment (316,748.88).
+    // Preserve the original bank center; reconcile only this confirmed record.
+    if (key == 'bank:fin-bank-mov-1784571582468557' &&
+        profitKey(b?['company']) == 'DICSA' &&
+        profitKey(b?['branch']) == 'MAZATLAN' &&
+        profitKey(b?['counterparty_name_snapshot']) == 'IMSS' &&
+        profitDateText(profitDate(b?['movement_date']) ?? DateTime(1900)) ==
+            '2026-07-20' &&
+        ((profitNumber(b?['debit_amount']) ?? 0) - 304252.15).abs() < .005) {
+      return 'DICSA|CELAYA';
+    }
+    return center(key);
+  }
+
   String recurrence(ProfitCostFact f, String block) {
     final b = banks[f.key], i = invoice(f.key);
     var party = profitKey(
@@ -161,7 +178,7 @@ class ProfitCostBasis {
         : b != null
         ? profitKey(b['category'])
         : profitKey(f.label.split('·').skip(1).join(' '));
-    return '$block|${center(f.key)}|$party|$concept|${f.entityKey}|${f.vehicleId}';
+    return '$block|${recurrenceCenter(f.key)}|$party|$concept|${f.entityKey}|${f.vehicleId}';
   }
 
   String equipment(String key) => profitText(orders[key]?['equipment_id']);

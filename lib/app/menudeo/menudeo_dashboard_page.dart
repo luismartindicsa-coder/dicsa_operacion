@@ -10,8 +10,6 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
-import '../dashboard/general_dashboard_page.dart';
-import '../dashboard/dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
@@ -20,11 +18,11 @@ import 'menudeo_catalog_page.dart';
 import 'menudeo_cash_cuts_page.dart';
 import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_header_brand.dart';
-import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_sales_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
 import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
@@ -478,7 +476,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       );
       if (!granted) return;
     }
-    if (openingOnly && _pendingChecks.isNotEmpty && !bypassPendingGuard) {
+    if (openingOnly && !bypassPendingGuard) {
       final continueOpening = await _openPendingChecksGuardDialog();
       if (continueOpening == true && mounted) {
         await _openCashCutDialog(openingOnly: true, bypassPendingGuard: true);
@@ -1262,11 +1260,34 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
   }
 
   Future<bool?> _openPendingChecksGuardDialog() async {
+    final today = DateTime.now();
+    final previousDay = DateTime(today.year, today.month, today.day - 1);
+    final List<_PendingCashCheck> openingChecks;
+    try {
+      final rows = await _supa
+          .from('men_cash_cut_checks')
+          .select(
+            'id,source_type,source_id,source_folio,reason,is_verified,men_cash_cuts!inner(id,cut_date)',
+          )
+          .eq('is_verified', false)
+          .eq('men_cash_cuts.cut_date', _toIsoDate(previousDay))
+          .order('created_at');
+      openingChecks = rows
+          .map(_PendingCashCheck.fromMap)
+          .toList(growable: false);
+    } catch (error) {
+      if (mounted) {
+        _toast('No se pudieron cargar los pendientes del día anterior: $error');
+      }
+      return false;
+    }
+    if (!mounted) return false;
+    if (openingChecks.isEmpty) return true;
     return showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.24),
       builder: (context) => _PendingChecksDialog(
-        checks: _pendingChecks,
+        checks: openingChecks,
         allowContinueToOpening: true,
         onMarkAsVerified: _markPendingChecksAsVerified,
       ),
@@ -1343,56 +1364,11 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     );
   }
 
-  Future<void> _goBack() async {
-    if (!_canReturnToDirection || !mounted) return;
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const GeneralDashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  Future<void> _openOperationalDashboard() async {
-    if (!_canReturnToDirection || !mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const DashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  void _showStub(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$label quedará conectado en la siguiente fase de Menudeo.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   Future<void> _openCatalogPage() async {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
         page: const MenudeoCatalogPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -1463,34 +1439,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     return granted == true;
   }
 
-  void _handleAreaAction(String label) {
-    if (label == 'Catálogo') {
-      unawaited(_openCatalogPage());
-      return;
-    }
-    if (label == 'Ajuste de precios') {
-      unawaited(_openPriceAdjustmentsPage());
-      return;
-    }
-    if (label == 'Tickets de menudeo') {
-      unawaited(_openTicketsPage());
-      return;
-    }
-    if (label == 'Ventas menudeo') {
-      unawaited(_openSalesPage());
-      return;
-    }
-    if (label == 'Depósitos y gastos') {
-      unawaited(_openDepositsExpensesPage());
-      return;
-    }
-    if (label == 'Corte de caja') {
-      unawaited(_openCashCutsPage());
-      return;
-    }
-    _showStub(label);
-  }
-
   Future<void> _logout() async {
     final ok = await showMenudeoSessionConfirmDialog(context);
     if (ok != true || !mounted) return;
@@ -1518,10 +1466,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, anim) => _MenudeoHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          leadingBuilder: (_, anim) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
             contentAnim: contentAnim,
@@ -1579,36 +1526,10 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                 onOpenCut: () => _openCashCutDialog(openingOnly: false),
               ),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _MenudeoSidePanel(
-                    onBack: _goBack,
-                    onOpenOperationalDashboard: _openOperationalDashboard,
-                    onStubTap: _handleAreaAction,
-                    canReturnToDirection: _canReturnToDirection,
-                  ),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: MenudeoDestination.dashboard,
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -3903,10 +3824,12 @@ class _PendingChecksDialogState extends State<_PendingChecksDialog> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Pendientes por comprobar',
-                      style: TextStyle(
+                      widget.allowContinueToOpening
+                          ? 'Pendientes del día anterior'
+                          : 'Pendientes por comprobar',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                       ),
@@ -3919,9 +3842,14 @@ class _PendingChecksDialogState extends State<_PendingChecksDialog> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Estos folios o tickets quedaron abiertos en cortes anteriores. Selecciona los ya comprobados y guarda los cambios.',
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              Text(
+                widget.allowContinueToOpening
+                    ? 'Estos folios o tickets quedaron pendientes en los cortes del día anterior. Selecciona los ya comprobados y guarda los cambios.'
+                    : 'Estos folios o tickets quedaron abiertos en cortes anteriores. Selecciona los ya comprobados y guarda los cambios.',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 14),
               Expanded(
@@ -3937,16 +3865,16 @@ class _PendingChecksDialogState extends State<_PendingChecksDialog> {
                             ).withValues(alpha: 0.16),
                           ),
                         ),
-                        child: const Column(
+                        child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.verified_rounded,
                               size: 34,
                               color: Color(0xFF4D7C59),
                             ),
-                            SizedBox(height: 10),
-                            Text(
+                            const SizedBox(height: 10),
+                            const Text(
                               'No hay pendientes por comprobar',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -3954,11 +3882,13 @@ class _PendingChecksDialogState extends State<_PendingChecksDialog> {
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                            SizedBox(height: 6),
+                            const SizedBox(height: 6),
                             Text(
-                              'Caja no tiene folios heredados abiertos de cortes anteriores.',
+                              widget.allowContinueToOpening
+                                  ? 'No quedan pendientes por comprobar del día anterior.'
+                                  : 'Caja no tiene folios heredados abiertos de cortes anteriores.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF7A6C63),
@@ -6879,283 +6809,15 @@ class _AlertPill extends StatelessWidget {
   }
 }
 
-class _MenudeoSidePanel extends StatelessWidget {
-  final Future<void> Function() onBack;
-  final Future<void> Function() onOpenOperationalDashboard;
-  final ValueChanged<String> onStubTap;
-  final bool canReturnToDirection;
-
-  const _MenudeoSidePanel({
-    required this.onBack,
-    required this.onOpenOperationalDashboard,
-    required this.onStubTap,
-    required this.canReturnToDirection,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Menudeo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (canReturnToDirection) ...[
-                _MenudeoPanelItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  onTap: onBack,
-                ),
-                const SizedBox(height: 10),
-              ],
-              const _MenudeoSectionHeader(label: 'MENU'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _MenudeoPanelItem(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Compras',
-                      subtitle: 'Tickets virtuales de compra',
-                      onTapSync: () => onStubTap('Tickets de menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenudeoPanelItem(
-                      icon: Icons.point_of_sale_rounded,
-                      title: 'Ventas',
-                      subtitle: 'Tickets virtuales de venta',
-                      onTapSync: () => onStubTap('Ventas menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenudeoPanelItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Depósitos y gastos',
-                      subtitle: 'Vouchers de caja y egresos',
-                      onTapSync: () => onStubTap('Depósitos y gastos'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenudeoPanelItem(
-                      icon: Icons.auto_graph_rounded,
-                      title: 'Ajuste de precios',
-                      subtitle: 'Cambios e historial',
-                      onTapSync: () => onStubTap('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MenudeoPanelItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
-                      subtitle: 'Materiales, grupos y precios',
-                      onTapSync: () => onStubTap('Catálogo'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _MenudeoSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _MenudeoPanelItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: onBack,
-                ),
-                const SizedBox(height: 8),
-                _MenudeoPanelItem(
-                  icon: Icons.precision_manufacturing_rounded,
-                  title: 'Dashboard Operación',
-                  subtitle: 'Patio, inventario y servicios',
-                  onTap: onOpenOperationalDashboard,
-                ),
-                const SizedBox(height: 8),
-              ],
-              _MenudeoPanelItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Menudeo',
-                subtitle: 'Vista general del área',
-                accented: true,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MenudeoSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _MenudeoSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MenudeoPanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-  final bool accented;
-
-  const _MenudeoPanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-    this.onTapSync,
-    this.accented = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () async {
-            if (onTap != null) {
-              await onTap!();
-            } else {
-              onTapSync?.call();
-            }
-          },
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: accented
-                  ? kMenudeoPanelAccentGradient
-                  : kMenudeoPanelGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.white.withValues(alpha: 0.58),
-              ),
-              boxShadow: accented
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white, size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: accented ? Colors.white : tokens.primaryStrong,
-                        ),
-                      ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: accented
-                                ? Colors.white.withValues(alpha: 0.92)
-                                : tokens.badgeText,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (!accented) ...[
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF8A513B),
-                    size: 22,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MenudeoHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _MenudeoHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -7168,7 +6830,7 @@ class _MenudeoHeaderButtonState extends State<_MenudeoHeaderButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
+    final enabled = widget.onTap != null;
     final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -7192,8 +6854,6 @@ class _MenudeoHeaderButtonState extends State<_MenudeoHeaderButton> {
                 : () async {
                     if (widget.onTap != null) {
                       await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
                     }
                   },
             child: AnimatedContainer(

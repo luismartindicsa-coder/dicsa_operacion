@@ -37,6 +37,8 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/utils/simple_xlsx_builder.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_terminations_page.dart';
 import 'human_resources_loans_page.dart';
 import 'human_resources_loans.dart';
@@ -64,6 +66,7 @@ part 'prenomina/prenomina_editor_sections.dart';
 part 'prenomina/prenomina_editor_widgets.dart';
 part 'prenomina/prenomina_closure_review.dart';
 part 'prenomina/prenomina_publication_dialog.dart';
+part 'prenomina/prenomina_fixed_bonus.dart';
 
 const String _kHrPrenominaProfilesTable = 'hr_employee_profiles';
 const String _kHrPrenominaImportLotsTable = 'hr_attendance_import_lots';
@@ -100,7 +103,7 @@ class _HumanResourcesPrenominaPageState
   bool _loading = true;
   String _activePeriodLabel = '';
   String _employeeSearch = '';
-  String? _companyFilter;
+  Set<String> _companyFilter = {};
   bool _incidencesOnly = false;
   List<_HrPrenominaSummaryRow> _periodRows = const [];
   Map<String, _PrenominaAttendanceDiagnostic> _attendanceDiagnostics = const {};
@@ -150,6 +153,8 @@ class _HumanResourcesPrenominaPageState
       const <_HrPrenominaDraftRowRecord>[];
   HrLoanFundState? _loanFund;
   String? _loanLoadError;
+  String? _draftLoadError;
+  String? get _payrollLoadError => _draftLoadError ?? _loanLoadError;
   String? _changingStatusEmployeeId;
   bool _publishingAll = false;
   final _publicationRetries = <String, Set<String>>{};
@@ -320,9 +325,14 @@ class _HumanResourcesPrenominaPageState
               .from(_kHrPrenominaDraftRowsTable)
               .select()
               .order('employee_name')
+              .order('id')
               .range(from, to),
         );
-      } catch (_) {}
+        _draftLoadError = null;
+      } catch (_) {
+        _draftLoadError =
+            'No se pudieron consultar los borradores y bonos fijos. Vuelve a abrir Prenómina antes de guardar o cerrar.';
+      }
       try {
         periodClosuresResult = await fetchAllSupabaseRows(
           (from, to) => client
@@ -372,10 +382,12 @@ class _HumanResourcesPrenominaPageState
           .map((raw) => Map<String, dynamic>.from(raw as Map))
           .map(_HrPrenominaPermissionEventRecord.fromRow)
           .toList(growable: false);
-      final draftRows = draftRowsResult
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
-          .map(_HrPrenominaDraftRowRecord.fromRow)
-          .toList(growable: false);
+      final draftRows = _draftLoadError != null
+          ? _draftRows
+          : draftRowsResult
+                .map((raw) => Map<String, dynamic>.from(raw as Map))
+                .map(_HrPrenominaDraftRowRecord.fromRow)
+                .toList(growable: false);
       final periodClosures = periodClosuresResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
           .map(_HrPrenominaPeriodClosure.fromRow)
@@ -442,7 +454,7 @@ class _HumanResourcesPrenominaPageState
         closures: _periodClosures,
       );
       _rebuildRows();
-      if (_loanLoadError != null) _showSnack(_loanLoadError!);
+      if (_payrollLoadError != null) _showSnack(_payrollLoadError!);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -477,6 +489,8 @@ class _HumanResourcesPrenominaPageState
       selectedLabel: _selectedPeriodLabel,
       availableLabels: _periodOptions,
     );
+    // Resolve closure/recurrence against the newly selected period.
+    _activePeriodLabel = periodLabel;
     final contpaqLot = _prenominaLotForPeriod(
       _importLots,
       _HrPrenominaImportSource.contpaq,
@@ -508,7 +522,7 @@ class _HumanResourcesPrenominaPageState
             row,
             _attendanceDiagnostics[row.employeeId],
             query: _employeeSearch,
-            company: _companyFilter,
+            companies: _companyFilter,
             incidencesOnly: _incidencesOnly,
           ),
         )
@@ -521,7 +535,6 @@ class _HumanResourcesPrenominaPageState
     final end = (start + _pageSize).clamp(0, filteredRows.length);
     _allRows = filteredRows;
     _visibleRows = filteredRows.sublist(start, end);
-    _activePeriodLabel = periodLabel;
     _navigationController.configure(
       insertColumnCount: 0,
       gridColumnCount: _kPrenominaGridColumns.length,
@@ -793,8 +806,8 @@ class _HumanResourcesPrenominaPageState
     required _HrPrenominaEditResult result,
   }) async {
     if (!_requireActivePeriod()) return;
-    if (_loanLoadError != null) {
-      _showSnack(_loanLoadError!);
+    if (_payrollLoadError != null) {
+      _showSnack(_payrollLoadError!);
       return;
     }
     if (_isActivePeriodClosed) {
@@ -900,10 +913,10 @@ class _HumanResourcesPrenominaPageState
         .toList(growable: false);
     setState(() => _publishingAll = true);
     try {
-      if (_loanLoadError != null) {
+      if (_payrollLoadError != null) {
         await _showPublicationMessage(
           'No se puede publicar todavía',
-          _loanLoadError!,
+          _payrollLoadError!,
         );
         return;
       }
@@ -1135,14 +1148,14 @@ class _HumanResourcesPrenominaPageState
         period: _activePeriodLabel,
         checkLoans: _loanLoadError == null,
       );
-      if (issues.isEmpty && _loanLoadError == null) return true;
+      if (issues.isEmpty && _payrollLoadError == null) return true;
       if (!mounted) return false;
       final selected = await showDialog<_PrenominaClosureIssue>(
         context: context,
         builder: (_) => _PrenominaClosureReviewDialog(
           period: _activePeriodLabel,
           issues: issues,
-          message: _loanLoadError,
+          message: _payrollLoadError,
         ),
       );
       if (!mounted || selected == null) return false;
@@ -1716,14 +1729,14 @@ class _HumanResourcesPrenominaPageState
                           periodRows: _periodRows,
                           diagnostics: _attendanceDiagnostics,
                           search: _employeeSearch,
-                          company: _companyFilter,
+                          companies: _companyFilter,
                           incidencesOnly: _incidencesOnly,
                           selectedStatuses:
                               _columnFilters['estado'] ?? const {},
                           hasFilters:
                               _columnFilters.isNotEmpty ||
                               _employeeSearch.isNotEmpty ||
-                              _companyFilter != null ||
+                              _companyFilter.isNotEmpty ||
                               _incidencesOnly,
                           onSearch: (value) {
                             _employeeSearch = value;
@@ -1752,7 +1765,7 @@ class _HumanResourcesPrenominaPageState
                           onClearFilters: () {
                             _columnFilters.clear();
                             _employeeSearch = '';
-                            _companyFilter = null;
+                            _companyFilter = {};
                             _incidencesOnly = false;
                             _currentPage = 0;
                             _rebuildRows();
@@ -1832,6 +1845,24 @@ class _HumanResourcesPrenominaPageState
               onDismiss: () => setState(() => _menuOpen = false),
               canReturnToDirection: _canReturnToDirection,
               sections: buildHumanResourcesAreaSections(
+                openVacancies: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesVacanciesPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
+                openDocumentation: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesDocumentationPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
                 activeScreen: HumanResourcesAreaScreen.prenomina,
                 openPersonnel: _openPersonnel,
                 openAttendance: _openAttendance,
@@ -3293,6 +3324,9 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
   required String activeContpaqRawPeriodLabel,
 }) {
   final activeRange = HumanResourcesPeriodRange.tryParse(activePeriodLabel);
+  final fixedBonuses = freezeLoanPlans
+      ? <String, _HrPrenominaDraftRowRecord>{}
+      : _prenominaFixedBonusesBefore(draftRows, activeRange);
   final draftByEmployee = {
     for (final draft in draftRows.where(
       (item) => item.periodLabel == activePeriodLabel,
@@ -3706,7 +3740,14 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
         final overtimeMonetizedAmount = (isPublished || overtimeIsManual)
             ? (draft?.overtimeMonetizedAmount ?? 0)
             : suggestedOvertimeMonetizedAmount;
-        final manualBonusAmount = draft?.manualBonusAmount ?? 0;
+        // Saved periods keep their captured amount, including an explicit zero.
+        // Only a new period inherits the latest earlier fixed-bonus setting.
+        final fixedBonus = fixedBonuses[employee.employeeId];
+        final manualBonusAmount = draft != null
+            ? draft.manualBonusAmount ?? 0
+            : fixedBonus?.sourceSnapshot[_kPrenominaFixedBonus] == true
+            ? fixedBonus?.manualBonusAmount ?? 0
+            : 0.0;
         final cashAbsenceDeductionAmount =
             draft?.cashAbsenceDeductionAmount ??
             suggestedCashAbsenceDeductionAmount;
@@ -3828,6 +3869,9 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           prepaidVacation: prepaidVacation,
           sourceSnapshot: {
             ...?draft?.sourceSnapshot,
+            if (draft == null && fixedBonus != null)
+              _kPrenominaFixedBonus:
+                  fixedBonus.sourceSnapshot[_kPrenominaFixedBonus],
             if (loanPlan.end != null) 'loan_fund': loanPlan.toJson(),
             if (!isPublished) ...{
               'incidences_informational': true,

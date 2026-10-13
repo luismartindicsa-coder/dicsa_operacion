@@ -120,7 +120,21 @@ class _FinanzasProviderAccountsPageState
 
   void _handleSearchChanged() {
     if (!mounted) return;
-    setState(() {});
+    setState(() {
+      final visible = _visibleAccounts;
+      if (!visible.any((row) => row.company.companyId == _selectedCompanyId)) {
+        _selectedCompanyId = visible.firstOrNull?.company.companyId;
+      }
+      final query = _searchC.text.trim().toLowerCase();
+      if (query.isNotEmpty &&
+          visible.any(
+            (row) => row.invoices.any(
+              (item) => item.invoice.folio.toLowerCase().contains(query),
+            ),
+          )) {
+        _activeTab = _ProviderAccountsTab.facturas;
+      }
+    });
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -663,7 +677,10 @@ class _FinanzasProviderAccountsPageState
         .where((row) {
           return row.company.companyName.toLowerCase().contains(query) ||
               row.company.linkedName.toLowerCase().contains(query) ||
-              row.company.operationalContact.toLowerCase().contains(query);
+              row.company.operationalContact.toLowerCase().contains(query) ||
+              row.invoices.any(
+                (item) => item.invoice.folio.toLowerCase().contains(query),
+              );
         })
         .toList(growable: false);
   }
@@ -2581,6 +2598,7 @@ class _FinanzasProviderAccountsPageState
       await ComprasTicketsStore.updateProviderMovementAndAutoApply(
         movement: updatedMovement,
         previousType: movement.type,
+        previous: movement,
       );
       await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
         providerId: account.company.companyId,
@@ -3152,42 +3170,35 @@ class _FinanzasProviderAccountsPageState
   Future<void> _editInvoiceForSelectedProvider(_ProviderInvoiceView row) async {
     final account = _selectedAccount;
     if (account == null) return;
-    if (_canEditSupplierInvoiceFolioOnly(row)) {
-      final nextFolio = await showDialog<String>(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => _EditSupplierInvoiceFolioDialog(
-          companyName: account.company.companyName,
-          currentFolio: row.invoice.folio,
-          title: 'Editar número de factura',
-          subtitle:
-              'Solo se actualizará el número de factura y la referencia ligada en Cuentas Bancarias.',
-        ),
+    final draft = await showDialog<_InvoiceCorrection>(
+      context: context,
+      builder: (_) => _EditSupplierInvoiceDialog(
+        companyName: account.company.companyName,
+        invoice: row.invoice,
+      ),
+    );
+    if (draft == null) return;
+    try {
+      await FinanzasProviderAccountsStore.correctInvoice(
+        invoice: row.invoice,
+        folio: draft.folio,
+        totalAmount: draft.total,
+        notes: draft.notes,
       );
-      if (nextFolio == null) return;
-      final normalizedFolio = nextFolio.trim();
-      if (normalizedFolio.isEmpty) {
-        _toast('Captura un número de factura para guardar el cambio.');
-        return;
-      }
-      if (normalizedFolio == row.invoice.folio.trim()) return;
-      try {
-        await FinanzasProviderAccountsStore.updateInvoiceFolioAndLinkedBankReferences(
-          invoice: row.invoice,
-          folio: normalizedFolio,
-        );
-        if (!mounted) return;
-        _toast(
-          'Número de factura actualizado y sincronizado con Cuentas Bancarias.',
-        );
-        await _loadPage();
-      } catch (error) {
-        if (!mounted) return;
-        _toast('No se pudo actualizar el número de factura. $error');
-      }
-      return;
+      if (!mounted) return;
+      _toast('Factura actualizada.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar la factura. $error');
     }
+  }
 
+  Future<void> _editInvoiceDetailsForSelectedProvider(
+    _ProviderInvoiceView row,
+  ) async {
+    final account = _selectedAccount;
+    if (account == null) return;
     if (!_canEditSupplierInvoice(row)) {
       _toast(
         'Solo puedes editar facturas pendientes sin pagos aplicados ni movimientos bancarios ligados.',
@@ -4629,6 +4640,9 @@ class _FinanzasProviderAccountsPageState
                                 child: selected == null
                                     ? const _ProviderAccountsEmptyDetail()
                                     : _ProviderAccountsDetailPane(
+                                        invoiceQuery: _searchC.text
+                                            .trim()
+                                            .toLowerCase(),
                                         account: selected,
                                         activeTab: _activeTab,
                                         moneyFormatter: _money,
@@ -4658,6 +4672,8 @@ class _FinanzasProviderAccountsPageState
                                             _editProviderCashMovementForSelectedProvider,
                                         onDeleteCashMovement:
                                             _deleteProviderCashMovementForSelectedProvider,
+                                        onEditInvoiceDetails:
+                                            _editInvoiceDetailsForSelectedProvider,
                                         onEditInvoice:
                                             _editInvoiceForSelectedProvider,
                                         onEditInvoicePriority:
@@ -4888,10 +4904,6 @@ bool _canEditSupplierInvoice(_ProviderInvoiceView row) {
   return row.bankMovement == null &&
       untouchedBalance &&
       (status == 'PENDIENTE' || status == 'VENCIDA');
-}
-
-bool _canEditSupplierInvoiceFolioOnly(_ProviderInvoiceView row) {
-  return row.bankMovement != null;
 }
 
 class _ProviderTicketApplicationView {
@@ -6837,7 +6849,7 @@ class _ProviderAccountsListPane extends StatelessWidget {
             decoration:
                 contractGlassFieldDecoration(
                   context,
-                  hintText: 'Buscar proveedor',
+                  hintText: 'Buscar proveedor o factura',
                   prefixIcon: const Icon(Icons.search_rounded),
                 ).copyWith(
                   hintStyle: const TextStyle(
@@ -7163,6 +7175,7 @@ class _ProviderAccountListCard extends StatelessWidget {
 
 class _ProviderAccountsDetailPane extends StatelessWidget {
   final _ProviderAccountView account;
+  final String invoiceQuery;
   final _ProviderAccountsTab activeTab;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
@@ -7192,6 +7205,8 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
   onDeleteCashMovement;
   final Future<void> Function(_ProviderInvoiceView invoice) onEditInvoice;
   final Future<void> Function(_ProviderInvoiceView invoice)
+  onEditInvoiceDetails;
+  final Future<void> Function(_ProviderInvoiceView invoice)
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onOpenInvoiceEvidence;
@@ -7204,6 +7219,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
 
   const _ProviderAccountsDetailPane({
     required this.account,
+    required this.invoiceQuery,
     required this.activeTab,
     required this.moneyFormatter,
     required this.dateFormatter,
@@ -7221,6 +7237,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.onEditCashMovement,
     required this.onDeleteCashMovement,
     required this.onEditInvoice,
+    required this.onEditInvoiceDetails,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
     required this.onDeleteTicket,
@@ -7392,6 +7409,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 onDeleteTicket: onDeleteTicket,
               ),
               _ProviderAccountsTab.facturas => _ProviderAccountInvoicesView(
+                invoiceQuery: invoiceQuery,
                 account: account,
                 moneyFormatter: moneyFormatter,
                 dateFormatter: dateFormatter,
@@ -7399,6 +7417,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 onRegisterManualInvoice: onRegisterManualInvoice,
                 onPrintInvoices: () => onPrintInvoices(account),
                 onEditInvoice: onEditInvoice,
+                onEditInvoiceDetails: onEditInvoiceDetails,
                 onEditInvoicePriority: onEditInvoicePriority,
                 onOpenInvoiceEvidence: onOpenInvoiceEvidence,
                 onDeleteInvoice: onDeleteInvoice,
@@ -8257,12 +8276,15 @@ String _providerExcelSelectionRangeLabel(List<ComprasTicketRecord> tickets) {
 
 class _ProviderAccountInvoicesView extends StatelessWidget {
   final _ProviderAccountView account;
+  final String invoiceQuery;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final Future<void> Function() onRegisterInvoice;
   final Future<void> Function() onRegisterManualInvoice;
   final Future<void> Function() onPrintInvoices;
   final Future<void> Function(_ProviderInvoiceView invoice) onEditInvoice;
+  final Future<void> Function(_ProviderInvoiceView invoice)
+  onEditInvoiceDetails;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
@@ -8271,12 +8293,14 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
 
   const _ProviderAccountInvoicesView({
     required this.account,
+    required this.invoiceQuery,
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onRegisterInvoice,
     required this.onRegisterManualInvoice,
     required this.onPrintInvoices,
     required this.onEditInvoice,
+    required this.onEditInvoiceDetails,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
     required this.onDeleteInvoice,
@@ -8285,6 +8309,14 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final matches = invoiceQuery.isEmpty
+        ? account.invoices
+        : account.invoices
+              .where(
+                (row) => row.invoice.folio.toLowerCase().contains(invoiceQuery),
+              )
+              .toList();
+    final invoices = matches.isEmpty ? account.invoices : matches;
     final eligibleCount = account.tickets
         .where((ticket) => ticket.facturaStatus == 'PENDIENTE_DE_FACTURAR')
         .length;
@@ -8324,7 +8356,7 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        if (account.invoices.isEmpty)
+        if (invoices.isEmpty)
           Expanded(
             child: _ProviderAccountsPendingPane(
               label: 'Sin facturas registradas',
@@ -8336,10 +8368,10 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
         else
           Expanded(
             child: ListView.separated(
-              itemCount: account.invoices.length,
+              itemCount: invoices.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (_, index) {
-                final row = account.invoices[index];
+                final row = invoices[index];
                 return FinanzasGlassPanel(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   borderRadius: BorderRadius.circular(22),
@@ -8387,12 +8419,23 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          if (_canEditSupplierInvoice(row) ||
-                              _canEditSupplierInvoiceFolioOnly(row)) ...[
-                            _MovementIconAction(
+                          Tooltip(
+                            message: 'Editar folio, total y comentarios',
+                            child: _MovementIconAction(
                               icon: Icons.edit_outlined,
                               color: tokens.primaryStrong,
                               onTap: () => onEditInvoice(row),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (_canEditSupplierInvoice(row)) ...[
+                            Tooltip(
+                              message: 'Editar fechas, destino y tickets',
+                              child: _MovementIconAction(
+                                icon: Icons.tune_rounded,
+                                color: tokens.primaryStrong,
+                                onTap: () => onEditInvoiceDetails(row),
+                              ),
                             ),
                             const SizedBox(width: 8),
                           ],
@@ -9245,7 +9288,8 @@ class _ProviderCashMovementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final positive = row.type == 'ABONO' ||
+    final positive =
+        row.type == 'ABONO' ||
         row.type == 'PAGO' ||
         (row.type == 'AJUSTE' && row.amount < 0);
     final tone = positive ? kFinanzasSage : kFinanzasBurnt;
@@ -11971,43 +12015,59 @@ class _InvoiceDraftResult {
   });
 }
 
-class _EditSupplierInvoiceFolioDialog extends StatefulWidget {
-  final String companyName;
-  final String currentFolio;
-  final String title;
-  final String subtitle;
+class _InvoiceCorrection {
+  final String folio;
+  final double total;
+  final String notes;
+  const _InvoiceCorrection(this.folio, this.total, this.notes);
+}
 
-  const _EditSupplierInvoiceFolioDialog({
+class _EditSupplierInvoiceDialog extends StatefulWidget {
+  final String companyName;
+  final FinanzasSupplierInvoiceRecord invoice;
+
+  const _EditSupplierInvoiceDialog({
     required this.companyName,
-    required this.currentFolio,
-    required this.title,
-    required this.subtitle,
+    required this.invoice,
   });
 
   @override
-  State<_EditSupplierInvoiceFolioDialog> createState() =>
-      _EditSupplierInvoiceFolioDialogState();
+  State<_EditSupplierInvoiceDialog> createState() =>
+      _EditSupplierInvoiceDialogState();
 }
 
-class _EditSupplierInvoiceFolioDialogState
-    extends State<_EditSupplierInvoiceFolioDialog> {
+class _EditSupplierInvoiceDialogState
+    extends State<_EditSupplierInvoiceDialog> {
   late final TextEditingController _folioC;
+  late final TextEditingController _totalC;
+  late final TextEditingController _notesC;
 
   @override
   void initState() {
     super.initState();
-    _folioC = TextEditingController(text: widget.currentFolio);
+    _folioC = TextEditingController(text: widget.invoice.folio);
+    _totalC = TextEditingController(
+      text: widget.invoice.totalAmount.toStringAsFixed(2),
+    );
+    _notesC = TextEditingController(text: widget.invoice.notes);
   }
 
   @override
   void dispose() {
     _folioC.dispose();
+    _totalC.dispose();
+    _notesC.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final canSave = _folioC.text.trim().isNotEmpty;
+    final total = double.tryParse(_totalC.text.replaceAll(',', '').trim());
+    final canSave =
+        _folioC.text.trim().isNotEmpty &&
+        total != null &&
+        total.isFinite &&
+        total > 0.009;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
@@ -12024,11 +12084,12 @@ class _EditSupplierInvoiceFolioDialogState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _DialogHeader(
-                    title: widget.title,
-                    subtitle: '${widget.companyName} · ${widget.subtitle}',
+                    title: 'Editar factura',
+                    subtitle: widget.companyName,
                   ),
                   const SizedBox(height: 18),
                   TextField(
+                    autofocus: true,
                     controller: _folioC,
                     onChanged: (_) => setState(() {}),
                     style: const TextStyle(
@@ -12043,11 +12104,45 @@ class _EditSupplierInvoiceFolioDialogState
                     ),
                   ),
                   const SizedBox(height: 12),
+                  TextField(
+                    controller: _totalC,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Total de la factura',
+                      prefixIcon: const Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesC,
+                    minLines: 2,
+                    maxLines: 4,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Comentarios',
+                      prefixIcon: const Icon(Icons.note_alt_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    'Este cambio no modifica saldo, pagos, tickets, cobertura ni vínculos operativos. Solo sincroniza el folio con la referencia del movimiento bancario ligado.',
+                    widget.invoice.status == 'PAGADA' ||
+                            widget.invoice.balanceAmount <= 0.009
+                        ? 'La factura conservará su estado Pagada y saldo cero. Los pagos registrados se conservan.'
+                        : 'El saldo se recalcula con el nuevo total y los pagos ya aplicados.',
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
                       color: kFinanzasMutedInk,
                     ),
                   ),
@@ -12056,8 +12151,14 @@ class _EditSupplierInvoiceFolioDialogState
                     onCancel: () => Navigator.of(context).pop(),
                     onConfirm: !canSave
                         ? null
-                        : () => Navigator.of(context).pop(_folioC.text.trim()),
-                    confirmLabel: 'Guardar número',
+                        : () => Navigator.of(context).pop(
+                            _InvoiceCorrection(
+                              _folioC.text.trim(),
+                              total,
+                              _notesC.text.trim(),
+                            ),
+                          ),
+                    confirmLabel: 'Guardar cambios',
                   ),
                 ],
               ),

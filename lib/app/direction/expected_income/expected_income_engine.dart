@@ -303,13 +303,22 @@ ExpectedIncomeProjection projectExpectedIncome({
         .add('FISCAL', collection.pendingCents);
   }
   final palomar = _projectPalomar(week, rows, data);
-  // Availability is evaluated at the close of the selected week. Include one
-  // possible draw in that week's cash forecast, keeping it separate from sales.
-  // It has no agreed payment date, so do not invent a day in the timeline or
-  // repeat the revolving credit limit in the next/later buckets.
+  // One possible draw in the selected week; dated parts also fund their day.
+  // Scheduling changes timing only, never the credit limit or eligibility.
   if (palomar.availableDraw > 0) {
     current.addFinancing('EFECTIVO', palomar.cash);
     current.addFinancing('FISCAL', palomar.fiscal);
+    for (final part in {
+      'EFECTIVO': palomar.cash,
+      'FISCAL': palomar.fiscal,
+    }.entries) {
+      final date = palomar.dateFor(part.key);
+      if (date != null && part.value > 0) {
+        timeline
+            .putIfAbsent(date, IncomeTotals.new)
+            .addFinancing(part.key, part.value);
+      }
+    }
   }
   return ExpectedIncomeProjection(
     collections: collections,
@@ -380,7 +389,18 @@ PalomarIncomeProjection _projectPalomar(
     available,
     incomeCents(config.cashCheck1 + config.cashCheck2),
   );
+  final schedule = data.palomarSchedule;
+  final useSchedule =
+      schedule != null &&
+      schedule.valid &&
+      incomeDay(schedule.week) == incomeDay(week);
   return PalomarIncomeProjection(
+    cashDate: useSchedule && schedule.cashDate != null
+        ? incomeDay(schedule.cashDate!)
+        : null,
+    fiscalDate: useSchedule && schedule.fiscalDate != null
+        ? incomeDay(schedule.fiscalDate!)
+        : null,
     opening: opening,
     charges: charges,
     credits: credits,

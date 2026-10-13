@@ -110,6 +110,7 @@ class ProfitabilityPdfData {
       .where(
         (l) =>
             number(l, 'kg') > 0 ||
+            number(l, 'pieces') > 0 ||
             number(l, 'services') > 0 ||
             number(l, 'value') + number(l, 'income') > 0,
       )
@@ -516,7 +517,7 @@ Future<Uint8List> buildProfitabilityPdf(
         pw.NewPage(freeSpace: 260),
         section('2. Materiales y servicios atendidos'),
         paragraph(
-          '${_qty(data.number(account, 'kg'))} kg de material, ${_qty(data.number(account, 'services'))} servicios y ${_qty(data.number(account, 'kilometers'))} km atribuidos en el periodo.',
+          '${_qty(data.number(account, 'kg'))} kg de material${data.number(account, 'pieces') > 0 ? ', ${_qty(data.number(account, 'pieces'))} piezas separadas de los kg' : ''}, ${_qty(data.number(account, 'services'))} servicios y ${_qty(data.number(account, 'kilometers'))} km atribuidos en el periodo.',
         ),
         if (materials.isEmpty)
           paragraph(
@@ -526,7 +527,7 @@ Future<Uint8List> buildProfitabilityPdf(
           table(
             [
               'Material / servicio',
-              'Kg',
+              'Cantidad',
               'Genera',
               'Costos atribuidos',
               'Aporte',
@@ -535,7 +536,9 @@ Future<Uint8List> buildProfitabilityPdf(
               for (final l in materials)
                 [
                   profitText(l['label']),
-                  _qty(data.number(l, 'kg')),
+                  data.number(l, 'pieces') > 0
+                      ? '${data.number(l, 'kg') > 0 ? '${_qty(data.number(l, 'kg'))} kg + ' : ''}${_qty(data.number(l, 'pieces'))} pzas'
+                      : '${_qty(data.number(l, 'kg'))} kg',
                   _money(data.number(l, 'value') + data.number(l, 'income')),
                   _money(data.number(l, 'costs')),
                   _money(data.number(l, 'contribution')),
@@ -550,6 +553,10 @@ Future<Uint8List> buildProfitabilityPdf(
             },
           ),
         pw.SizedBox(height: 10),
+        for (final note in (account['assumptions'] as List? ?? const []).where(
+          (n) => n is String && n.startsWith('Equivalencia provisional'),
+        ))
+          paragraph(note as String),
         statement([
           [
             'Costos atribuidos a materiales y servicios',

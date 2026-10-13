@@ -1,3 +1,4 @@
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'finanzas_financial_rules.dart';
@@ -169,12 +170,16 @@ class FinanzasFixedPaymentRecord {
 class FinanzasFixedPaymentsStore {
   static Future<List<FinanzasFixedPaymentRecord>> loadPayments() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinFixedPaymentsTable)
-          .select()
-          .order('payment_date')
-          .order('received_date', ascending: false)
-          .order('created_at', ascending: false);
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kFinFixedPaymentsTable)
+            .select()
+            .order('payment_date')
+            .order('received_date', ascending: false)
+            .order('created_at', ascending: false)
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => FinanzasFixedPaymentRecord.fromRemoteRow(

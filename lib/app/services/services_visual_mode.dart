@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../logistica/logistics_theme.dart';
+import 'operations_red_theme.dart';
 
 class ServicesVisualModeScope extends InheritedWidget {
   final bool logisticsSilverMode;
@@ -26,26 +27,43 @@ class ServicesVisualModeScope extends InheritedWidget {
 
 class ServicesVisualPalette {
   final bool logisticsSilver;
+  final bool operationsRed;
 
-  const ServicesVisualPalette._({required this.logisticsSilver});
+  const ServicesVisualPalette._({
+    required this.logisticsSilver,
+    required this.operationsRed,
+  });
 
   factory ServicesVisualPalette.of(BuildContext context) {
     return ServicesVisualPalette._(
       logisticsSilver: ServicesVisualModeScope.isLogisticsSilver(context),
+      operationsRed: OperationsRedTheme.isActive(context),
     );
   }
 
-  Color get textPrimary =>
-      logisticsSilver ? kLogisticsSilverTextPrimary : const Color(0xFF0B2B2B);
+  Color get textPrimary => operationsRed
+      ? OperationsRedColors.ink
+      : logisticsSilver
+      ? kLogisticsSilverTextPrimary
+      : const Color(0xFF0B2B2B);
 
-  Color get textSecondary =>
-      logisticsSilver ? kLogisticsSilverTextSecondary : const Color(0xFF2A4B49);
+  Color get textSecondary => operationsRed
+      ? OperationsRedColors.muted
+      : logisticsSilver
+      ? kLogisticsSilverTextSecondary
+      : const Color(0xFF2A4B49);
 
-  Color get textMuted =>
-      logisticsSilver ? kLogisticsSilverTextMuted : const Color(0xFF48637E);
+  Color get textMuted => operationsRed
+      ? OperationsRedColors.muted
+      : logisticsSilver
+      ? kLogisticsSilverTextMuted
+      : const Color(0xFF48637E);
 
-  Color get icon =>
-      logisticsSilver ? kLogisticsSilverIcon : const Color(0xFF0B2B2B);
+  Color get icon => operationsRed
+      ? OperationsRedColors.strong
+      : logisticsSilver
+      ? kLogisticsSilverIcon
+      : const Color(0xFF0B2B2B);
 
   Color get surfaceBase => logisticsSilver
       ? const Color(0xF6F7F9FB)
@@ -55,18 +73,27 @@ class ServicesVisualPalette {
       ? const Color(0xFFF3F5F7)
       : Colors.white.withValues(alpha: 0.40);
 
-  Color get surfaceInteractive => logisticsSilver
+  Color get surfaceInteractive => operationsRed
+      ? OperationsRedColors.surface
+      : logisticsSilver
       ? kLogisticsSilverSurfaceInteractive
       : const Color(0xFFEAF2F9);
 
-  Color get surfaceHover =>
-      logisticsSilver ? kLogisticsSilverSurfaceHover : const Color(0xFFE2EEEC);
+  Color get surfaceHover => operationsRed
+      ? OperationsRedColors.hover
+      : logisticsSilver
+      ? kLogisticsSilverSurfaceHover
+      : const Color(0xFFE2EEEC);
 
-  Color get fieldFill => logisticsSilver
+  Color get fieldFill => operationsRed
+      ? OperationsRedColors.field
+      : logisticsSilver
       ? const Color(0xFFF8F9FB)
       : Colors.white.withValues(alpha: 0.45);
 
-  Color get fieldFillStrong => logisticsSilver
+  Color get fieldFillStrong => operationsRed
+      ? OperationsRedColors.field
+      : logisticsSilver
       ? const Color(0xFFFBFCFD)
       : Colors.white.withValues(alpha: 0.88);
 
@@ -78,8 +105,11 @@ class ServicesVisualPalette {
       ? const Color(0xFFFFFFFF)
       : Colors.white.withValues(alpha: 0.68);
 
-  Color get divider =>
-      logisticsSilver ? kLogisticsSilverDivider : const Color(0x330B2B2B);
+  Color get divider => operationsRed
+      ? OperationsRedColors.border
+      : logisticsSilver
+      ? kLogisticsSilverDivider
+      : const Color(0x330B2B2B);
 
   Color get shadow => logisticsSilver
       ? const Color(0x2A1F2630)
@@ -89,24 +119,38 @@ class ServicesVisualPalette {
       ? const Color(0x33192028)
       : Colors.black.withValues(alpha: 0.18);
 
-  Color get glow => logisticsSilver
+  Color get glow => operationsRed
+      ? OperationsRedColors.glow
+      : logisticsSilver
       ? kLogisticsSilverGlowEdge.withValues(alpha: 0.28)
       : const Color(0xFF0E86FF).withValues(alpha: 0.20);
 
-  Color get filterAccent =>
-      logisticsSilver ? const Color(0xFF727A84) : const Color(0xFF4F8E8C);
+  Color get filterAccent => operationsRed
+      ? OperationsRedColors.strong
+      : logisticsSilver
+      ? const Color(0xFF727A84)
+      : const Color(0xFF4F8E8C);
 
-  Color get filterAccentSoft =>
-      logisticsSilver ? const Color(0xFFE7EAEE) : const Color(0xFFE2EEEC);
+  Color get filterAccentSoft => operationsRed
+      ? OperationsRedColors.soft
+      : logisticsSilver
+      ? const Color(0xFFE7EAEE)
+      : const Color(0xFFE2EEEC);
 
-  Color get buttonFill =>
-      logisticsSilver ? const Color(0xFFD6DBE0) : const Color(0xFF4F8E8C);
+  Color get buttonFill => operationsRed
+      ? OperationsRedColors.strong
+      : logisticsSilver
+      ? const Color(0xFFD6DBE0)
+      : const Color(0xFF4F8E8C);
 
   Color get buttonFillForeground =>
       logisticsSilver ? kLogisticsSilverTextPrimary : Colors.white;
 
-  Color get menuSurface =>
-      logisticsSilver ? const Color(0xF0F3F5F8) : const Color(0xE40B2B2B);
+  Color get menuSurface => operationsRed
+      ? OperationsRedColors.ink.withAlpha(228)
+      : logisticsSilver
+      ? const Color(0xF0F3F5F8)
+      : const Color(0xE40B2B2B);
 
   Color get menuSoftFill => logisticsSilver
       ? const Color(0xFFFFFFFF)
@@ -127,19 +171,29 @@ class ServicesVisualPalette {
       ? kLogisticsSilverIcon
       : Colors.white.withValues(alpha: 0.78);
 
-  Color get selectedRowFill => logisticsSilver
+  Color get selectedRowFill => operationsRed
+      ? OperationsRedColors.selection
+      : logisticsSilver
       ? const Color(0xFFE1E6EB)
       : const Color(0xFF00A3FF).withValues(alpha: 0.16);
 
-  Color get selectedRowSecondaryFill => logisticsSilver
+  Color get selectedRowSecondaryFill => operationsRed
+      ? OperationsRedColors.selection
+      : logisticsSilver
       ? const Color(0xFFD8DEE5)
       : const Color(0xFF00A3FF).withValues(alpha: 0.13);
 
-  Color get editingRowFill =>
-      logisticsSilver ? const Color(0xFFECEFF3) : const Color(0xFFDCEBFF);
+  Color get editingRowFill => operationsRed
+      ? OperationsRedColors.soft
+      : logisticsSilver
+      ? const Color(0xFFECEFF3)
+      : const Color(0xFFDCEBFF);
 
-  Color get hoverRowFill =>
-      logisticsSilver ? const Color(0xFFF6F8FA) : const Color(0xFFEEF5FF);
+  Color get hoverRowFill => operationsRed
+      ? OperationsRedColors.hover
+      : logisticsSilver
+      ? const Color(0xFFF6F8FA)
+      : const Color(0xFFEEF5FF);
 
   LinearGradient get glassCardGradient => logisticsSilver
       ? const LinearGradient(
@@ -184,7 +238,13 @@ class ServicesVisualPalette {
           colors: [Color(0x00000000), Color(0x00000000)],
         );
 
-  LinearGradient get menuEmphasisGradient => logisticsSilver
+  LinearGradient get menuEmphasisGradient => operationsRed
+      ? const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [OperationsRedColors.primary, OperationsRedColors.strong],
+        )
+      : logisticsSilver
       ? const LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,

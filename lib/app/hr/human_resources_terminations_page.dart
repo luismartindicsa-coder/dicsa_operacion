@@ -16,6 +16,8 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/file_download_save.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_compensation.dart';
@@ -344,6 +346,18 @@ class _TerminationsPageState extends State<HumanResourcesTerminationsPage> {
               onDismiss: () => setState(() => _menuOpen = false),
               canReturnToDirection: _canReturnToDirection,
               sections: buildHumanResourcesAreaSections(
+                openVacancies: () => _navigate(
+                  const HumanResourcesVacanciesPage(instantOpen: true),
+                ),
+                openDocumentation: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesDocumentationPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
                 activeScreen: HumanResourcesAreaScreen.terminations,
                 openPersonnel: () => _navigate(
                   const HumanResourcesPersonnelPage(instantOpen: true),

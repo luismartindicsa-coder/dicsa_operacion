@@ -94,7 +94,7 @@ List<LogisticsAreaNavSection> _buildLogisticsAreaSections({
         buildEntry(
           icon: Icons.directions_bus_filled_rounded,
           title: kLogisticsNavFleetStatusLabel,
-          subtitle: 'Disponibilidad, bloqueos y FLOTILLA',
+          subtitle: 'Estado manual y observaciones',
         ),
         buildEntry(
           icon: Icons.report_problem_outlined,

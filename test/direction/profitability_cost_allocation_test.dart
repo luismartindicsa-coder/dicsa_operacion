@@ -42,6 +42,72 @@ ProfitRow trip(String id, String site, String unit) => {
 
 void main() {
   test(
+    'confirmed July IMSS belongs to September workforce, other centers stay separate',
+    () {
+      ProfitAnalysis calculate({required String julyId}) =>
+          fixtures.operational(
+            costFixture(
+              {
+                'hr_employee_profiles': [
+                  {
+                    'id': 'worker',
+                    'empresa': 'PLANTA A',
+                    'salario': 700,
+                    'employment_status': 'ACTIVO',
+                  },
+                ],
+                'finanzas_bank_movements': [
+                  {
+                    ...fixtures.expense(
+                      julyId,
+                      304252.15,
+                      'GASTOS ADMINISTRATIVOS',
+                    ),
+                    'movement_date': '2026-07-20',
+                    'counterparty_name_snapshot': 'IMSS',
+                    'comment': 'IMSS JULIO',
+                    'company': 'DICSA',
+                    'branch': 'MAZATLAN',
+                  },
+                  {
+                    ...fixtures.expense('september', 316748.88, 'AJUSTES'),
+                    'movement_date': '2026-09-17',
+                    'counterparty_name_snapshot': 'IMSS',
+                    'comment': 'IMSS SEPTIEMBRE',
+                    'company': 'DICSA',
+                    'branch': 'CELAYA',
+                  },
+                ],
+              },
+              from: 1,
+              to: 22,
+            ),
+          );
+      final matched = calculate(julyId: 'fin-bank-mov-1784571582468557');
+      final independent = calculate(julyId: 'another-workforce');
+      expect(fixtures.account(matched).historicalCostEstimate, 0);
+      expect(
+        fixtures.account(independent).historicalCostEstimate,
+        closeTo(304252.15 / 90 * 22, .01),
+      );
+      expect(
+        fixtures
+            .account(matched)
+            .components
+            .where((v) => v.basisLevel == 'allocation')
+            .fold<double>(0, (t, v) => t + v.amount!),
+        closeTo(316748.88 / 30 * 22, .01),
+      );
+      expect(
+        matched
+            .historicalCostEvidence
+            .single['documents']
+            .single['reconciliation'],
+        contains('misma plantilla'),
+      );
+    },
+  );
+  test(
     'confirmed FONACOT remittance is not an additional expense; other fees stay',
     () {
       final a = fixtures.operational(

@@ -15,14 +15,29 @@ import 'commercial_agenda_page.dart';
 import 'commercial_dashboard_page.dart';
 import 'commercial_development_dashboard_page.dart';
 import 'commercial_store.dart';
+import 'commercial_account_activity.dart';
+import 'commercial_quotes.dart';
 import 'commercial_theme.dart';
 
-enum _DirectorySourceFilter { all, commercialCreated, external }
+enum _DirectorySourceFilter {
+  all,
+  customers,
+  suppliers,
+  prospects,
+  commercialCreated,
+  external,
+}
 
 class CommercialDirectoryPage extends StatefulWidget {
   final bool instantOpen;
-
-  const CommercialDirectoryPage({super.key, this.instantOpen = false});
+  final String? initialAccountId;
+  final bool showLeadAlerts;
+  const CommercialDirectoryPage({
+    super.key,
+    this.instantOpen = false,
+    this.initialAccountId,
+    this.showLeadAlerts = false,
+  });
 
   @override
   State<CommercialDirectoryPage> createState() =>
@@ -35,8 +50,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
   bool _saving = false;
   bool _canReturnToDirection = false;
   bool _onlyAlerts = false;
-  _DirectorySourceFilter _sourceFilter =
-      _DirectorySourceFilter.commercialCreated;
+  _DirectorySourceFilter _sourceFilter = _DirectorySourceFilter.all;
   String _query = '';
   CommercialDirectoryBundle? _bundle;
   String? _selectedId;
@@ -44,6 +58,9 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
   @override
   void initState() {
     super.initState();
+    _selectedId = widget.initialAccountId;
+    _onlyAlerts = widget.showLeadAlerts;
+    if (widget.showLeadAlerts) _sourceFilter = _DirectorySourceFilter.prospects;
     unawaited(_resolveNavigationAccess());
     unawaited(_loadDirectory());
   }
@@ -56,8 +73,8 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     });
   }
 
-  Future<void> _loadDirectory() async {
-    setState(() => _loading = true);
+  Future<void> _loadDirectory({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     final bundle = await CommercialStore.loadDirectory();
     if (!mounted) return;
     setState(() {
@@ -122,6 +139,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
           priority: row.priority,
           notes: row.notes,
         );
+        _selectedId = accountId;
         await CommercialStore.saveContact(
           accountId: accountId,
           name: draft.name,
@@ -151,6 +169,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
           priority: row.priority,
           notes: row.notes,
         );
+        _selectedId = accountId;
         await CommercialStore.saveFollowUp(
           accountId: accountId,
           interactionAt: draft.interactionAt,
@@ -164,6 +183,33 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     );
   }
 
+  Future<void> _editFollowUp(
+    CommercialDirectoryAccountRecord account,
+    CommercialFollowUpRecord row,
+  ) async {
+    final draft = await showDialog<_CommercialFollowUpDraft>(
+      context: context,
+      builder: (_) => _CommercialFollowUpDialog(
+        accountName: account.displayName,
+        initial: row,
+      ),
+    );
+    if (draft == null) return;
+    await _runSave(
+      successMessage: 'Seguimiento actualizado.',
+      action: () => CommercialStore.saveFollowUp(
+        followUpId: row.id,
+        accountId: row.accountId,
+        interactionAt: draft.interactionAt,
+        interactionType: draft.interactionType,
+        summary: draft.summary,
+        nextAction: draft.nextAction,
+        nextFollowUpAt: draft.nextFollowUpAt,
+        status: draft.status,
+      ),
+    );
+  }
+
   Future<void> _runSave({
     required String successMessage,
     required Future<void> Function() action,
@@ -171,7 +217,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     setState(() => _saving = true);
     try {
       await action();
-      await _loadDirectory();
+      await _loadDirectory(silent: true);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -231,11 +277,19 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     final bundle = _bundle;
     final allRows =
         bundle?.accounts ?? const <CommercialDirectoryAccountRecord>[];
+    final leadAlerts = {
+      for (final alert in bundle?.leadAlerts() ?? <CommercialLeadAlert>[])
+        alert.account.id: alert,
+    };
     final rows = allRows
         .where((row) {
           final q = _query.trim().toUpperCase();
           if (!_matchesSourceFilter(row, _sourceFilter)) return false;
-          if (_onlyAlerts && row.activeAlertCount <= 0) return false;
+          if (_onlyAlerts &&
+              row.activeAlertCount <= 0 &&
+              !leadAlerts.containsKey(row.id)) {
+            return false;
+          }
           if (q.isEmpty) return true;
           return row.displayName.toUpperCase().contains(q) ||
               row.businessGroup.toUpperCase().contains(q) ||
@@ -356,6 +410,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
                                               final selectedRow =
                                                   row.id == selected?.id;
                                               return _AccountTile(
+                                                leadAlert: leadAlerts[row.id],
                                                 row: row,
                                                 selected: selectedRow,
                                                 onTap: () => setState(
@@ -373,6 +428,33 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
                                     child: selected == null
                                         ? const _EmptyDetail()
                                         : _DirectoryDetail(
+                                            key: ValueKey(
+                                              '${selected.sourceArea}|${selected.sourceRecordId.isEmpty ? selected.id : selected.sourceRecordId}',
+                                            ),
+                                            initialFollowUps:
+                                                widget.initialAccountId ==
+                                                selected.id,
+                                            leadAlert: leadAlerts[selected.id],
+                                            onEditFollowUp: (item) =>
+                                                _editFollowUp(selected!, item),
+                                            onCompleteFollowUp: (item) => _runSave(
+                                              successMessage:
+                                                  'Seguimiento realizado.',
+                                              action: () =>
+                                                  CommercialStore.completeFollowUp(
+                                                    item,
+                                                  ),
+                                            ),
+                                            onAccountResolved: (id) async {
+                                              await _loadDirectory(
+                                                silent: true,
+                                              );
+                                              if (mounted) {
+                                                setState(
+                                                  () => _selectedId = id,
+                                                );
+                                              }
+                                            },
                                             row: selected,
                                             contacts: contacts,
                                             followUps: followUps,
@@ -482,6 +564,12 @@ bool _matchesSourceFilter(
   final createdInCommercial = _isCommercialCreatedAccount(row);
   return switch (filter) {
     _DirectorySourceFilter.all => true,
+    _DirectorySourceFilter.customers =>
+      row.kind == 'customer' || row.kind == 'both',
+    _DirectorySourceFilter.suppliers =>
+      row.kind == 'supplier' || row.kind == 'both',
+    _DirectorySourceFilter.prospects =>
+      row.kind == 'prospect' || row.status == 'prospecto',
     _DirectorySourceFilter.commercialCreated => createdInCommercial,
     _DirectorySourceFilter.external => !createdInCommercial,
   };
@@ -679,20 +767,44 @@ class _DirectorySourceFilterButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final label = switch (value) {
-      _DirectorySourceFilter.all => 'Todas las fuentes',
+      _DirectorySourceFilter.all => 'Todas las cuentas',
+      _DirectorySourceFilter.customers => 'Clientes',
+      _DirectorySourceFilter.suppliers => 'Proveedores',
+      _DirectorySourceFilter.prospects => 'Prospectos',
       _DirectorySourceFilter.commercialCreated => 'Creadas en Desarrollo',
       _DirectorySourceFilter.external => 'Otras fuentes',
     };
     return PopupMenuButton<_DirectorySourceFilter>(
-      tooltip: 'Filtrar por procedencia',
+      tooltip: 'Filtrar cuentas',
       onSelected: onChanged,
       color: const Color(0xFF1A2A21),
       itemBuilder: (context) => [
         const PopupMenuItem(
+          value: _DirectorySourceFilter.customers,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.groups_outlined,
+            label: 'Clientes',
+          ),
+        ),
+        const PopupMenuItem(
+          value: _DirectorySourceFilter.suppliers,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.local_shipping_outlined,
+            label: 'Proveedores',
+          ),
+        ),
+        const PopupMenuItem(
+          value: _DirectorySourceFilter.prospects,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.person_search_outlined,
+            label: 'Prospectos',
+          ),
+        ),
+        const PopupMenuItem(
           value: _DirectorySourceFilter.all,
           child: _DirectorySourceFilterMenuItem(
             icon: Icons.account_tree_outlined,
-            label: 'Todas las fuentes',
+            label: 'Todas las cuentas',
           ),
         ),
         PopupMenuItem(
@@ -729,7 +841,7 @@ class _DirectorySourceFilterButton extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              'Origen: $label',
+              'Ver: $label',
               style: TextStyle(
                 color: tokens.onGlass,
                 fontWeight: FontWeight.w800,
@@ -855,10 +967,12 @@ class _DirectoryEmptyList extends StatelessWidget {
 class _AccountTile extends StatelessWidget {
   final CommercialDirectoryAccountRecord row;
   final bool selected;
+  final CommercialLeadAlert? leadAlert;
   final VoidCallback onTap;
 
   const _AccountTile({
     required this.row,
+    this.leadAlert,
     required this.selected,
     required this.onTap,
   });
@@ -930,6 +1044,15 @@ class _AccountTile extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                if (leadAlert != null)
+                  Tooltip(
+                    message: leadAlert!.label,
+                    child: Icon(
+                      Icons.notifications_active_outlined,
+                      color: commercialAreaTokens.primaryStrong,
+                      size: 20,
+                    ),
+                  ),
                 if (row.activeAlertCount > 0)
                   _alertPill(
                     '${row.activeAlertCount} alertas',
@@ -1007,7 +1130,7 @@ class _AccountAvatar extends StatelessWidget {
   }
 }
 
-class _DirectoryDetail extends StatelessWidget {
+class _DirectorySummary extends StatelessWidget {
   final CommercialDirectoryAccountRecord row;
   final List<CommercialContactRecord> contacts;
   final List<CommercialFollowUpRecord> followUps;
@@ -1017,7 +1140,7 @@ class _DirectoryDetail extends StatelessWidget {
   final Future<void> Function() onAddContact;
   final Future<void> Function() onAddFollowUp;
 
-  const _DirectoryDetail({
+  const _DirectorySummary({
     required this.row,
     required this.contacts,
     required this.followUps,
@@ -1262,10 +1385,6 @@ class _DirectoryDetail extends StatelessWidget {
                 _InfoSectionCard(
                   title: 'Alertas activas',
                   icon: Icons.warning_amber_rounded,
-                  trailing: TextButton(
-                    onPressed: () {},
-                    child: const Text('Ver todas las alertas →'),
-                  ),
                   child: alerts.isEmpty
                       ? Text(
                           'Esta cuenta no tiene alertas activas en este momento.',
@@ -1329,13 +1448,11 @@ class _InfoSectionCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Widget child;
-  final Widget? trailing;
 
   const _InfoSectionCard({
     required this.title,
     required this.icon,
     required this.child,
-    this.trailing,
   });
 
   @override
@@ -1373,7 +1490,6 @@ class _InfoSectionCard extends StatelessWidget {
                   ),
                 ),
               ),
-              ...(trailing == null ? const <Widget>[] : <Widget>[trailing!]),
             ],
           ),
           const SizedBox(height: 14),
@@ -1993,8 +2109,9 @@ class _CommercialContactDialogState extends State<_CommercialContactDialog> {
 
 class _CommercialFollowUpDialog extends StatefulWidget {
   final String accountName;
+  final CommercialFollowUpRecord? initial;
 
-  const _CommercialFollowUpDialog({required this.accountName});
+  const _CommercialFollowUpDialog({required this.accountName, this.initial});
 
   @override
   State<_CommercialFollowUpDialog> createState() =>
@@ -2012,8 +2129,16 @@ class _CommercialFollowUpDialogState extends State<_CommercialFollowUpDialog> {
   @override
   void initState() {
     super.initState();
-    _summaryC = TextEditingController();
-    _nextActionC = TextEditingController();
+    _summaryC = TextEditingController(text: widget.initial?.summary ?? '');
+    _nextActionC = TextEditingController(
+      text: widget.initial?.nextAction ?? '',
+    );
+    if (widget.initial case final row?) {
+      _interactionAt = row.interactionAt ?? DateTime.now();
+      _nextFollowUpAt = row.nextFollowUpAt;
+      _interactionType = row.interactionType;
+      _status = row.status;
+    }
   }
 
   @override
@@ -2055,7 +2180,9 @@ class _CommercialFollowUpDialogState extends State<_CommercialFollowUpDialog> {
   @override
   Widget build(BuildContext context) {
     return _CommercialDialogShell(
-      title: 'Nuevo seguimiento',
+      title: widget.initial == null
+          ? 'Nuevo seguimiento'
+          : 'Editar seguimiento',
       subtitle: 'Registra el contacto comercial con ${widget.accountName}.',
       onSave: _save,
       child: Column(
@@ -2477,4 +2604,215 @@ String _formatDialogDate(DateTime value) {
   final month = value.month.toString().padLeft(2, '0');
   final day = value.day.toString().padLeft(2, '0');
   return '${value.year}-$month-$day';
+}
+
+/// Master-detail workspace: existing account summary plus focused commercial tabs.
+class _DirectoryDetail extends StatefulWidget {
+  final CommercialDirectoryAccountRecord row;
+  final List<CommercialContactRecord> contacts;
+  final List<CommercialFollowUpRecord> followUps;
+  final List<CommercialAlertRecord> alerts;
+  final CommercialLeadAlert? leadAlert;
+  final bool saving, initialFollowUps;
+  final Future<void> Function() onEditOverlay, onAddContact, onAddFollowUp;
+  final Future<void> Function(CommercialFollowUpRecord) onEditFollowUp,
+      onCompleteFollowUp;
+  final Future<void> Function(String) onAccountResolved;
+  const _DirectoryDetail({
+    super.key,
+    required this.row,
+    required this.contacts,
+    required this.followUps,
+    required this.alerts,
+    required this.leadAlert,
+    required this.saving,
+    required this.initialFollowUps,
+    required this.onEditOverlay,
+    required this.onAddContact,
+    required this.onAddFollowUp,
+    required this.onEditFollowUp,
+    required this.onCompleteFollowUp,
+    required this.onAccountResolved,
+  });
+  @override
+  State<_DirectoryDetail> createState() => _DirectoryDetailState();
+}
+
+class _DirectoryDetailState extends State<_DirectoryDetail> {
+  late int _tab;
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialFollowUps ? 3 : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final (index, label) in [
+              'Resumen',
+              'Compras y ventas',
+              'Cotizaciones',
+              'Seguimiento',
+            ].indexed)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(label),
+                  selected: _tab == index,
+                  onSelected: (_) => setState(() => _tab = index),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      if (widget.leadAlert != null && _tab != 3) ...[
+        InkWell(
+          onTap: () => setState(() => _tab = 3),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.notifications_active_outlined,
+                  color: commercialAreaTokens.primaryStrong,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.leadAlert!.label,
+                    style: TextStyle(
+                      color: commercialAreaTokens.primaryStrong,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+      Expanded(
+        child: switch (_tab) {
+          1 => CommercialAccountActivity(
+            key: ValueKey('activity-${widget.row.id}'),
+            account: widget.row,
+          ),
+          2 => CommercialAccountQuotes(
+            key: ValueKey('quotes-${widget.row.id}'),
+            account: widget.row,
+            onAccountResolved: widget.onAccountResolved,
+          ),
+          3 => _followUps(context),
+          _ => _DirectorySummary(
+            row: widget.row,
+            contacts: widget.contacts,
+            followUps: widget.followUps,
+            alerts: widget.alerts,
+            saving: widget.saving,
+            onEditOverlay: widget.onEditOverlay,
+            onAddContact: widget.onAddContact,
+            onAddFollowUp: widget.onAddFollowUp,
+          ),
+        },
+      ),
+    ],
+  );
+  Widget _followUps(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.row.displayName,
+              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: widget.saving ? null : widget.onAddFollowUp,
+            icon: const Icon(Icons.add_task),
+            label: const Text('Nuevo seguimiento'),
+          ),
+        ],
+      ),
+      if (widget.leadAlert != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            widget.leadAlert!.label,
+            style: TextStyle(
+              color: commercialAreaTokens.primaryStrong,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      const SizedBox(height: 12),
+      Expanded(
+        child: widget.followUps.isEmpty
+            ? const Center(
+                child: Text('Programa el primer contacto con este prospecto.'),
+              )
+            : ListView.separated(
+                itemCount: widget.followUps.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final row = widget.followUps[index];
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${row.interactionType} · ${row.interactionAt == null ? 'Sin fecha' : commercialDate(row.interactionAt!.toLocal())} · ${row.status}',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(row.summary),
+                          if (row.nextAction.isNotEmpty)
+                            Text('Siguiente acción: ${row.nextAction}'),
+                          Text(
+                            'Próximo seguimiento: ${row.nextFollowUpAt == null ? 'Sin fecha' : commercialDate(row.nextFollowUpAt!.toLocal())}',
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Wrap(
+                              spacing: 8,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: widget.saving
+                                      ? null
+                                      : () => widget.onEditFollowUp(row),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('Editar'),
+                                ),
+                                if (row.status != 'hecho')
+                                  TextButton.icon(
+                                    onPressed: widget.saving
+                                        ? null
+                                        : () => widget.onCompleteFollowUp(row),
+                                    icon: const Icon(Icons.task_alt),
+                                    label: const Text('Marcar realizado'),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    ],
+  );
 }

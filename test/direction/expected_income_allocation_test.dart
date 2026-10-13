@@ -308,7 +308,7 @@ void main() {
         ),
       );
       expect(pdf.pages(flowBytes), greaterThan(1));
-      expect(pdf.pages(incomeBytes), 1);
+      expect(pdf.pages(incomeBytes), 2);
       if (Platform.environment['DICSA_ALLOCATION_QA'] == '1') {
         await File(
           '/private/tmp/dicsa-allocated-flow.pdf',

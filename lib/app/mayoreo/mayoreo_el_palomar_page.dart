@@ -2024,7 +2024,7 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
                               onExportCsv: _exportCsv,
                               onExportPdf: _exportPdf,
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 12),
                             Expanded(
                               child: _PalomarLedgerCard(
                                 entries: filteredEntries,
@@ -2337,7 +2337,7 @@ class _PalomarTopBar extends StatelessWidget {
           ),
         ),
         ContractGlassCard(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2397,7 +2397,7 @@ class _PalomarTopBar extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _PalomarStatementBalanceCard(
                 balance: currentBalance,
                 releasedTotal: totalChecksReleased,
@@ -2406,7 +2406,7 @@ class _PalomarTopBar extends StatelessWidget {
                 statusLabel: accountStatusLabel,
                 statusColor: accountStatusColor,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 10,
                 runSpacing: 8,
@@ -2443,7 +2443,6 @@ class _PalomarTopBar extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
       ],
     );
   }
@@ -3046,114 +3045,151 @@ class _PalomarStatementBalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 360, maxWidth: 560),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        gradient: kMayoreoPanelGradient,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: mayoreoAreaTokens.border.withValues(alpha: 0.76),
+    final tokens = AreaThemeScope.of(context);
+    final balanceSummary = Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+          ),
+          child: Icon(
+            Icons.account_balance_wallet_outlined,
+            color: statusColor,
+            size: 20,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: statusColor.withValues(alpha: 0.2)),
-                ),
-                child: Icon(
-                  Icons.account_balance_wallet_outlined,
-                  color: statusColor,
-                  size: 20,
+              Text(
+                'SALDO ACTUAL',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.55,
+                  color: tokens.primaryStrong,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'SALDO ACTUAL',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.55,
-                    color: mayoreoAreaTokens.primaryStrong,
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                formatMoney(balance, decimals: 0),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  color: kMayoreoInk,
+                  height: 1,
                 ),
               ),
-              _PalomarStatusPill(label: statusLabel, color: statusColor),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            formatMoney(balance, decimals: 0),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: kMayoreoInk,
-              height: 0.96,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Liberado: ${formatMoney(releasedTotal, decimals: 0)}  |  Aplicado: ${formatMoney(appliedTotal, decimals: 0)}',
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: kMayoreoMutedInk,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.56),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: mayoreoAreaTokens.border.withValues(alpha: 0.68),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.trending_up_rounded,
-                  size: 18,
-                  color: Color(0xFFB97700),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Disponible para pedir sobre ${formatMoney(_kPalomarReferenceLineAmount, decimals: 0)}',
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  Text(
+                    'Liberado: ${formatMoney(releasedTotal, decimals: 0)}',
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: kMayoreoMutedInk,
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _palomarSignedMoney(availableToRequestAmount),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: availableToRequestAmount >= 0
-                        ? const Color(0xFFB97700)
-                        : const Color(0xFF9A4300),
+                  Text(
+                    'Aplicado: ${formatMoney(appliedTotal, decimals: 0)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: kMayoreoMutedInk,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final requestSummary = Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _PalomarStatusPill(label: statusLabel, color: statusColor),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.56),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.68)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.trending_up_rounded,
+                size: 18,
+                color: tokens.primaryStrong,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Disponible para pedir sobre ${formatMoney(_kPalomarReferenceLineAmount, decimals: 0)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: kMayoreoMutedInk,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                _palomarSignedMoney(availableToRequestAmount),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: availableToRequestAmount >= 0
+                      ? tokens.primaryStrong
+                      : statusColor,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: kMayoreoPanelGradient,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.76)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 740) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                balanceSummary,
+                const SizedBox(height: 10),
+                requestSummary,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: balanceSummary),
+              const SizedBox(width: 20),
+              Expanded(child: requestSummary),
+            ],
+          );
+        },
       ),
     );
   }

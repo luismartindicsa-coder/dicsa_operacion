@@ -69,7 +69,7 @@ void main() {
       expect(picker.name, 'ingreso_proyectado_embarques_2026-09-21.pdf');
       final file = File('${directory.path}/ingresos.pdf');
       expect(file.existsSync(), isTrue);
-      expect(pdf.pages(file.readAsBytesSync()), 1);
+      expect(pdf.pages(file.readAsBytesSync()), 2);
       expect(find.text('PDF guardado en ${file.path}'), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

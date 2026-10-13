@@ -454,6 +454,44 @@ Future<bool?> editIncomeClient(
   );
 }
 
+Future<bool?> editPalomarSchedule(
+  BuildContext context,
+  PalomarReceiptSchedule schedule,
+  ExpectedIncomeRepository repository,
+) => showIncomeForm(
+  context,
+  title: 'Fecha de recepción · El Palomar',
+  description:
+      'Semana ${programDate(schedule.week)} al ${programDate(schedule.week.add(const Duration(days: 6)))}. '
+      'El importe disponible se toma de Configurar disposición y supone que se cumplen las condiciones de la cuenta. El flujo y la propuesta de pagos lo consideran desde la fecha elegida; Sin fecha lo conserva solo en el total semanal.',
+  fields: [
+    for (final field in [
+      ('cash', 'Efectivo', schedule.cashDate),
+      ('fiscal', 'Fiscal', schedule.fiscalDate),
+    ])
+      IncomeFormField(
+        field.$1,
+        'Recepción ${field.$2}',
+        field.$3 == null ? '' : programDate(field.$3!),
+        options: {
+          '': 'Sin fecha',
+          for (var d = 0; d < 7; d++)
+            programDate(
+              schedule.week.add(Duration(days: d)),
+            ): '${programDate(schedule.week.add(Duration(days: d)))} · ${const ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][d]}',
+        },
+      ),
+  ],
+  onSave: (v) => repository.savePalomarSchedule(
+    PalomarReceiptSchedule(
+      week: schedule.week,
+      revision: schedule.revision,
+      cashDate: DateTime.tryParse(v['cash'] as String),
+      fiscalDate: DateTime.tryParse(v['fiscal'] as String),
+    ),
+  ),
+);
+
 Future<bool?> editPalomarConfig(
   BuildContext context,
   PalomarIncomeConfig config,

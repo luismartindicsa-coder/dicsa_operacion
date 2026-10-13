@@ -186,6 +186,40 @@ class PalomarIncomeConfig {
   };
 }
 
+class PalomarReceiptSchedule {
+  final DateTime week;
+  final DateTime? cashDate, fiscalDate;
+  final int revision;
+  const PalomarReceiptSchedule({
+    required this.week,
+    this.cashDate,
+    this.fiscalDate,
+    this.revision = 0,
+  });
+  bool get valid =>
+      week.weekday == DateTime.monday &&
+      revision >= 0 &&
+      [cashDate, fiscalDate].every(
+        (date) =>
+            date == null ||
+            (!incomeDay(date).isBefore(incomeDay(week)) &&
+                incomeDay(
+                  date,
+                ).isBefore(incomeDay(week).add(const Duration(days: 7)))),
+      );
+  factory PalomarReceiptSchedule.fromJson(Map<String, dynamic> row) =>
+      PalomarReceiptSchedule(
+        week: DateTime.parse(row['week_start'] as String),
+        cashDate: row['cash_date'] == null
+            ? null
+            : DateTime.parse(row['cash_date'] as String),
+        fiscalDate: row['fiscal_date'] == null
+            ? null
+            : DateTime.parse(row['fiscal_date'] as String),
+        revision: (row['revision'] as num).toInt(),
+      );
+}
+
 class PalomarIncomeMovement {
   final String id, concept;
   final String? reportId;
@@ -216,6 +250,31 @@ class PalomarIncomeMovement {
       concept: '${row['type']} · ${row['material_name_snapshot'] ?? ''}',
       reportId: row['source_report_id'] as String?,
     );
+  }
+}
+
+/// A commercial material quoted in its catalog unit. Bale conversions are
+/// supplied separately by the existing weight rules, never guessed from names.
+class PalomarMaterialQuote {
+  final String code, label, unit;
+  final double? price;
+  const PalomarMaterialQuote(this.code, this.label, this.unit, this.price);
+  bool get usable =>
+      unit.isNotEmpty && price != null && price!.isFinite && price! > 0;
+  int? amount(int quantity) =>
+      unit.isEmpty || price == null || !price!.isFinite || price! < 0
+      ? null
+      : incomeCents(quantity * price!);
+  int? quantityFor(int cents) {
+    if (!usable) return null;
+    var quantity = (cents / (price! * 100)).ceil();
+    while (quantity > 0 && amount(quantity - 1)! >= cents) {
+      quantity--;
+    }
+    while (amount(quantity)! < cents) {
+      quantity++;
+    }
+    return quantity;
   }
 }
 
@@ -267,7 +326,11 @@ class ExpectedIncomeData {
   final String productionSource;
   final List<String> warnings;
   final PalomarIncomeConfig palomarConfig;
+  final PalomarReceiptSchedule? palomarSchedule;
   final List<PalomarIncomeMovement> palomarMovements;
+  final List<DirectionShipmentPlanRecord> palomarCoverageShipments;
+  final Map<String, String> palomarCoverageLinks;
+  final List<PalomarMaterialQuote> palomarCoverageMaterials;
   const ExpectedIncomeData({
     this.allocations = const {},
     this.collections = const [],
@@ -283,7 +346,11 @@ class ExpectedIncomeData {
     this.productionSource = '',
     this.warnings = const [],
     this.palomarConfig = const PalomarIncomeConfig(),
+    this.palomarSchedule,
     this.palomarMovements = const [],
+    this.palomarCoverageShipments = const [],
+    this.palomarCoverageLinks = const {},
+    this.palomarCoverageMaterials = const [],
   });
   IncomeClientRule? ruleFor(String name) {
     final matches = clients.where((c) => c.matches(name)).toList();
@@ -395,6 +462,7 @@ class IncomeTotals {
 }
 
 class PalomarIncomeProjection {
+  final DateTime? cashDate, fiscalDate;
   final int opening,
       charges,
       credits,
@@ -405,6 +473,8 @@ class PalomarIncomeProjection {
       fiscal;
   final bool configured, complete;
   const PalomarIncomeProjection({
+    this.cashDate,
+    this.fiscalDate,
     required this.opening,
     required this.charges,
     required this.credits,
@@ -417,6 +487,9 @@ class PalomarIncomeProjection {
     required this.complete,
   });
   int get toCover => closing.clamp(0, 1 << 62);
+  DateTime? dateFor(String type) => type == 'EFECTIVO' ? cashDate : fiscalDate;
+  int get undatedDraw =>
+      (cashDate == null ? cash : 0) + (fiscalDate == null ? fiscal : 0);
 }
 
 class ExpectedIncomeProjection {

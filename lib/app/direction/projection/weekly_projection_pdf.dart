@@ -8,6 +8,7 @@ import '../operating_program/operating_program_models.dart';
 import 'weekly_projection_models.dart';
 import 'weekly_projection_report.dart';
 import 'weekly_projection_detail_pdf.dart';
+import 'weekly_cash_flow_daily_pdf.dart';
 import '../expected_income/expected_income_models.dart';
 
 /// Reconciled summary plus itemized weekly receipts and payments, without expense tickets.
@@ -18,6 +19,7 @@ Future<Uint8List> buildWeeklyCashFlowPdf(
   AssetBundle? assetBundle,
 }) async {
   final report = WeeklyCashFlowReport(projection, plan);
+  final calendar = WeeklyCashFlowCalendar(report, generatedAt);
   final flow = report.flow;
   final assets = assetBundle ?? rootBundle;
   final logo = pw.MemoryImage(
@@ -222,7 +224,51 @@ Future<Uint8List> buildWeeklyCashFlowPdf(
             card('SALDO FINAL', flow.closing, 'Saldo inicial + flujo neto'),
           ],
         ),
-        pw.SizedBox(height: 18),
+        pw.SizedBox(height: 14),
+        text('Ingresos vs egresos por día', size: 14, bold: true),
+        pw.SizedBox(height: 4),
+        text(
+          'Saldo al cierre = saldo anterior + ingresos - egresos. Efectivo y Fiscal se evalúan por separado.',
+          size: 9,
+        ),
+        pw.SizedBox(height: 8),
+        weeklyCashFlowDailyTable(calendar),
+        pw.SizedBox(height: 8),
+        text(
+          'Se supone que el ingreso llega antes del pago del mismo día. Un saldo negativo indica el faltante acumulado.',
+          size: 8,
+        ),
+        if (!plan.generated ||
+            !calendar.pressure.openingComplete ||
+            !calendar.pressure.classified) ...[
+          pw.SizedBox(height: 4),
+          text(
+            !plan.generated
+                ? 'Falta generar la propuesta de egresos: todavía no se puede confirmar si alcanza.'
+                : !calendar.pressure.openingComplete
+                ? 'Captura el saldo inicial pendiente para validar la disponibilidad de ese canal.'
+                : 'Por distribuir: ingresos mixtos ${money(flow.income.byType['MIXTO'] ?? 0)} / egresos sin clasificar ${money(flow.expense('SIN_CLASIFICAR'))}. No se confirma disponibilidad por canal.',
+            size: 8,
+            bold: true,
+          ),
+        ],
+        if (calendar.undated.total > 0) ...[
+          pw.SizedBox(height: 4),
+          text(
+            'Sin fecha (El Palomar): Efectivo ${money(calendar.undated.byType['EFECTIVO'] ?? 0)} / Fiscal ${money(calendar.undated.byType['FISCAL'] ?? 0)} / Mixto ${money(calendar.undated.byType['MIXTO'] ?? 0)}. Incluido en el total semanal; no disponible en un día específico.',
+            size: 8,
+          ),
+        ],
+        if (calendar.pressure.days.any((d) => d.elapsed)) ...[
+          pw.SizedBox(height: 4),
+          text(
+            calendar.pressure.days.every((d) => d.elapsed)
+                ? 'Semana transcurrida: no se reconstruyen saldos diarios con movimientos pendientes. Consulta el desglose y los totales semanales.'
+                : 'Corte ${programDate(generatedAt)}: saldo inicial = disponible actualizado. Cobros anteriores pendientes ${money(calendar.earlier.total)}: requieren nueva fecha; pagos anteriores pendientes ${money(calendar.earlierPayments)}: se reservan desde el corte.',
+            size: 8,
+          ),
+        ],
+        pw.NewPage(),
         text('Origen y aplicación de recursos', size: 14, bold: true),
         pw.SizedBox(height: 9),
         pw.TableHelper.fromTextArray(
@@ -284,7 +330,7 @@ Future<Uint8List> buildWeeklyCashFlowPdf(
         if (income.financingTotal > 0) ...[
           pw.SizedBox(height: 4),
           text(
-            'El Palomar se suma una sola vez, separado por Efectivo/Fiscal. Su fecha de disposición está por definir.',
+            'El Palomar se suma una sola vez, separado por Efectivo/Fiscal, con las fechas de recepción capturadas. Los importes sin fecha quedan Por definir.',
             size: 9,
           ),
         ],

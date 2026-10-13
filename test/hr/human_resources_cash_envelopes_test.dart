@@ -144,6 +144,7 @@ void main() {
       await tester.tap(find.text('Todas las empresas'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('KS').last);
+      await tester.tap(find.text('Aplicar'));
       await tester.pumpAndSettle();
       expect(snapshot['count'], 43);
       expect(snapshot['visible_ids'], hasLength(40));

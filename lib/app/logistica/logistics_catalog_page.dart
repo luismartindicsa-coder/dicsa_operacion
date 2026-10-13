@@ -16,6 +16,7 @@ import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_operations_pages.dart';
 import 'logistics_company_profile_store.dart';
 import 'logistics_container_store.dart';
 import 'logistics_control_daily_page.dart';
@@ -820,13 +821,17 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
         unawaited(_openPerformance());
         return;
       case kLogisticsNavFleetStatusLabel:
-        _showPhaseSnack(
-          'Estado de Unidades se conectará después de homologar esta lectura de catálogos.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsUnitsPage())),
         );
         return;
       case kLogisticsNavIncidentsLabel:
-        _showPhaseSnack(
-          'Incidencias se habilitará cuando el tablero operativo ya lea estas bases maestras.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsIncidentsPage())),
         );
         return;
       case kLogisticsNavSavingsLabel:

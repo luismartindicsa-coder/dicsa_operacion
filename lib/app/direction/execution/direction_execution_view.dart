@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
+import '../../shared/utils/file_download_save.dart';
 import '../direction_shipments_store.dart';
 import '../direction_theme.dart';
 import '../expected_income/expected_income_forms.dart';
 import '../operating_program/operating_program_models.dart';
 import 'direction_execution_repository.dart';
+import 'shipment_comparison_pdf.dart';
+import 'shipment_comparison_report.dart';
 
 /// Hybrid tab, following Dirección's existing cards and shared capture dialogs.
 /// Operation is a live prefill; only an explicit confirmation becomes a correction.
@@ -18,6 +21,7 @@ class DirectionExecutionView extends StatefulWidget {
   final Future<void> Function(DateTime) onWeekChanged;
   final ValueChanged<bool>? onBusyChanged;
   final DateTime? asOf;
+  final Future<DirectionShipmentPlanningBundle> Function()? refreshReference;
   const DirectionExecutionView({
     super.key,
     required this.kind,
@@ -28,6 +32,7 @@ class DirectionExecutionView extends StatefulWidget {
     this.repository,
     this.onBusyChanged,
     this.asOf,
+    this.refreshReference,
   });
   @override
   State<DirectionExecutionView> createState() => _DirectionExecutionViewState();
@@ -45,10 +50,9 @@ class _DirectionExecutionViewState extends State<DirectionExecutionView> {
   }
 
   DateTime get _week => widget.bundle.weekStartDate;
-  List<DirectionExecutionRow> get _rows {
-    final confirmations = {
-      for (final a in widget.bundle.executionActuals) a.key: a,
-    };
+  List<DirectionExecutionRow> get _rows => _rowsFor(widget.bundle);
+  List<DirectionExecutionRow> _rowsFor(DirectionShipmentPlanningBundle bundle) {
+    final confirmations = {for (final a in bundle.executionActuals) a.key: a};
     for (final a in _saved.values) {
       if (a.revision >= (confirmations[a.key]?.revision ?? 0)) {
         confirmations[a.key] = a;
@@ -56,10 +60,10 @@ class _DirectionExecutionViewState extends State<DirectionExecutionView> {
     }
     return buildDirectionExecutionRows(
       kind: widget.kind,
-      week: _week,
-      shipments: widget.bundle.shipments,
-      movements: widget.bundle.shipmentMovements,
-      production: widget.bundle.productionActuals,
+      week: bundle.weekStartDate,
+      shipments: bundle.shipments,
+      movements: bundle.shipmentMovements,
+      production: bundle.productionActuals,
       confirmations: confirmations.values.toList(),
       plannedProduction: {
         for (final l in widget.program?.lines ?? <ProgramLine>[])
@@ -77,6 +81,52 @@ class _DirectionExecutionViewState extends State<DirectionExecutionView> {
   void _setBusy(bool value) {
     if (mounted) setState(() => _busy = value);
     widget.onBusyChanged?.call(value);
+  }
+
+  Future<void> _exportComparison() async {
+    if (_busy || _production) return;
+    final week = _week;
+    final assets = DefaultAssetBundle.of(context);
+    _setBusy(true);
+    setState(() => _message = 'Generando PDF…');
+    try {
+      final bundle = await widget.refreshReference?.call() ?? widget.bundle;
+      if (!mounted) return;
+      if (bundle.weekStartDate != week || _week != week) {
+        throw StateError(
+          'La semana cambió durante la lectura. Vuelve a generar el PDF.',
+        );
+      }
+      final report = ShipmentComparisonReport(
+        week: week,
+        generatedAt: widget.asOf ?? DateTime.now(),
+        rows: _rowsFor(bundle),
+      );
+      final bytes = await buildShipmentComparisonPdf(
+        report,
+        assetBundle: assets,
+      );
+      if (!mounted) return;
+      final path = await saveBytesAs(
+        bytes: bytes,
+        suggestedFileName: report.fileName,
+        dialogTitle: 'Guardar comparativo de embarques',
+        throwOnPickerError: true,
+      );
+      if (mounted) {
+        setState(
+          () => _message = path == null
+              ? 'PDF no guardado: no se eligió un archivo de destino.'
+              : 'PDF guardado en $path',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _message = 'No se pudo generar o guardar el PDF. $e');
+      }
+    } finally {
+      _setBusy(false);
+    }
   }
 
   Future<void> _refreshAfterSave() async {
@@ -311,6 +361,13 @@ class _DirectionExecutionViewState extends State<DirectionExecutionView> {
                           ),
                     icon: const Icon(Icons.chevron_right),
                   ),
+                  if (!_production)
+                    OutlinedButton.icon(
+                      key: const ValueKey('export-shipment-comparison'),
+                      onPressed: _busy ? null : _exportComparison,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('PDF planeado vs real'),
+                    ),
                   if (!_production)
                     OutlinedButton.icon(
                       onPressed: _busy || _week.isAfter(_today)

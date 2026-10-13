@@ -47,6 +47,7 @@ class AppMetricCard extends StatelessWidget {
   final double width;
   final double height;
   final EdgeInsetsGeometry margin;
+  final bool useAreaTheme;
 
   const AppMetricCard({
     super.key,
@@ -57,10 +58,15 @@ class AppMetricCard extends StatelessWidget {
     this.width = 310,
     this.height = 64,
     this.margin = const EdgeInsets.only(right: 6),
+    this.useAreaTheme = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tokens = useAreaTheme ? AreaThemeScope.of(context) : null;
+    final accent = tokens?.primaryStrong ?? kAppMetricAccent;
+    final ink = tokens?.badgeText ?? kAppMetricText;
+    final muted = tokens?.primaryStrong ?? kAppMetricMuted;
     return Padding(
       padding: margin,
       child: Container(
@@ -68,7 +74,9 @@ class AppMetricCard extends StatelessWidget {
         height: height,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFFBFD8D3).withValues(alpha: 0.52),
+          color: (tokens?.primarySoft ?? const Color(0xFFBFD8D3)).withValues(
+            alpha: 0.52,
+          ),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
         ),
@@ -78,13 +86,11 @@ class AppMetricCard extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: kAppMetricAccent.withValues(alpha: 0.20),
+                color: accent.withValues(alpha: 0.20),
                 borderRadius: BorderRadius.circular(9),
-                border: Border.all(
-                  color: kAppMetricAccent.withValues(alpha: 0.34),
-                ),
+                border: Border.all(color: accent.withValues(alpha: 0.34)),
               ),
-              child: Icon(icon, size: 18, color: kAppMetricText),
+              child: Icon(icon, size: 18, color: ink),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -96,11 +102,11 @@ class AppMetricCard extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.5,
-                      color: kAppMetricMuted,
+                      color: muted,
                       height: 1.0,
                     ),
                   ),
@@ -109,10 +115,10 @@ class AppMetricCard extends StatelessWidget {
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: kAppMetricText,
+                      color: ink,
                       height: 1.0,
                     ),
                   ),
@@ -122,10 +128,10 @@ class AppMetricCard extends StatelessWidget {
                       subtitle!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: kAppMetricMuted,
+                        color: muted,
                         height: 1.0,
                       ),
                     ),

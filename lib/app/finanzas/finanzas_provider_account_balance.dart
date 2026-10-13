@@ -159,6 +159,7 @@ double effectiveSupplierInvoiceBalance(
   FinanzasSupplierInvoiceRecord invoice,
   Map<String, double> appliedByInvoiceId,
 ) {
+  if (invoice.status == 'PAGADA') return 0;
   final linkedPaid = appliedByInvoiceId[invoice.id];
   return linkedPaid == null
       ? invoice.balanceAmount.clamp(0.0, invoice.totalAmount).toDouble()

@@ -1,6 +1,13 @@
 part of '../human_resources_loans_page.dart';
 
 @visibleForTesting
+Widget hrLoanEditFormForTesting({
+  required HrLoan loan,
+  required HrLoanFundState fund,
+  required Future<void> Function(Map<String, dynamic>) onSave,
+}) => _HrLoanEditDialog(loan: loan, fund: fund, onSave: onSave);
+
+@visibleForTesting
 Widget hrLoanCreateFormForTesting({
   required List<Map<String, dynamic>> employees,
   required Future<String> Function(Map<String, dynamic>) onSave,

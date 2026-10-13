@@ -140,6 +140,7 @@ String profitAccountCsv(ProfitAnalysis a) {
       'Aporte operativo',
       'Compensación adicional/kg',
       'Compensación adicional/servicio',
+      'Piezas (separadas de kg)',
       'Base',
     ],
     for (final c in a.reportCompanies.where((c) => c.account != null))
@@ -157,6 +158,7 @@ String profitAccountCsv(ProfitAnalysis a) {
           n(l.contribution),
           n(l.additionalPerKg),
           n(l.additionalPerService),
+          n(l.pieces),
           profitCsvText(
             l.components
                 .map((v) => '${v.sourceType.name}: ${v.rule}')

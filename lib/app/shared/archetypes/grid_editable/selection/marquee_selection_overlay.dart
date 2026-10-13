@@ -12,6 +12,7 @@ class MarqueeSelectionOverlay extends StatelessWidget {
   final ScrollController? scrollController;
   final double edgeAutoScrollThreshold;
   final double edgeAutoScrollStep;
+  final Color selectionColor;
 
   const MarqueeSelectionOverlay({
     super.key,
@@ -23,6 +24,7 @@ class MarqueeSelectionOverlay extends StatelessWidget {
     this.scrollController,
     this.edgeAutoScrollThreshold = 56,
     this.edgeAutoScrollStep = 18,
+    this.selectionColor = const Color(0xFF00A3FF),
   });
 
   void _maybeAutoScroll(BuildContext context, Offset localPosition) {
@@ -92,11 +94,9 @@ class MarqueeSelectionOverlay extends StatelessWidget {
                   child: IgnorePointer(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00A3FF).withValues(alpha: 0.10),
+                        color: selectionColor.withValues(alpha: 0.10),
                         border: Border.all(
-                          color: const Color(
-                            0xFF00A3FF,
-                          ).withValues(alpha: 0.55),
+                          color: selectionColor.withValues(alpha: 0.55),
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),

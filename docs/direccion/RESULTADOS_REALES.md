@@ -27,6 +27,12 @@ El conteo físico de piso sigue siendo la referencia. Confirmar sin cambiar cant
 
 ## Persistencia y validación
 
+### PDF de embarques planeado vs real
+
+En **Embarques → Real → PDF planeado vs real**, se exporta la semana seleccionada (lunes a sábado) en A4 horizontal. El reporte usa los mismos grupos por día, destino y material que Real; muestra unidad, referencia planeada original, cantidad real, diferencia y estado. Las confirmaciones conservan su referencia aunque ya hayan actualizado la agenda. Cero confirmado aparece como cancelación; las cargas adicionales sin referencia aparecen como **Sin plan**, con diferencia pendiente. Los datos precargados sin confirmar se distinguen de las confirmaciones de Dirección y los días sin captura o futuros no se convierten en cero.
+
+Los KPIs separan el volumen planeado y real confirmado en pacas/kg, además de grupos por confirmar, sin captura y futuros. Conserva observaciones y avisos de cambio de origen o agenda pendiente. Los textos largos continúan sin truncar ni repetir cantidades, y los encabezados se repiten en las páginas necesarias. Antes de exportar se releen las fuentes; una lectura fallida bloquea el PDF, y cancelar o fallar el guardado muestra el resultado sin modificar la agenda. Archivo `embarques_planeado_vs_real_YYYY-MM-DD.pdf`. No requiere migración de base de datos.
+
 Migraciones: `20260923190000_direction_execution_actuals.sql` y `20260925180000_sync_real_shipments_agenda.sql`.
 
 `direction_execution_actuals` guarda el resultado vigente y su revisión; `direction_execution_actual_revisions` conserva cada cambio con usuario, fecha y referencia original. El RPC `direction_save_execution_actual` valida permisos de Dirección, cantidades, fechas, materiales, desglose por carga y concurrencia. La confirmación y su efecto en la agenda se guardan en una sola transacción; si falla cualquiera, se revierte todo. Los auxiliares internos de sincronización no se exponen al cliente.

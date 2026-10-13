@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'operations_red_theme.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -102,14 +104,14 @@ class InventoryGridTopBar extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         FilledButton.icon(
-          style: _invActionFilledButtonStyle(),
+          style: _invActionFilledButtonStyle(context),
           onPressed: data.exportingCsv ? null : data.onExportCsv,
           icon: const Icon(Icons.download_rounded),
           label: Text(data.exportingCsv ? 'Exportando...' : 'Descargar CSV'),
         ),
         if (data.onToggleGridEdit != null)
           OutlinedButton.icon(
-            style: _invActionOutlinedButtonStyle(),
+            style: _invActionOutlinedButtonStyle(context),
             onPressed: data.canToggleGridEdit ? data.onToggleGridEdit : null,
             icon: Icon(
               data.gridEditMode
@@ -124,13 +126,13 @@ class InventoryGridTopBar extends StatelessWidget {
             data.onSaveGridEdit != null &&
             data.onCancelGridEdit != null) ...[
           FilledButton.icon(
-            style: _invActionFilledButtonStyle(),
+            style: _invActionFilledButtonStyle(context),
             onPressed: data.onSaveGridEdit,
             icon: const Icon(Icons.save_outlined),
             label: const Text('Guardar'),
           ),
           OutlinedButton.icon(
-            style: _invActionOutlinedButtonStyle(),
+            style: _invActionOutlinedButtonStyle(context),
             onPressed: data.onCancelGridEdit,
             icon: const Icon(Icons.close_rounded),
             label: const Text('Cancelar'),
@@ -138,7 +140,7 @@ class InventoryGridTopBar extends StatelessWidget {
         ],
         if (data.canDeleteSelection)
           FilledButton.icon(
-            style: _invActionFilledButtonStyle(),
+            style: _invActionFilledButtonStyle(context),
             onPressed: data.deletingSelection || data.onDeleteSelection == null
                 ? null
                 : () => unawaited(data.onDeleteSelection!.call()),
@@ -176,20 +178,28 @@ class InventoryGridTopBar extends StatelessWidget {
                     if (data.selectedSecondaryLabel != null)
                       data.selectedSecondaryLabel!,
                   ].join(' · '),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF2A4B49),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF2A4B49),
+                      OperationsRedColors.muted,
+                    ),
                   ),
                   textAlign: TextAlign.right,
                 ),
               if (data.activeCellLabel != null)
                 Text(
                   'Celda: ${data.activeCellLabel} · Space',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF2A4B49),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF2A4B49),
+                      OperationsRedColors.muted,
+                    ),
                   ),
                   textAlign: TextAlign.right,
                 ),
@@ -988,11 +998,19 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           return KeyEventResult.ignored;
         },
         child: AlertDialog(
-          backgroundColor: const Color(0xFFEAF2F9).withValues(alpha: 0.98),
+          backgroundColor: operationsPageColor(
+            context,
+            const Color(0xFFEAF2F9),
+            OperationsRedColors.surface,
+          ).withValues(alpha: 0.98),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+              color: operationsPageColor(
+                context,
+                const Color(0xFF8AA9C2),
+                OperationsRedColors.border,
+              ).withValues(alpha: 0.42),
             ),
           ),
           title: const Text('No se puede agregar'),
@@ -1000,7 +1018,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           actions: [
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6A99C7),
+                backgroundColor: operationsPageColor(
+                  context,
+                  const Color(0xFF6A99C7),
+                  OperationsRedColors.strong,
+                ),
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.of(dialogContext).pop(),
@@ -1597,16 +1619,20 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     width: 420,
                     constraints: const BoxConstraints(maxHeight: 560),
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                    decoration: _invFilterDialogDecoration(),
+                    decoration: _invFilterDialogDecoration(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Filtro: $label',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0B2B2B),
+                            color: operationsPageColor(
+                              context,
+                              const Color(0xFF0B2B2B),
+                              OperationsRedColors.ink,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -1614,6 +1640,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                           onChanged: (v) =>
                               setLocalState(() => localSearch = v),
                           decoration: _invGlassFieldDecoration(
+                            context,
                             hintText: 'Buscar',
                           ),
                         ),
@@ -1622,7 +1649,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                           children: [
                             TextButton(
                               style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF2A4B49),
+                                foregroundColor: operationsPageColor(
+                                  context,
+                                  const Color(0xFF2A4B49),
+                                  OperationsRedColors.muted,
+                                ),
                               ),
                               onPressed: () {
                                 setLocalState(() {
@@ -1658,10 +1689,16 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                     return CheckboxListTile(
                                       dense: true,
                                       value: checked,
-                                      activeColor: const Color(0xFF2D7A73),
+                                      activeColor: operationsPageColor(
+                                        context,
+                                        const Color(0xFF2D7A73),
+                                        OperationsRedColors.strong,
+                                      ),
                                       checkColor: Colors.white,
-                                      hoverColor: const Color(
-                                        0xFFE9F7EE,
+                                      hoverColor: operationsPageColor(
+                                        context,
+                                        const Color(0xFFE9F7EE),
+                                        OperationsRedColors.hover,
                                       ).withValues(alpha: 0.95),
                                       title: Text(
                                         value,
@@ -1685,13 +1722,13 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(dialogContext),
                               child: const Text('Cancelar'),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 const _InvFilterDialogResult(
@@ -1702,7 +1739,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                             ),
                             const SizedBox(width: 8),
                             FilledButton(
-                              style: _invFilterFilledButtonStyle(),
+                              style: _invFilterFilledButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 _InvFilterDialogResult(
@@ -2818,6 +2855,16 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                 child: IgnorePointer(
                                   child: CustomPaint(
                                     painter: _MarqueeSelectionPainter(
+                                      fillColor: operationsPageColor(
+                                        context,
+                                        const Color(0xFF4B8DBD),
+                                        OperationsRedColors.accent,
+                                      ),
+                                      strokeColor: operationsPageColor(
+                                        context,
+                                        const Color(0xFF3C7FB0),
+                                        OperationsRedColors.primary,
+                                      ),
                                       rect: _clampRectToViewport(
                                         _marqueeRectForPaint(),
                                       ),
@@ -2850,7 +2897,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     OutlinedButton.icon(
-                      style: _invActionOutlinedButtonStyle(),
+                      style: _invActionOutlinedButtonStyle(context),
                       onPressed: _currentPage > 0
                           ? () => setState(() => _currentPage--)
                           : null,
@@ -2861,7 +2908,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                       'Página ${_fmtInvInt(_currentPage + 1)} de ${_fmtInvInt(_totalPages)}',
                     ),
                     OutlinedButton.icon(
-                      style: _invActionOutlinedButtonStyle(),
+                      style: _invActionOutlinedButtonStyle(context),
                       onPressed: _currentPage < _totalPages - 1
                           ? () => setState(() => _currentPage++)
                           : null,
@@ -2874,7 +2921,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                       child: DropdownButtonFormField<int>(
                         initialValue: _pageSize,
                         isDense: true,
-                        decoration: _invGlassFieldDecoration(),
+                        decoration: _invGlassFieldDecoration(context),
                         items: const [40, 80, 120]
                             .map(
                               (e) => DropdownMenuItem<int>(
@@ -2913,7 +2960,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         boxShadow: _insertRowActive
             ? [
                 BoxShadow(
-                  color: const Color(0xFF7FAFD3).withValues(alpha: 0.28),
+                  color: operationsPageColor(
+                    context,
+                    const Color(0xFF7FAFD3),
+                    OperationsRedColors.glow,
+                  ).withValues(alpha: 0.28),
                   blurRadius: 12,
                   offset: const Offset(0, 2),
                 ),
@@ -2924,14 +2975,30 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         key: _insertRowKey,
         elevation: 0.4,
         color: _insertRowActive
-            ? const Color(0xFFD6E9FB)
-            : const Color(0xFFD8EAFB),
+            ? operationsPageColor(
+                context,
+                const Color(0xFFD6E9FB),
+                OperationsRedColors.soft,
+              )
+            : operationsPageColor(
+                context,
+                const Color(0xFFD8EAFB),
+                OperationsRedColors.soft,
+              ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
             color: _insertRowActive
-                ? const Color(0xFF4E86B5).withValues(alpha: 0.70)
-                : const Color(0xFF6F93B3).withValues(alpha: 0.55),
+                ? operationsPageColor(
+                    context,
+                    const Color(0xFF4E86B5),
+                    OperationsRedColors.primary,
+                  ).withValues(alpha: 0.70)
+                : operationsPageColor(
+                    context,
+                    const Color(0xFF6F93B3),
+                    OperationsRedColors.border,
+                  ).withValues(alpha: 0.55),
           ),
         ),
         child: Padding(
@@ -2945,7 +3012,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     color: active
-                        ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
+                        ? operationsPageColor(
+                            context,
+                            const Color(0xFFDCEAF7),
+                            OperationsRedColors.selection,
+                          ).withValues(alpha: 0.72)
                         : Colors.transparent,
                   ),
                   child: DecoratedBox(
@@ -2954,7 +3025,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: active
-                            ? const Color(0xFF0B72FF).withValues(alpha: 0.86)
+                            ? operationsPageColor(
+                                context,
+                                const Color(0xFF0B72FF),
+                                OperationsRedColors.primary,
+                              ).withValues(alpha: 0.86)
                             : Colors.transparent,
                         width: active ? 1.1 : 1.0,
                       ),
@@ -3091,7 +3166,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                 );
                               },
                               child: InputDecorator(
-                                decoration: _invGlassFieldDecoration(),
+                                decoration: _invGlassFieldDecoration(context),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 2,
@@ -3130,6 +3205,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                 controller: _draftReferenceC,
                                 focusNode: _insertReferenceFocusNode,
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Ticket / folio',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 1,
@@ -3223,6 +3299,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                       decimal: true,
                                     ),
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Bruto kg',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 6,
@@ -3254,6 +3331,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                       decimal: true,
                                     ),
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Tara kg',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 7,
@@ -3309,6 +3387,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                       decimal: true,
                                     ),
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Humedad %',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 9,
@@ -3340,6 +3419,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                       decimal: true,
                                     ),
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Basura kg',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 10,
@@ -3388,6 +3468,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                 controller: _draftNotesC,
                                 focusNode: _insertNotesFocusNode,
                                 decoration: _invGlassFieldDecoration(
+                                  context,
                                   hintText: 'Comentario / notas',
                                   suppressFocusedBorder: true,
                                   hideBorder: _activeInsertColumn == 12,
@@ -3434,8 +3515,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                     height: 34,
                                     decoration: BoxDecoration(
                                       color: _draftHasExtras
-                                          ? const Color(
-                                              0xFFD7F2E6,
+                                          ? operationsPageColor(
+                                              context,
+                                              const Color(0xFFD7F2E6),
+                                              OperationsRedColors.soft,
                                             ).withValues(alpha: 0.88)
                                           : Colors.white.withValues(
                                               alpha: 0.40,
@@ -3474,8 +3557,16 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                           letterSpacing: 0.2,
                                           fontWeight: FontWeight.w900,
                                           color: _draftHasExtras
-                                              ? const Color(0xFF1A4F36)
-                                              : const Color(0xFF274A63),
+                                              ? operationsPageColor(
+                                                  context,
+                                                  const Color(0xFF1A4F36),
+                                                  OperationsRedColors.ink,
+                                                )
+                                              : operationsPageColor(
+                                                  context,
+                                                  const Color(0xFF274A63),
+                                                  OperationsRedColors.ink,
+                                                ),
                                         ),
                                       ),
                                     ),
@@ -3503,8 +3594,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                     decoration: BoxDecoration(
                                       color: _inserting
                                           ? Colors.white.withValues(alpha: 0.35)
-                                          : const Color(
-                                              0xFF19C37D,
+                                          : operationsPageColor(
+                                              context,
+                                              const Color(0xFF19C37D),
+                                              OperationsRedColors.primary,
                                             ).withValues(alpha: 0.92),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
@@ -3751,19 +3844,41 @@ class _InvHCellExpand extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: active
-                  ? _kInvFilterAccent
-                  : _kInvFilterAccentSoft.withValues(alpha: 0.35),
+                  ? operationsPageColor(
+                      context,
+                      _kInvFilterAccent,
+                      OperationsRedColors.strong,
+                    )
+                  : operationsPageColor(
+                      context,
+                      _kInvFilterAccentSoft,
+                      OperationsRedColors.soft,
+                    ).withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
-                    ? _kInvFilterAccent.withValues(alpha: 0.55)
-                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
+                    ? operationsPageColor(
+                        context,
+                        _kInvFilterAccent,
+                        OperationsRedColors.strong,
+                      ).withValues(alpha: 0.55)
+                    : operationsPageColor(
+                        context,
+                        const Color(0xFF0B2B2B),
+                        OperationsRedColors.ink,
+                      ).withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
               active ? Icons.filter_alt : Icons.filter_alt_outlined,
               size: 15,
-              color: active ? Colors.white : const Color(0xFF2A4B49),
+              color: active
+                  ? Colors.white
+                  : operationsPageColor(
+                      context,
+                      const Color(0xFF2A4B49),
+                      OperationsRedColors.muted,
+                    ),
             ),
           ),
         ),
@@ -3778,16 +3893,21 @@ class _InvHCellExpand extends StatelessWidget {
 
 class _MarqueeSelectionPainter extends CustomPainter {
   final Rect rect;
+  final Color fillColor;
+  final Color strokeColor;
 
-  const _MarqueeSelectionPainter({required this.rect});
+  const _MarqueeSelectionPainter({
+    required this.rect,
+    this.fillColor = const Color(0xFF4B8DBD),
+    this.strokeColor = const Color(0xFF3C7FB0),
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (rect.isEmpty) return;
-    final fill = Paint()
-      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
+    final fill = Paint()..color = fillColor.withValues(alpha: 0.18);
     final stroke = Paint()
-      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.8)
+      ..color = strokeColor.withValues(alpha: 0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawRect(rect, fill);
@@ -3796,7 +3916,9 @@ class _MarqueeSelectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MarqueeSelectionPainter oldDelegate) =>
-      oldDelegate.rect != rect;
+      oldDelegate.rect != rect ||
+      oldDelegate.fillColor != fillColor ||
+      oldDelegate.strokeColor != strokeColor;
 }
 
 class _MovementDataRow extends StatefulWidget {
@@ -4232,15 +4354,59 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   ({Color bg, Color fg}) _materialChipColors(String label) {
     final key = label.trim().toUpperCase();
     if (key.contains('METAL')) {
-      return (bg: const Color(0xFFD9E6F7), fg: const Color(0xFF24435E));
+      return (
+        bg: operationsPageColor(
+          context,
+          const Color(0xFFD9E6F7),
+          OperationsRedColors.soft,
+        ),
+        fg: operationsPageColor(
+          context,
+          const Color(0xFF24435E),
+          OperationsRedColors.ink,
+        ),
+      );
     }
     if (key.contains('CARTON')) {
-      return (bg: const Color(0xFFD2EEE9), fg: const Color(0xFF1F4F4B));
+      return (
+        bg: operationsPageColor(
+          context,
+          const Color(0xFFD2EEE9),
+          OperationsRedColors.soft,
+        ),
+        fg: operationsPageColor(
+          context,
+          const Color(0xFF1F4F4B),
+          OperationsRedColors.ink,
+        ),
+      );
     }
     if (key.contains('CHATARRA')) {
-      return (bg: const Color(0xFFE0DCF7), fg: const Color(0xFF3F3A6C));
+      return (
+        bg: operationsPageColor(
+          context,
+          const Color(0xFFE0DCF7),
+          OperationsRedColors.soft,
+        ),
+        fg: operationsPageColor(
+          context,
+          const Color(0xFF3F3A6C),
+          OperationsRedColors.ink,
+        ),
+      );
     }
-    return (bg: const Color(0xFFE2E8F2), fg: const Color(0xFF31475F));
+    return (
+      bg: operationsPageColor(
+        context,
+        const Color(0xFFE2E8F2),
+        OperationsRedColors.soft,
+      ),
+      fg: operationsPageColor(
+        context,
+        const Color(0xFF31475F),
+        OperationsRedColors.ink,
+      ),
+    );
   }
 
   Future<void> _handleRowAction(String v) async {
@@ -4317,6 +4483,10 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       mediaSize.width - menuWidth - 8.0,
     );
     final top = globalPosition.dy.clamp(8.0, mediaSize.height - 8.0);
+    final themes = InheritedTheme.capture(
+      from: context,
+      to: Navigator.of(context, rootNavigator: true).context,
+    );
     return showGeneralDialog<String>(
       context: context,
       barrierLabel: 'context_menu',
@@ -4325,170 +4495,211 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       transitionDuration: const Duration(milliseconds: 90),
       pageBuilder: (dialogContext, _, _) {
         int? hoveredIndex;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => Navigator.of(dialogContext).pop(),
+        return themes.wrap(
+          Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => Navigator.of(dialogContext).pop(),
+                ),
               ),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              width: menuWidth,
-              child: StatefulBuilder(
-                builder: (context, setMenuState) {
-                  return Focus(
-                    autofocus: true,
-                    onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) {
-                        return KeyEventResult.ignored;
-                      }
-                      if (event.logicalKey == LogicalKeyboardKey.escape) {
-                        Navigator.of(dialogContext).pop();
-                        return KeyEventResult.handled;
-                      }
-                      if (event.logicalKey == LogicalKeyboardKey.enter ||
-                          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                        if (actions.isEmpty) {
+              Positioned(
+                left: left,
+                top: top,
+                width: menuWidth,
+                child: StatefulBuilder(
+                  builder: (context, setMenuState) {
+                    return Focus(
+                      autofocus: true,
+                      onKeyEvent: (_, event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.escape) {
+                          Navigator.of(dialogContext).pop();
                           return KeyEventResult.handled;
                         }
-                        final activeIndex = (hoveredIndex ?? 0).clamp(
-                          0,
-                          actions.length - 1,
-                        );
-                        Navigator.of(
-                          dialogContext,
-                        ).pop(actions[activeIndex].key);
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: Material(
-                      color: Colors.transparent,
-                      elevation: 8,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              const Color(0xFF9FC8E7).withValues(alpha: 0.78),
-                              const Color(0xFFB9CCE8).withValues(alpha: 0.72),
-                              const Color(0xFF9ED7D6).withValues(alpha: 0.70),
+                        if (event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey ==
+                                LogicalKeyboardKey.numpadEnter) {
+                          if (actions.isEmpty) {
+                            return KeyEventResult.handled;
+                          }
+                          final activeIndex = (hoveredIndex ?? 0).clamp(
+                            0,
+                            actions.length - 1,
+                          );
+                          Navigator.of(
+                            dialogContext,
+                          ).pop(actions[activeIndex].key);
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                operationsPageColor(
+                                  context,
+                                  const Color(0xFF9FC8E7),
+                                  OperationsRedColors.glow,
+                                ).withValues(alpha: 0.78),
+                                operationsPageColor(
+                                  context,
+                                  const Color(0xFFB9CCE8),
+                                  OperationsRedColors.glow,
+                                ).withValues(alpha: 0.72),
+                                operationsPageColor(
+                                  context,
+                                  const Color(0xFF9ED7D6),
+                                  OperationsRedColors.glow,
+                                ).withValues(alpha: 0.70),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: operationsPageColor(
+                                context,
+                                const Color(0xFFE5F1FB),
+                                OperationsRedColors.hover,
+                              ).withValues(alpha: 0.78),
+                              width: 1.4,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: operationsPageColor(
+                                  context,
+                                  const Color(0xFF76A6C2),
+                                  OperationsRedColors.border,
+                                ).withValues(alpha: 0.22),
+                                blurRadius: 24,
+                                offset: const Offset(0, 10),
+                              ),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(
-                              0xFFE5F1FB,
-                            ).withValues(alpha: 0.78),
-                            width: 1.4,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 6,
+                            horizontal: 6,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF76A6C2,
-                              ).withValues(alpha: 0.22),
-                              blurRadius: 24,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 6,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var i = 0; i < actions.length; i++) ...[
-                              if (i > 0)
-                                Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color:
-                                      (actions[i].key == 'delete'
-                                              ? const Color(0xFF87AFC9)
-                                              : const Color(0xFFE5F1FB))
-                                          .withValues(alpha: 0.62),
-                                ),
-                              MouseRegion(
-                                onEnter: (_) =>
-                                    setMenuState(() => hoveredIndex = i),
-                                onExit: (_) => setMenuState(() {
-                                  if (hoveredIndex == i) {
-                                    hoveredIndex = null;
-                                  }
-                                }),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(10),
-                                  splashColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  onTap: () => Navigator.of(
-                                    dialogContext,
-                                  ).pop(actions[i].key),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 1),
-                                    curve: Curves.linear,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(14),
-                                      color: hoveredIndex == i
-                                          ? const Color(
-                                              0xFFE9F7EE,
-                                            ).withValues(alpha: 0.95)
-                                          : Colors.transparent,
-                                      border: hoveredIndex == i
-                                          ? Border.all(
-                                              color: const Color(
-                                                0xFFBFD8D3,
-                                              ).withValues(alpha: 0.62),
-                                            )
-                                          : null,
-                                      boxShadow: hoveredIndex == i
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(
-                                                  0xFFBFD8D3,
-                                                ).withValues(alpha: 0.48),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ]
-                                          : null,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        actions[i].value,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: hoveredIndex == i
-                                              ? const Color(0xFF215A56)
-                                              : const Color(0xFF173248),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (var i = 0; i < actions.length; i++) ...[
+                                if (i > 0)
+                                  Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color:
+                                        (actions[i].key == 'delete'
+                                                ? operationsPageColor(
+                                                    context,
+                                                    const Color(0xFF87AFC9),
+                                                    OperationsRedColors.glow,
+                                                  )
+                                                : operationsPageColor(
+                                                    context,
+                                                    const Color(0xFFE5F1FB),
+                                                    OperationsRedColors.hover,
+                                                  ))
+                                            .withValues(alpha: 0.62),
+                                  ),
+                                MouseRegion(
+                                  onEnter: (_) =>
+                                      setMenuState(() => hoveredIndex = i),
+                                  onExit: (_) => setMenuState(() {
+                                    if (hoveredIndex == i) {
+                                      hoveredIndex = null;
+                                    }
+                                  }),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(10),
+                                    splashColor: Colors.transparent,
+                                    highlightColor: Colors.transparent,
+                                    hoverColor: Colors.transparent,
+                                    onTap: () => Navigator.of(
+                                      dialogContext,
+                                    ).pop(actions[i].key),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 1),
+                                      curve: Curves.linear,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        color: hoveredIndex == i
+                                            ? operationsPageColor(
+                                                context,
+                                                const Color(0xFFE9F7EE),
+                                                OperationsRedColors.hover,
+                                              ).withValues(alpha: 0.95)
+                                            : Colors.transparent,
+                                        border: hoveredIndex == i
+                                            ? Border.all(
+                                                color: operationsPageColor(
+                                                  context,
+                                                  const Color(0xFFBFD8D3),
+                                                  OperationsRedColors.glow,
+                                                ).withValues(alpha: 0.62),
+                                              )
+                                            : null,
+                                        boxShadow: hoveredIndex == i
+                                            ? [
+                                                BoxShadow(
+                                                  color: operationsPageColor(
+                                                    context,
+                                                    const Color(0xFFBFD8D3),
+                                                    OperationsRedColors.glow,
+                                                  ).withValues(alpha: 0.48),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ]
+                                            : null,
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          actions[i].value,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: hoveredIndex == i
+                                                ? operationsPageColor(
+                                                    context,
+                                                    const Color(0xFF215A56),
+                                                    OperationsRedColors.ink,
+                                                  )
+                                                : operationsPageColor(
+                                                    context,
+                                                    const Color(0xFF173248),
+                                                    OperationsRedColors.ink,
+                                                  ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -4689,13 +4900,23 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     final hasSelection = widget.isSelected || widget.isChecked;
     final hoverOnly = _hovering && !hasSelection;
     final rowBg = _editing
-        ? const Color(0xFFDCECF9)
+        ? operationsPageColor(
+            context,
+            const Color(0xFFDCECF9),
+            OperationsRedColors.selection,
+          )
         : hasSelection
-        ? const Color(
-            0xFF00A3FF,
+        ? operationsPageColor(
+            context,
+            const Color(0xFF00A3FF),
+            OperationsRedColors.primary,
           ).withValues(alpha: widget.isSelected ? 0.16 : 0.13)
         : hoverOnly
-        ? const Color(0xFFE9F7EE)
+        ? operationsPageColor(
+            context,
+            const Color(0xFFE9F7EE),
+            OperationsRedColors.hover,
+          )
         : Colors.white;
     final hoverLift = hasSelection
         ? -1.4
@@ -4768,7 +4989,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                   height: 30,
                   margin: const EdgeInsets.only(left: 8, right: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFFC9D5E2),
+                      OperationsRedColors.border,
+                    ).withValues(alpha: 0.90),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -4807,7 +5032,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      ? operationsPageColor(
+                          context,
+                          const Color(0xFF00A3FF),
+                          OperationsRedColors.primary,
+                        ).withValues(alpha: 0.65)
                       : Colors.white.withValues(alpha: 0.0),
                 ),
               ),
@@ -4862,6 +5091,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                           controller: _referenceC,
                                           focusNode: _referenceFocusNode,
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Ticket',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5023,6 +5253,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                 decimal: true,
                                               ),
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Bruto kg',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5062,6 +5293,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                 decimal: true,
                                               ),
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Tara kg',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5132,6 +5364,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                 decimal: true,
                                               ),
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Humedad %',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5171,6 +5404,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                 decimal: true,
                                               ),
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Basura kg',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5237,6 +5471,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                           controller: _notesC,
                                           focusNode: _notesFocusNode,
                                           decoration: _invGlassFieldDecoration(
+                                            context,
                                             hintText: 'Comentario / notas',
                                             suppressFocusedBorder: true,
                                             hideBorder:
@@ -5269,8 +5504,10 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                 leading: _editing
                                     ? FilledButton(
                                         style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(
-                                            0xFF6A99C7,
+                                          backgroundColor: operationsPageColor(
+                                            context,
+                                            const Color(0xFF6A99C7),
+                                            OperationsRedColors.strong,
                                           ),
                                           foregroundColor: Colors.white,
                                           padding: const EdgeInsets.symmetric(
@@ -5288,9 +5525,21 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                     : _InvPillTag(
                                         label: widget.flow,
                                         background: _isInFlow(widget.flow)
-                                            ? const Color(0xFFD8FBF3)
-                                            : const Color(0xFFD9E8FF),
-                                        foreground: const Color(0xFF1D3C58),
+                                            ? operationsPageColor(
+                                                context,
+                                                const Color(0xFFD8FBF3),
+                                                OperationsRedColors.soft,
+                                              )
+                                            : operationsPageColor(
+                                                context,
+                                                const Color(0xFFD9E8FF),
+                                                OperationsRedColors.soft,
+                                              ),
+                                        foreground: operationsPageColor(
+                                          context,
+                                          const Color(0xFF1D3C58),
+                                          OperationsRedColors.ink,
+                                        ),
                                         minWidth: 0,
                                         horizontalPadding: 9,
                                       ),
@@ -5428,6 +5677,7 @@ class _InvCellBox extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InputDecorator(
         decoration: _invGlassFieldDecoration(
+          context,
           suppressFocusedBorder: true,
           hideBorder: true,
         ),
@@ -5482,9 +5732,14 @@ class _InvDropOptInline extends StatelessWidget {
         },
         child: InputDecorator(
           decoration: _invGlassFieldDecoration(
+            context,
             suppressFocusedBorder: true,
             hideBorder: true,
-            fillColorOverride: const Color(0xFFF2F7FC),
+            fillColorOverride: operationsPageColor(
+              context,
+              const Color(0xFFF2F7FC),
+              OperationsRedColors.field,
+            ),
           ),
           child: Row(
             children: [
@@ -5542,9 +5797,14 @@ class _InvDropStrInline extends StatelessWidget {
         },
         child: InputDecorator(
           decoration: _invGlassFieldDecoration(
+            context,
             suppressFocusedBorder: true,
             hideBorder: true,
-            fillColorOverride: const Color(0xFFF2F7FC),
+            fillColorOverride: operationsPageColor(
+              context,
+              const Color(0xFFF2F7FC),
+              OperationsRedColors.field,
+            ),
           ),
           child: Row(
             children: [
@@ -5629,17 +5889,25 @@ class _InvUnitBadge extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 52),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFFE6EAF0),
+            color: operationsPageColor(
+              context,
+              const Color(0xFFE6EAF0),
+              OperationsRedColors.soft,
+            ),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Text(
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF30445D),
+              color: operationsPageColor(
+                context,
+                const Color(0xFF30445D),
+                OperationsRedColors.ink,
+              ),
             ),
           ),
         ),
@@ -5824,10 +6092,14 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                 padding: const EdgeInsets.only(left: 4, bottom: 6),
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF4B6378),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF4B6378),
+                      OperationsRedColors.muted,
+                    ),
                   ),
                 ),
               ),
@@ -5836,14 +6108,23 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                 onTap: onTap,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCEBFA).withValues(alpha: 0.72),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFFDCEBFA),
+                      OperationsRedColors.selection,
+                    ).withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.62),
+                      color: operationsPageColor(
+                        context,
+                        const Color(0xFF8AA9C2),
+                        OperationsRedColors.border,
+                      ).withValues(alpha: 0.62),
                     ),
                   ),
                   child: InputDecorator(
                     decoration: _invGlassFieldDecoration(
+                      context,
                       suppressFocusedBorder: true,
                       hideBorder: true,
                     ),
@@ -5855,8 +6136,16 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: onTap == null
-                                  ? const Color(0xFF637D92)
-                                  : const Color(0xFF0B2B2B),
+                                  ? operationsPageColor(
+                                      context,
+                                      const Color(0xFF637D92),
+                                      OperationsRedColors.muted,
+                                    )
+                                  : operationsPageColor(
+                                      context,
+                                      const Color(0xFF0B2B2B),
+                                      OperationsRedColors.ink,
+                                    ),
                             ),
                           ),
                         ),
@@ -5864,8 +6153,16 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                           Icons.arrow_drop_down,
                           size: 20,
                           color: onTap == null
-                              ? const Color(0xFF7D95A8)
-                              : const Color(0xFF2E597E),
+                              ? operationsPageColor(
+                                  context,
+                                  const Color(0xFF7D95A8),
+                                  OperationsRedColors.muted,
+                                )
+                              : operationsPageColor(
+                                  context,
+                                  const Color(0xFF2E597E),
+                                  OperationsRedColors.muted,
+                                ),
                         ),
                       ],
                     ),
@@ -5902,11 +6199,19 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
             return KeyEventResult.ignored;
           },
           child: AlertDialog(
-            backgroundColor: const Color(0xFFEAF2F9).withValues(alpha: 0.98),
+            backgroundColor: operationsPageColor(
+              context,
+              const Color(0xFFEAF2F9),
+              OperationsRedColors.surface,
+            ).withValues(alpha: 0.98),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(
-                color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+                color: operationsPageColor(
+                  context,
+                  const Color(0xFF8AA9C2),
+                  OperationsRedColors.border,
+                ).withValues(alpha: 0.42),
               ),
             ),
             title: const Text('Extras de Movimiento'),
@@ -5954,14 +6259,18 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                   ),
                   const SizedBox(height: 12),
                   if (selectedCommercialIsBale) ...[
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(left: 4, bottom: 6),
                       child: Text(
                         'Pacas contadas',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF4B6378),
+                          color: operationsPageColor(
+                            context,
+                            const Color(0xFF4B6378),
+                            OperationsRedColors.muted,
+                          ),
                         ),
                       ),
                     ),
@@ -5977,6 +6286,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                         });
                       },
                       decoration: _invGlassFieldDecoration(
+                        context,
                         hintText: 'Numero de pacas',
                       ),
                     ),
@@ -6021,14 +6331,22 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
             actions: [
               TextButton(
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF2D5478),
+                  foregroundColor: operationsPageColor(
+                    context,
+                    const Color(0xFF2D5478),
+                    OperationsRedColors.muted,
+                  ),
                 ),
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancelar'),
               ),
               TextButton(
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF2D5478),
+                  foregroundColor: operationsPageColor(
+                    context,
+                    const Color(0xFF2D5478),
+                    OperationsRedColors.muted,
+                  ),
                 ),
                 onPressed: () {
                   setLocalState(() {
@@ -6041,7 +6359,11 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6A99C7),
+                  backgroundColor: operationsPageColor(
+                    context,
+                    const Color(0xFF6A99C7),
+                    OperationsRedColors.strong,
+                  ),
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () => Navigator.pop(dialogContext, buildResult()),
@@ -6250,20 +6572,38 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          const Color(0xFF9FC8E7).withValues(alpha: 0.78),
-                          const Color(0xFFB9CCE8).withValues(alpha: 0.72),
-                          const Color(0xFF9ED7D6).withValues(alpha: 0.70),
+                          operationsPageColor(
+                            context,
+                            const Color(0xFF9FC8E7),
+                            OperationsRedColors.glow,
+                          ).withValues(alpha: 0.78),
+                          operationsPageColor(
+                            context,
+                            const Color(0xFFB9CCE8),
+                            OperationsRedColors.glow,
+                          ).withValues(alpha: 0.72),
+                          operationsPageColor(
+                            context,
+                            const Color(0xFF9ED7D6),
+                            OperationsRedColors.glow,
+                          ).withValues(alpha: 0.70),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFFE5F1FB).withValues(alpha: 0.78),
+                        color: operationsPageColor(
+                          context,
+                          const Color(0xFFE5F1FB),
+                          OperationsRedColors.hover,
+                        ).withValues(alpha: 0.78),
                         width: 1.4,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xFF76A6C2,
+                          color: operationsPageColor(
+                            context,
+                            const Color(0xFF76A6C2),
+                            OperationsRedColors.border,
                           ).withValues(alpha: 0.22),
                           blurRadius: 24,
                           offset: const Offset(0, 10),
@@ -6299,9 +6639,12 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                             focusNode: searchFocus,
                             autofocus: true,
                             decoration: _invGlassFieldDecoration(
+                              context,
                               hintText: 'Buscar',
-                              fillColorOverride: const Color(
-                                0xFFEAF3FC,
+                              fillColorOverride: operationsPageColor(
+                                context,
+                                const Color(0xFFEAF3FC),
+                                OperationsRedColors.field,
                               ).withValues(alpha: 0.86),
                             ),
                             onChanged: (v) => setLocalState(() => q = v),
@@ -6421,26 +6764,42 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                               margin: EdgeInsets.zero,
                                               decoration: BoxDecoration(
                                                 color: focused
-                                                    ? const Color(
-                                                        0xFFE3F0FC,
+                                                    ? operationsPageColor(
+                                                        context,
+                                                        const Color(0xFFE3F0FC),
+                                                        OperationsRedColors
+                                                            .hover,
                                                       ).withValues(alpha: 0.92)
                                                     : hovered
-                                                    ? const Color(
-                                                        0xFFE9F7EE,
+                                                    ? operationsPageColor(
+                                                        context,
+                                                        const Color(0xFFE9F7EE),
+                                                        OperationsRedColors
+                                                            .hover,
                                                       ).withValues(alpha: 0.98)
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(14),
                                                 border: Border.all(
                                                   color: focused
-                                                      ? const Color(
-                                                          0xFF4E92D1,
+                                                      ? operationsPageColor(
+                                                          context,
+                                                          const Color(
+                                                            0xFF4E92D1,
+                                                          ),
+                                                          OperationsRedColors
+                                                              .primary,
                                                         ).withValues(
                                                           alpha: 0.88,
                                                         )
                                                       : hovered
-                                                      ? const Color(
-                                                          0xFFBFD8D3,
+                                                      ? operationsPageColor(
+                                                          context,
+                                                          const Color(
+                                                            0xFFBFD8D3,
+                                                          ),
+                                                          OperationsRedColors
+                                                              .glow,
                                                         ).withValues(
                                                           alpha: 0.62,
                                                         )
@@ -6455,8 +6814,13 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                     ? [
                                                         BoxShadow(
                                                           color:
-                                                              const Color(
-                                                                0xFFBFD8D3,
+                                                              operationsPageColor(
+                                                                context,
+                                                                const Color(
+                                                                  0xFFBFD8D3,
+                                                                ),
+                                                                OperationsRedColors
+                                                                    .glow,
                                                               ).withValues(
                                                                 alpha: 0.46,
                                                               ),
@@ -6487,8 +6851,12 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                   option.label,
                                                   overflow:
                                                       TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF2D4661),
+                                                  style: TextStyle(
+                                                    color: operationsPageColor(
+                                                      context,
+                                                      const Color(0xFF2D4661),
+                                                      OperationsRedColors.muted,
+                                                    ),
                                                     fontWeight: FontWeight.w500,
                                                     letterSpacing: 0.2,
                                                   ),
@@ -6497,9 +6865,15 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                     ? Icon(
                                                         Icons.check,
                                                         size: 18,
-                                                        color: const Color(
-                                                          0xFF2D7A73,
-                                                        ),
+                                                        color:
+                                                            operationsPageColor(
+                                                              context,
+                                                              const Color(
+                                                                0xFF2D7A73,
+                                                              ),
+                                                              OperationsRedColors
+                                                                  .strong,
+                                                            ),
                                                       )
                                                     : null,
                                                 onTap: () => Navigator.of(
@@ -6513,8 +6887,10 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                           Divider(
                                             height: 1,
                                             thickness: 1,
-                                            color: const Color(
-                                              0xFFE5F1FB,
+                                            color: operationsPageColor(
+                                              context,
+                                              const Color(0xFFE5F1FB),
+                                              OperationsRedColors.hover,
                                             ).withValues(alpha: 0.56),
                                           ),
                                       ],
@@ -6622,17 +6998,21 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                     filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                      decoration: _invFilterDialogDecoration(),
+                      decoration: _invFilterDialogDecoration(context),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Filtro: $label',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 16,
-                              color: Color(0xFF0B2B2B),
+                              color: operationsPageColor(
+                                context,
+                                const Color(0xFF0B2B2B),
+                                OperationsRedColors.ink,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -6705,11 +7085,17 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                       final active =
                                           selectedStart || selectedEnd;
                                       final bgColor = active
-                                          ? _kInvFilterAccent
-                                          : inRange
-                                          ? _kInvFilterAccentSoft.withValues(
-                                              alpha: 0.8,
+                                          ? operationsPageColor(
+                                              context,
+                                              _kInvFilterAccent,
+                                              OperationsRedColors.strong,
                                             )
+                                          : inRange
+                                          ? operationsPageColor(
+                                              context,
+                                              _kInvFilterAccentSoft,
+                                              OperationsRedColors.soft,
+                                            ).withValues(alpha: 0.8)
                                           : Colors.transparent;
 
                                       final txtColor = active
@@ -6717,7 +7103,11 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                           : !allowed
                                           ? Colors.black38
                                           : inMonth
-                                          ? const Color(0xFF0B2B2B)
+                                          ? operationsPageColor(
+                                              context,
+                                              const Color(0xFF0B2B2B),
+                                              OperationsRedColors.ink,
+                                            )
                                           : Colors.black54;
 
                                       return Expanded(
@@ -6766,8 +7156,13 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                                     BorderRadius.circular(9),
                                                 border: inRange && !active
                                                     ? Border.all(
-                                                        color: _kInvFilterAccent
-                                                            .withValues(
+                                                        color:
+                                                            operationsPageColor(
+                                                              context,
+                                                              _kInvFilterAccent,
+                                                              OperationsRedColors
+                                                                  .strong,
+                                                            ).withValues(
                                                               alpha: 0.35,
                                                             ),
                                                       )
@@ -6802,10 +7197,14 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                 : end == null
                                 ? 'Mueve el mouse y selecciona fecha final'
                                 : '${_fmtDateLabel(start!)} - ${_fmtDateLabel(end!)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF2A4B49),
+                              color: operationsPageColor(
+                                context,
+                                const Color(0xFF2A4B49),
+                                OperationsRedColors.muted,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -6813,13 +7212,13 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               OutlinedButton(
-                                style: _invFilterOutlinedButtonStyle(),
+                                style: _invFilterOutlinedButtonStyle(context),
                                 onPressed: () => Navigator.pop(dialogContext),
                                 child: const Text('Cancelar'),
                               ),
                               const SizedBox(width: 8),
                               OutlinedButton(
-                                style: _invFilterOutlinedButtonStyle(),
+                                style: _invFilterOutlinedButtonStyle(context),
                                 onPressed: () => Navigator.pop(
                                   dialogContext,
                                   const _InvDateFilterDialogResult(clear: true),
@@ -6828,7 +7227,7 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                               ),
                               const SizedBox(width: 6),
                               FilledButton(
-                                style: _invFilterFilledButtonStyle(),
+                                style: _invFilterFilledButtonStyle(context),
                                 onPressed: start == null
                                     ? null
                                     : () => Navigator.pop(
@@ -6950,19 +7349,33 @@ Future<DateTime?> _showInvKeyboardDatePickerDialog({
               child: Theme(
                 data: Theme.of(innerContext).copyWith(
                   colorScheme: Theme.of(innerContext).colorScheme.copyWith(
-                    primary: const Color(0xFF6A99C7),
+                    primary: operationsPageColor(
+                      context,
+                      const Color(0xFF6A99C7),
+                      OperationsRedColors.strong,
+                    ),
                     onPrimary: Colors.white,
-                    surface: const Color(0xFFEAF2F9),
+                    surface: operationsPageColor(
+                      context,
+                      const Color(0xFFEAF2F9),
+                      OperationsRedColors.surface,
+                    ),
                   ),
                 ),
                 child: AlertDialog(
-                  backgroundColor: const Color(
-                    0xFFEAF2F9,
+                  backgroundColor: operationsPageColor(
+                    context,
+                    const Color(0xFFEAF2F9),
+                    OperationsRedColors.surface,
                   ).withValues(alpha: 0.98),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+                      color: operationsPageColor(
+                        context,
+                        const Color(0xFF8AA9C2),
+                        OperationsRedColors.border,
+                      ).withValues(alpha: 0.42),
                     ),
                   ),
                   title: const Text('Selecciona fecha'),
@@ -6990,14 +7403,22 @@ Future<DateTime?> _showInvKeyboardDatePickerDialog({
                   actions: [
                     TextButton(
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF2D5478),
+                        foregroundColor: operationsPageColor(
+                          context,
+                          const Color(0xFF2D5478),
+                          OperationsRedColors.muted,
+                        ),
                       ),
                       onPressed: () => Navigator.of(dialogContext).pop(),
                       child: const Text('Cancelar'),
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF6A99C7),
+                        backgroundColor: operationsPageColor(
+                          context,
+                          const Color(0xFF6A99C7),
+                          OperationsRedColors.strong,
+                        ),
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () => Navigator.of(
@@ -7046,7 +7467,8 @@ Future<bool?> _showConfirmDialog(
   );
 }
 
-InputDecoration _invGlassFieldDecoration({
+InputDecoration _invGlassFieldDecoration(
+  BuildContext context, {
   String? hintText,
   String? labelText,
   bool suppressFocusedBorder = false,
@@ -7056,7 +7478,11 @@ InputDecoration _invGlassFieldDecoration({
   final baseSide = hideBorder
       ? BorderSide(color: Colors.transparent, width: 0.9)
       : BorderSide(
-          color: const Color(0xFF90AFC8).withValues(alpha: 0.55),
+          color: operationsPageColor(
+            context,
+            const Color(0xFF90AFC8),
+            OperationsRedColors.border,
+          ).withValues(alpha: 0.55),
           width: 1,
         );
   final border = OutlineInputBorder(
@@ -7067,7 +7493,11 @@ InputDecoration _invGlassFieldDecoration({
       ? border
       : border.copyWith(
           borderSide: BorderSide(
-            color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
+            color: operationsPageColor(
+              context,
+              const Color(0xFF00A3FF),
+              OperationsRedColors.primary,
+            ).withValues(alpha: 0.8),
             width: 1.2,
           ),
         );
@@ -7076,13 +7506,22 @@ InputDecoration _invGlassFieldDecoration({
     hintText: hintText,
     labelText: labelText,
     hintStyle: TextStyle(
-      color: const Color(0xFF0B2B2B).withValues(alpha: 0.42),
+      color: operationsPageColor(
+        context,
+        const Color(0xFF0B2B2B),
+        OperationsRedColors.ink,
+      ).withValues(alpha: 0.42),
       fontWeight: FontWeight.w400,
     ),
     isDense: true,
     filled: true,
     fillColor:
-        fillColorOverride ?? const Color(0xFFEAF2F9).withValues(alpha: 0.90),
+        fillColorOverride ??
+        operationsPageColor(
+          context,
+          const Color(0xFFEAF2F9),
+          OperationsRedColors.surface,
+        ).withValues(alpha: 0.90),
     border: border,
     enabledBorder: border,
     focusedBorder: focused,
@@ -7090,40 +7529,76 @@ InputDecoration _invGlassFieldDecoration({
   );
 }
 
-BoxDecoration _invFilterDialogDecoration() {
+BoxDecoration _invFilterDialogDecoration(BuildContext context) {
   return BoxDecoration(
-    color: const Color(0xFFE8F0F7).withValues(alpha: 0.92),
+    color: operationsPageColor(
+      context,
+      const Color(0xFFE8F0F7),
+      OperationsRedColors.surface,
+    ).withValues(alpha: 0.92),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: const Color(0xFF92ABC1).withValues(alpha: 0.50)),
+    border: Border.all(
+      color: operationsPageColor(
+        context,
+        const Color(0xFF92ABC1),
+        OperationsRedColors.border,
+      ).withValues(alpha: 0.50),
+    ),
   );
 }
 
-ButtonStyle _invFilterOutlinedButtonStyle() {
+ButtonStyle _invFilterOutlinedButtonStyle(BuildContext context) {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF1E3C5A),
-    side: BorderSide(color: const Color(0xFF6E8CAA).withValues(alpha: 0.35)),
-    backgroundColor: const Color(0xFFDDE9F4).withValues(alpha: 0.70),
+    foregroundColor: operationsPageColor(
+      context,
+      const Color(0xFF1E3C5A),
+      OperationsRedColors.ink,
+    ),
+    side: BorderSide(
+      color: operationsPageColor(
+        context,
+        const Color(0xFF6E8CAA),
+        OperationsRedColors.border,
+      ).withValues(alpha: 0.35),
+    ),
+    backgroundColor: operationsPageColor(
+      context,
+      const Color(0xFFDDE9F4),
+      OperationsRedColors.soft,
+    ).withValues(alpha: 0.70),
   );
 }
 
-ButtonStyle _invFilterFilledButtonStyle() {
+ButtonStyle _invFilterFilledButtonStyle(BuildContext context) {
   return FilledButton.styleFrom(
-    backgroundColor: _kInvFilterAccent,
+    backgroundColor: operationsPageColor(
+      context,
+      _kInvFilterAccent,
+      OperationsRedColors.strong,
+    ),
     foregroundColor: Colors.white,
   );
 }
 
-ButtonStyle _invActionOutlinedButtonStyle() {
+ButtonStyle _invActionOutlinedButtonStyle(BuildContext context) {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF0B2B2B),
+    foregroundColor: operationsPageColor(
+      context,
+      const Color(0xFF0B2B2B),
+      OperationsRedColors.ink,
+    ),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
     backgroundColor: Colors.white.withValues(alpha: 0.26),
   );
 }
 
-ButtonStyle _invActionFilledButtonStyle() {
+ButtonStyle _invActionFilledButtonStyle(BuildContext context) {
   return FilledButton.styleFrom(
-    foregroundColor: const Color(0xFF0B2B2B),
+    foregroundColor: operationsPageColor(
+      context,
+      const Color(0xFF0B2B2B),
+      OperationsRedColors.ink,
+    ),
     backgroundColor: Colors.white.withValues(alpha: 0.36),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.74)),
   );
@@ -7158,7 +7633,11 @@ class _InvTopMetricCard extends StatelessWidget {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFBFD8D3).withValues(alpha: 0.52),
+        color: operationsPageColor(
+          context,
+          const Color(0xFFBFD8D3),
+          OperationsRedColors.glow,
+        ).withValues(alpha: 0.52),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.74),
@@ -7172,14 +7651,30 @@ class _InvTopMetricCard extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: _kInvFilterAccent.withValues(alpha: 0.20),
+              color: operationsPageColor(
+                context,
+                _kInvFilterAccent,
+                OperationsRedColors.strong,
+              ).withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(9),
               border: Border.all(
-                color: _kInvFilterAccent.withValues(alpha: 0.34),
+                color: operationsPageColor(
+                  context,
+                  _kInvFilterAccent,
+                  OperationsRedColors.strong,
+                ).withValues(alpha: 0.34),
                 width: 1,
               ),
             ),
-            child: Icon(icon, size: 18, color: const Color(0xFF0B2B2B)),
+            child: Icon(
+              icon,
+              size: 18,
+              color: operationsPageColor(
+                context,
+                const Color(0xFF0B2B2B),
+                OperationsRedColors.ink,
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -7191,11 +7686,15 @@ class _InvTopMetricCard extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.5,
-                    color: Color(0xFF2A4B49),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF2A4B49),
+                      OperationsRedColors.muted,
+                    ),
                     height: 1.0,
                   ),
                 ),
@@ -7204,10 +7703,14 @@ class _InvTopMetricCard extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0B2B2B),
+                    color: operationsPageColor(
+                      context,
+                      const Color(0xFF0B2B2B),
+                      OperationsRedColors.ink,
+                    ),
                     height: 1.0,
                   ),
                 ),
@@ -7217,10 +7720,14 @@ class _InvTopMetricCard extends StatelessWidget {
                     subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF2A4B49),
+                      color: operationsPageColor(
+                        context,
+                        const Color(0xFF2A4B49),
+                        OperationsRedColors.muted,
+                      ),
                       height: 1.0,
                     ),
                   ),
@@ -7985,7 +8492,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                     width: 420,
                     constraints: const BoxConstraints(maxHeight: 560),
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                    decoration: _invFilterDialogDecoration(),
+                    decoration: _invFilterDialogDecoration(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -8001,7 +8508,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                         TextField(
                           onChanged: (v) =>
                               setLocalState(() => localSearch = v),
-                          decoration: _invGlassFieldDecoration(
+                          decoration: _invGlassFieldDecoration(context,
                             hintText: 'Buscar',
                           ),
                         ),
@@ -8073,13 +8580,13 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(dialogContext),
                               child: const Text('Cancelar'),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 const _InvFilterDialogResult(
@@ -8090,7 +8597,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                             ),
                             const SizedBox(width: 8),
                             FilledButton(
-                              style: _invFilterFilledButtonStyle(),
+                              style: _invFilterFilledButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 _InvFilterDialogResult(
@@ -9230,7 +9737,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     OutlinedButton.icon(
-                      style: _invActionOutlinedButtonStyle(),
+                      style: _invActionOutlinedButtonStyle(context),
                       onPressed: _currentPage > 0
                           ? () => setState(() => _currentPage--)
                           : null,
@@ -9241,7 +9748,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                       'Página ${_fmtInvInt(_currentPage + 1)} de ${_fmtInvInt(_totalPages)}',
                     ),
                     OutlinedButton.icon(
-                      style: _invActionOutlinedButtonStyle(),
+                      style: _invActionOutlinedButtonStyle(context),
                       onPressed: _currentPage < _totalPages - 1
                           ? () => setState(() => _currentPage++)
                           : null,
@@ -9254,7 +9761,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                       child: DropdownButtonFormField<int>(
                         initialValue: _pageSize,
                         isDense: true,
-                        decoration: _invGlassFieldDecoration(),
+                        decoration: _invGlassFieldDecoration(context, ),
                         items: const [40, 80, 120]
                             .map(
                               (e) => DropdownMenuItem<int>(
@@ -9444,7 +9951,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                   }
                                 },
                                 child: InputDecorator(
-                                  decoration: _invGlassFieldDecoration(),
+                                  decoration: _invGlassFieldDecoration(context, ),
                                   child: Row(
                                     children: [
                                       Expanded(
@@ -9521,7 +10028,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 controller: _draftCountC,
                                 focusNode: _insertCountFocusNode,
                                 keyboardType: TextInputType.number,
-                                decoration: _invGlassFieldDecoration(
+                                decoration: _invGlassFieldDecoration(context,
                                   hintText: 'Pacas',
                                 ),
                                 onTap: () => _setActiveInsertColumn(
@@ -9549,7 +10056,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                decoration: _invGlassFieldDecoration(
+                                decoration: _invGlassFieldDecoration(context,
                                   hintText: 'Prom kg',
                                 ),
                                 onTap: () => _setActiveInsertColumn(
@@ -9595,7 +10102,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                               TextField(
                                 controller: _draftNotesC,
                                 focusNode: _insertNotesFocusNode,
-                                decoration: _invGlassFieldDecoration(
+                                decoration: _invGlassFieldDecoration(context,
                                   hintText: 'Comentario',
                                 ),
                                 onTap: () => _setActiveInsertColumn(
@@ -10498,7 +11005,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                           focusNode: _countFocusNode,
                                           keyboardType: TextInputType.number,
                                           decoration:
-                                              _invGlassFieldDecoration(),
+                                              _invGlassFieldDecoration(context, ),
                                           onTap: () =>
                                               widget.onActivateColumn(3),
                                         )
@@ -10523,7 +11030,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                                 decimal: true,
                                               ),
                                           decoration:
-                                              _invGlassFieldDecoration(),
+                                              _invGlassFieldDecoration(context, ),
                                           onTap: () =>
                                               widget.onActivateColumn(4),
                                         )
@@ -10581,7 +11088,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                           controller: _notesC,
                                           focusNode: _notesFocusNode,
                                           decoration:
-                                              _invGlassFieldDecoration(),
+                                              _invGlassFieldDecoration(context, ),
                                           onTap: () =>
                                               widget.onActivateColumn(6),
                                         )
@@ -11443,7 +11950,7 @@ class _InventoryMaterialSeparationGridState
                     width: 420,
                     constraints: const BoxConstraints(maxHeight: 560),
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                    decoration: _invFilterDialogDecoration(),
+                    decoration: _invFilterDialogDecoration(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -11459,7 +11966,7 @@ class _InventoryMaterialSeparationGridState
                         TextField(
                           onChanged: (v) =>
                               setLocalState(() => localSearch = v),
-                          decoration: _invGlassFieldDecoration(
+                          decoration: _invGlassFieldDecoration(context,
                             hintText: 'Buscar',
                           ),
                         ),
@@ -11531,13 +12038,13 @@ class _InventoryMaterialSeparationGridState
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(dialogContext),
                               child: const Text('Cancelar'),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
-                              style: _invFilterOutlinedButtonStyle(),
+                              style: _invFilterOutlinedButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 const _InvFilterDialogResult(
@@ -11548,7 +12055,7 @@ class _InventoryMaterialSeparationGridState
                             ),
                             const SizedBox(width: 8),
                             FilledButton(
-                              style: _invFilterFilledButtonStyle(),
+                              style: _invFilterFilledButtonStyle(context),
                               onPressed: () => Navigator.pop(
                                 dialogContext,
                                 _InvFilterDialogResult(
@@ -12274,7 +12781,7 @@ class _InventoryMaterialSeparationGridState
                                   }
                                 },
                                 child: InputDecorator(
-                                  decoration: _invGlassFieldDecoration(),
+                                  decoration: _invGlassFieldDecoration(context, ),
                                   child: Row(
                                     children: [
                                       Expanded(
@@ -12336,7 +12843,7 @@ class _InventoryMaterialSeparationGridState
                             child: control(
                               commercialItems.isEmpty
                                   ? InputDecorator(
-                                      decoration: _invGlassFieldDecoration(
+                                      decoration: _invGlassFieldDecoration(context,
                                         hintText: 'Material comercial',
                                       ),
                                       child: const _InvFitText('Sin opciones'),
@@ -12375,7 +12882,7 @@ class _InventoryMaterialSeparationGridState
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                decoration: _invGlassFieldDecoration(
+                                decoration: _invGlassFieldDecoration(context,
                                   hintText: 'Kg',
                                 ),
                                 onTap: () => _setActiveInsertColumn(
@@ -12399,7 +12906,7 @@ class _InventoryMaterialSeparationGridState
                               TextField(
                                 controller: _draftNotesC,
                                 focusNode: _insertNotesFocusNode,
-                                decoration: _invGlassFieldDecoration(
+                                decoration: _invGlassFieldDecoration(context,
                                   hintText: 'Comentario',
                                 ),
                                 onTap: () => _setActiveInsertColumn(

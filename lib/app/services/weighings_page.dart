@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'operations_red_theme.dart';
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
@@ -34,18 +36,26 @@ const int _kTicketFlex = 20;
 const int _kProviderFlex = 30;
 const int _kPriceFlex = 16;
 
-const Color _kFilterAccent = Color(0xFF4F8E8C);
-const Color _kFilterAccentSoft = Color(0xFFE2EEEC);
-const Color _kGlassMenuBg = Color(0xE6EAF2F9);
+const Color _kFilterAccent = OperationsRedColors.strong;
+const Color _kFilterAccentSoft = OperationsRedColors.hover;
+final Color _kGlassMenuBg = OperationsRedColors.surface.withAlpha(230);
 
-class WeighingsPage extends StatefulWidget {
+class WeighingsPage extends StatelessWidget {
   const WeighingsPage({super.key});
 
   @override
-  State<WeighingsPage> createState() => _WeighingsPageState();
+  Widget build(BuildContext context) =>
+      const OperationsRedTheme(child: _WeighingsContent());
 }
 
-class _WeighingsPageState extends State<WeighingsPage>
+class _WeighingsContent extends StatefulWidget {
+  const _WeighingsContent();
+
+  @override
+  State<_WeighingsContent> createState() => _WeighingsPageState();
+}
+
+class _WeighingsPageState extends State<_WeighingsContent>
     with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
 
@@ -932,7 +942,7 @@ class _WeighingsPageState extends State<WeighingsPage>
       fontWeight: FontWeight.w800,
       decoration: TextDecoration.none,
       decorationColor: Colors.transparent,
-      color: Color(0xFF223D5A),
+      color: OperationsRedColors.ink,
     );
     final media = MediaQuery.of(context).size;
 
@@ -1100,7 +1110,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0B2B2B),
+                                color: OperationsRedColors.ink,
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -1117,7 +1127,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                               children: [
                                 TextButton(
                                   style: TextButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2A4B49),
+                                    foregroundColor: OperationsRedColors.muted,
                                   ),
                                   onPressed: () {
                                     setLocalState(() {
@@ -1154,11 +1164,11 @@ class _WeighingsPageState extends State<WeighingsPage>
                                         return CheckboxListTile(
                                           dense: true,
                                           value: checked,
-                                          activeColor: const Color(0xFF2D7A73),
+                                          activeColor:
+                                              OperationsRedColors.strong,
                                           checkColor: Colors.white,
-                                          hoverColor: const Color(
-                                            0xFFE9F7EE,
-                                          ).withValues(alpha: 0.95),
+                                          hoverColor: OperationsRedColors.hover
+                                              .withValues(alpha: 0.95),
                                           title: Text(
                                             value,
                                             overflow: TextOverflow.ellipsis,
@@ -1546,7 +1556,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF2A4B49),
+                            color: OperationsRedColors.muted,
                           ),
                         ),
                       if (_selectedRowState()?.isEditing ?? false)
@@ -1556,7 +1566,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF2A4B49),
+                            color: OperationsRedColors.muted,
                           ),
                         ),
                     ],
@@ -1603,6 +1613,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 330),
                       child: OperationalMetricCard(
+                        useAreaTheme: true,
                         icon: Icons.payments_outlined,
                         label: 'EGRESO PESADAS',
                         value: _fmtMoney(filteredTotal),
@@ -1623,7 +1634,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF2A4B49),
+                          color: OperationsRedColors.muted,
                         ),
                       ),
                     ),
@@ -1856,11 +1867,11 @@ class _WeighingsPageState extends State<WeighingsPage>
   Widget _buildInlineInsertRow() {
     return Card(
       elevation: 0.4,
-      color: const Color(0xFFE7F1F8),
+      color: OperationsRedColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: const Color(0xFF3C8DCC).withValues(alpha: 0.55),
+          color: OperationsRedColors.primary.withValues(alpha: 0.55),
         ),
       ),
       child: Padding(
@@ -1875,7 +1886,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: active
-                        ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
+                        ? OperationsRedColors.primary.withValues(alpha: 0.80)
                         : Colors.transparent,
                     width: active ? 1.15 : 1.0,
                   ),
@@ -2070,9 +2081,9 @@ class _WeighingsPageState extends State<WeighingsPage>
                             width: 34,
                             height: 34,
                             decoration: BoxDecoration(
-                              color: const Color(
-                                0xFF19C37D,
-                              ).withValues(alpha: 0.92),
+                              color: OperationsRedColors.primary.withValues(
+                                alpha: 0.92,
+                              ),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.52),
@@ -2280,13 +2291,13 @@ class _HCellExpand extends StatelessWidget {
               border: Border.all(
                 color: active
                     ? _kFilterAccent.withValues(alpha: 0.55)
-                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
+                    : OperationsRedColors.ink.withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
               active ? Icons.filter_alt : Icons.filter_alt_outlined,
               size: 15,
-              color: active ? Colors.white : const Color(0xFF2A4B49),
+              color: active ? Colors.white : OperationsRedColors.muted,
             ),
           ),
         ),
@@ -2503,13 +2514,13 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     final hoverOnly = _hovering && !hasSelection;
     final highlighted = hasSelection || _hovering;
     final rowBg = _editing
-        ? const Color(0xFFDCEAF7).withValues(alpha: 0.82)
+        ? OperationsRedColors.selection.withValues(alpha: 0.82)
         : hasSelection
-        ? const Color(
-            0xFF00A3FF,
-          ).withValues(alpha: isPrimarySelected ? 0.16 : 0.13)
+        ? OperationsRedColors.primary.withValues(
+            alpha: isPrimarySelected ? 0.16 : 0.13,
+          )
         : hoverOnly
-        ? const Color(0xFFE9F7EE)
+        ? OperationsRedColors.hover
         : Colors.white;
 
     Widget gridCellFrame(int columnIndex, Widget child) {
@@ -2601,7 +2612,7 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                 child: Container(
                   width: 1,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    color: OperationsRedColors.border.withValues(alpha: 0.90),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -2644,7 +2655,7 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      ? OperationsRedColors.primary.withValues(alpha: 0.65)
                       : Colors.white.withValues(alpha: _hovering ? 0.44 : 0.0),
                   width: 1.0,
                 ),
@@ -2894,9 +2905,9 @@ class _MarqueeSelectionPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (rect.isEmpty) return;
     final fill = Paint()
-      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
+      ..color = OperationsRedColors.accent.withValues(alpha: 0.18);
     final stroke = Paint()
-      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.80)
+      ..color = OperationsRedColors.primary.withValues(alpha: 0.80)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawRect(rect, fill);
@@ -3051,7 +3062,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0B2B2B),
+                              color: OperationsRedColors.ink,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -3141,7 +3152,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                           : !allowed
                                           ? Colors.black38
                                           : inMonth
-                                          ? const Color(0xFF0B2B2B)
+                                          ? OperationsRedColors.ink
                                           : Colors.black54;
 
                                       return Expanded(
@@ -3229,7 +3240,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF2A4B49),
+                              color: OperationsRedColors.muted,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -3353,19 +3364,19 @@ Future<DateTime?> _showGlassDatePickerDialog(
               child: Theme(
                 data: Theme.of(innerContext).copyWith(
                   colorScheme: Theme.of(innerContext).colorScheme.copyWith(
-                    primary: const Color(0xFF6A99C7),
+                    primary: OperationsRedColors.strong,
                     onPrimary: Colors.white,
-                    surface: const Color(0xFFEAF2F9),
+                    surface: OperationsRedColors.surface,
                   ),
                 ),
                 child: AlertDialog(
-                  backgroundColor: const Color(
-                    0xFFEAF2F9,
-                  ).withValues(alpha: 0.98),
+                  backgroundColor: OperationsRedColors.surface.withValues(
+                    alpha: 0.98,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+                      color: OperationsRedColors.border.withValues(alpha: 0.42),
                     ),
                   ),
                   title: const Text('Selecciona fecha'),
@@ -3393,14 +3404,14 @@ Future<DateTime?> _showGlassDatePickerDialog(
                   actions: [
                     TextButton(
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF2D5478),
+                        foregroundColor: OperationsRedColors.muted,
                       ),
                       onPressed: () => Navigator.of(dialogContext).pop(),
                       child: const Text('Cancelar'),
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF6A99C7),
+                        backgroundColor: OperationsRedColors.strong,
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () => Navigator.of(
@@ -3438,7 +3449,7 @@ InputDecoration _glassFieldDecoration({String? hintText}) {
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
+        color: OperationsRedColors.primary.withValues(alpha: 0.8),
         width: 1.2,
       ),
     ),
@@ -3455,8 +3466,8 @@ BoxDecoration _filterDialogDecoration() {
 
 ButtonStyle _filterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    foregroundColor: OperationsRedColors.muted,
+    side: BorderSide(color: OperationsRedColors.muted.withValues(alpha: 0.25)),
     backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
@@ -3470,7 +3481,7 @@ ButtonStyle _filterFilledButtonStyle() {
 
 ButtonStyle _actionOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF0B2B2B),
+    foregroundColor: OperationsRedColors.ink,
     backgroundColor: Colors.white.withValues(alpha: 0.34),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
     surfaceTintColor: Colors.transparent,
@@ -3547,7 +3558,7 @@ Future<bool?> _showGlassConfirmDialog(
                       style: const TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0B2B2B),
+                        color: OperationsRedColors.ink,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -3556,7 +3567,7 @@ Future<bool?> _showGlassConfirmDialog(
                       style: const TextStyle(
                         fontSize: 14.5,
                         height: 1.35,
-                        color: Color(0xFF1D3D3B),
+                        color: OperationsRedColors.ink,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -3565,11 +3576,11 @@ Future<bool?> _showGlassConfirmDialog(
                       children: [
                         OutlinedButton(
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF2A4B49),
+                            foregroundColor: OperationsRedColors.muted,
                             side: BorderSide(
-                              color: const Color(
-                                0xFF2A4B49,
-                              ).withValues(alpha: 0.25),
+                              color: OperationsRedColors.muted.withValues(
+                                alpha: 0.25,
+                              ),
                             ),
                             backgroundColor: Colors.white.withValues(
                               alpha: 0.36,
@@ -3582,7 +3593,7 @@ Future<bool?> _showGlassConfirmDialog(
                         const SizedBox(width: 8),
                         FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF2D6A6A),
+                            backgroundColor: OperationsRedColors.strong,
                             foregroundColor: Colors.white,
                           ),
                           autofocus: true,

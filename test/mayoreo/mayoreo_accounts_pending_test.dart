@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:dicsa_operacion/app/mayoreo/mayoreo_accounts_page.dart';
 import 'package:flutter/material.dart';
@@ -182,6 +183,131 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('selection totals follow Ctrl clicks, Shift ranges and Escape', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    accounts.addAll([
+      _account(
+        '1',
+        'CLIENTE UNO',
+        'pagoParcial',
+        1200,
+        paid: 200,
+        weight: 100.25,
+        operation: 'factura',
+      ),
+      _account('2', 'CLIENTE DOS', 'pendienteCheque', 2500, weight: 200.5),
+      _account(
+        '3',
+        'CLIENTE TRES',
+        'pagoParcial',
+        3600,
+        paid: 600,
+        weight: 300.75,
+        operation: 'factura',
+      ),
+    ]);
+    await openPage(tester);
+    await tester.tap(find.text('CLIENTE UNO'), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(r'Peso aprobado: 100.25 KG · Saldo: $1,000.00'),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.tap(find.text('CLIENTE TRES'), kind: PointerDeviceKind.mouse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('2 seleccionadas · 3 visibles'), findsOneWidget);
+    expect(
+      find.text(r'Peso aprobado: 401.00 KG · Saldo: $4,000.00'),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.tap(find.text('CLIENTE TRES'), kind: PointerDeviceKind.mouse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(r'Peso aprobado: 100.25 KG · Saldo: $1,000.00'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('CLIENTE UNO'), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.tap(find.text('CLIENTE TRES'), kind: PointerDeviceKind.mouse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('3 seleccionadas · 3 visibles'), findsOneWidget);
+    expect(
+      find.text(r'Peso aprobado: 601.50 KG · Saldo: $6,500.00'),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('3 cuentas visibles'), findsOneWidget);
+    expect(find.textContaining('Peso aprobado:'), findsNothing);
+    expect(writes, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'selected balance respects payments, redeemed checks and cancelled accounts',
+    (tester) async {
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      accounts.addAll([
+        _account(
+          '1',
+          'FACTURA PARCIAL',
+          'pagoParcial',
+          1000.75,
+          paid: 200.25,
+          weight: 100.25,
+          operation: 'factura',
+        ),
+        _account('2', 'CHEQUE CANJEADO', 'chequeCanjeado', 2000, weight: 200.5),
+        _account('3', 'CANCELADA', 'cancelada', 3000, weight: 300.75),
+        _account(
+          '4',
+          'PAGADA',
+          'pagada',
+          4000,
+          paid: 4000,
+          weight: 400,
+          operation: 'factura',
+        ),
+      ]);
+      await openPage(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(find.text('4 seleccionadas · 4 visibles'), findsOneWidget);
+      expect(
+        find.text(r'Peso aprobado: 1,001.50 KG · Saldo: $800.50'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('TOTAL PENDIENTE'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 seleccionadas · 1 visibles'), findsOneWidget);
+      expect(
+        find.text(r'Peso aprobado: 100.25 KG · Saldo: $800.50'),
+        findsOneWidget,
+      );
+      expect(writes, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Map<String, dynamic> _account(
@@ -190,6 +316,7 @@ Map<String, dynamic> _account(
   String status,
   double amount, {
   double paid = 0,
+  double weight = 100,
   String operation = 'cheque',
 }) => {
   'id': id,
@@ -198,8 +325,8 @@ Map<String, dynamic> _account(
   'client_id': 'client-$id',
   'client_name_snapshot': client,
   'material_name_snapshot': 'CARTON',
-  'approved_weight': 100,
-  'approved_price': amount / 100,
+  'approved_weight': weight,
+  'approved_price': amount / weight,
   'approved_amount': amount,
   'operation_type': operation,
   'status': status,

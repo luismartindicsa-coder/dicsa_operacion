@@ -7,6 +7,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../services/services_page.dart';
 import '../shared/page_routes.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_operations_pages.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
@@ -105,12 +106,6 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
     );
   }
 
-  void _showPhaseSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
-
   void _handleNavigationAction(String label) {
     switch (label) {
       case kLogisticsNavDashboardLabel:
@@ -119,8 +114,10 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
       case kLogisticsNavControlDailyLabel:
         return;
       case kLogisticsNavFleetStatusLabel:
-        _showPhaseSnack(
-          'Estado de Unidades se abrirá en la siguiente fase del área.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsUnitsPage())),
         );
         return;
       case kLogisticsNavCatalogsLabel:
@@ -136,8 +133,10 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
         unawaited(_openPerformance());
         return;
       case kLogisticsNavIncidentsLabel:
-        _showPhaseSnack(
-          'Incidencias se habilitará cuando quede validado el flujo base.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsIncidentsPage())),
         );
         return;
       case kLogisticsNavSavingsLabel:

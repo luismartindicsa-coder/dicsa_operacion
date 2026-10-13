@@ -4,12 +4,12 @@ class _HrPrenominaWorkspace extends StatelessWidget {
   final List<_HrPrenominaSummaryRow> periodRows;
   final Map<String, _PrenominaAttendanceDiagnostic> diagnostics;
   final String search;
-  final String? company;
+  final Set<String> companies;
   final bool incidencesOnly;
   final Set<String> selectedStatuses;
   final bool hasFilters;
   final ValueChanged<String> onSearch;
-  final ValueChanged<String?> onCompany;
+  final ValueChanged<Set<String>> onCompany;
   final ValueChanged<bool> onIncidences;
   final ValueChanged<Set<String>> onStatuses;
   final VoidCallback onClearFilters;
@@ -82,7 +82,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
     required this.periodRows,
     required this.diagnostics,
     required this.search,
-    required this.company,
+    required this.companies,
     required this.incidencesOnly,
     required this.selectedStatuses,
     required this.hasFilters,
@@ -192,7 +192,7 @@ class _HrPrenominaWorkspace extends StatelessWidget {
                     rows: periodRows,
                     diagnostics: diagnostics,
                     search: search,
-                    company: company,
+                    companies: companies,
                     incidencesOnly: incidencesOnly,
                     statuses: selectedStatuses,
                     hasFilters: hasFilters,

@@ -13,6 +13,7 @@ import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_operations_pages.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_diesel_page.dart';
@@ -113,10 +114,9 @@ class LogisticsDashboardPage extends StatelessWidget {
     }
 
     Future<void> openUnits() async {
-      _showLogisticsPhaseSnack(
+      await Navigator.of(
         context,
-        'Estado de Unidades se abrirá en la siguiente fase del área.',
-      );
+      ).push(appPageRoute(page: const LogisticsUnitsPage()));
     }
 
     Future<void> openCatalogs() async {
@@ -160,10 +160,9 @@ class LogisticsDashboardPage extends StatelessWidget {
     }
 
     Future<void> openIncidents() async {
-      _showLogisticsPhaseSnack(
+      await Navigator.of(
         context,
-        'Incidencias se habilitará cuando quede validado el flujo base.',
-      );
+      ).push(appPageRoute(page: const LogisticsIncidentsPage()));
     }
 
     Future<void> openSavings() async {
@@ -207,13 +206,13 @@ class LogisticsDashboardPage extends StatelessWidget {
           ),
           DashboardNavAction(
             title: kLogisticsNavFleetStatusLabel,
-            subtitle: 'Disponibilidad, FLOTILLA y bloqueos',
+            subtitle: 'Estado manual y observaciones',
             icon: Icons.directions_bus_filled_rounded,
             onTap: openUnits,
           ),
           DashboardNavAction(
             title: kLogisticsNavIncidentsLabel,
-            subtitle: 'Retrasos, bloqueos y reasignaciones',
+            subtitle: 'Retrasos, fallas y seguimiento',
             icon: Icons.report_problem_outlined,
             onTap: openIncidents,
           ),
@@ -264,12 +263,6 @@ class LogisticsDashboardPage extends StatelessWidget {
       ),
     );
   }
-}
-
-void _showLogisticsPhaseSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-  );
 }
 
 bool _usesGerenciaExecutiveTheme(BuildContext context) =>
@@ -538,11 +531,11 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                 _LogisticsModuleCard(
                   icon: Icons.directions_bus_filled_rounded,
                   title: 'Estado de Unidades',
-                  badge: 'FLOTILLA',
+                  badge: 'Estado manual',
                   subtitle:
-                      'Lectura de disponibilidad y mantenimiento desde el flujo ya existente del área FLOTILLA.',
+                      'Captura del estado de cada unidad y sus observaciones en Logística.',
                   outcome:
-                      'Bloquea o alerta unidades antes de asignarlas dentro del Control Diario.',
+                      'Mantén visible el estado reportado de cada unidad para planear las asignaciones.',
                   onTap: onOpenUnits,
                 ),
                 const SizedBox(height: 12),
@@ -620,11 +613,11 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                       width: (moduleGridWidth - 12) / 2,
                       icon: Icons.directions_bus_filled_rounded,
                       title: 'Estado de Unidades',
-                      badge: 'FLOTILLA',
+                      badge: 'Estado manual',
                       subtitle:
-                          'Lectura de disponibilidad y mantenimiento desde el flujo ya existente del área FLOTILLA.',
+                          'Captura del estado de cada unidad y sus observaciones en Logística.',
                       outcome:
-                          'Bloquea o alerta unidades antes de asignarlas dentro del Control Diario.',
+                          'Mantén visible el estado reportado de cada unidad para planear las asignaciones.',
                       onTap: onOpenUnits,
                     ),
                     _LogisticsModuleCard(
@@ -3206,7 +3199,7 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                         Row(
                           children: [
                             Text(
-                              'Abrir siguiente fase',
+                              'Abrir módulo',
                               style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,

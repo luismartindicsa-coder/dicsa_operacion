@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'finanzas_company_identity.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_evidence_store.dart';
@@ -498,11 +499,15 @@ class FinanzasSupplierAgreementInvoiceRecord {
 class FinanzasProviderAccountsStore {
   static Future<List<FinanzasSupplierInvoiceRecord>> loadInvoices() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinSupplierInvoicesTable)
-          .select()
-          .order('invoice_date', ascending: false)
-          .order('invoice_folio', ascending: false);
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kFinSupplierInvoicesTable)
+            .select()
+            .order('invoice_date', ascending: false)
+            .order('invoice_folio', ascending: false)
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => FinanzasSupplierInvoiceRecord.fromRemoteRow(
@@ -609,6 +614,83 @@ class FinanzasProviderAccountsStore {
           'reference': normalizedFolio.isEmpty ? null : normalizedFolio,
         })
         .eq('linked_supplier_invoice_id', invoice.id);
+  }
+
+  /// Correct document data without changing executed payments or ticket links.
+  /// A settled invoice remains settled, including when its total is increased.
+  static Future<void> correctInvoice({
+    required FinanzasSupplierInvoiceRecord invoice,
+    required String folio,
+    required double totalAmount,
+    required String notes,
+  }) async {
+    if (folio.trim().isEmpty || !totalAmount.isFinite || totalAmount <= 0.009) {
+      throw ArgumentError('Captura el folio y un total mayor a cero.');
+    }
+    final total = double.parse(totalAmount.toStringAsFixed(2));
+    final wasPaid =
+        invoice.status == 'PAGADA' || invoice.balanceAmount <= 0.009;
+    final applied = (invoice.totalAmount - invoice.balanceAmount).clamp(
+      0.0,
+      double.infinity,
+    );
+    final balance = wasPaid
+        ? 0.0
+        : (total - applied).clamp(0.0, double.infinity);
+    final today = DateTime.now();
+    final status = balance <= 0.009
+        ? 'PAGADA'
+        : invoice.status == 'CONVENIO'
+        ? 'CONVENIO'
+        : applied > 0.009
+        ? 'PARCIAL'
+        : invoice.dueDate != null &&
+              invoice.dueDate!.isBefore(
+                DateTime(today.year, today.month, today.day),
+              )
+        ? 'VENCIDA'
+        : 'PENDIENTE';
+    final updated = invoice.copyWith(
+      folio: folio.trim(),
+      totalAmount: total,
+      balanceAmount: balance.toDouble(),
+      status: status,
+      notes: notes.trim(),
+    );
+    final before = invoice.toUpsertJson();
+    final after = updated.toUpsertJson();
+    final patch = <String, dynamic>{
+      for (final key in [
+        'invoice_folio',
+        'total_amount',
+        'balance_amount',
+        'status',
+        'notes',
+      ])
+        if (before[key] != after[key]) key: after[key],
+    };
+    if (patch.isEmpty) return;
+    final client = Supabase.instance.client;
+    final saved = await client
+        .from(_kFinSupplierInvoicesTable)
+        .update(patch)
+        .eq('id', invoice.id)
+        .eq('invoice_folio', invoice.folio)
+        .eq('total_amount', invoice.totalAmount)
+        .eq('balance_amount', invoice.balanceAmount)
+        .eq('status', invoice.status)
+        .select('id');
+    if (saved.isEmpty) {
+      throw StateError(
+        'La factura cambió en otro equipo. Actualiza la cuenta antes de guardar.',
+      );
+    }
+    if (updated.folio != invoice.folio) {
+      await client
+          .from(_kFinBankMovementsTable)
+          .update({'reference': updated.folio})
+          .eq('linked_supplier_invoice_id', invoice.id);
+    }
   }
 
   static Future<void> updateInvoiceWithTickets({
@@ -798,11 +880,15 @@ class FinanzasProviderAccountsStore {
 
   static Future<List<FinanzasSupplierAgreementRecord>> loadAgreements() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinSupplierAgreementsTable)
-          .select()
-          .order('start_date', ascending: false)
-          .order('created_at', ascending: false);
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kFinSupplierAgreementsTable)
+            .select()
+            .order('start_date', ascending: false)
+            .order('created_at', ascending: false)
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => FinanzasSupplierAgreementRecord.fromRemoteRow(
@@ -818,11 +904,15 @@ class FinanzasProviderAccountsStore {
   static Future<List<FinanzasSupplierAgreementInstallmentRecord>>
   loadAgreementInstallments() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinSupplierAgreementInstallmentsTable)
-          .select()
-          .order('due_date')
-          .order('sequence_number');
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kFinSupplierAgreementInstallmentsTable)
+            .select()
+            .order('due_date')
+            .order('sequence_number')
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => FinanzasSupplierAgreementInstallmentRecord.fromRemoteRow(
@@ -838,11 +928,15 @@ class FinanzasProviderAccountsStore {
   static Future<List<FinanzasSupplierAgreementInvoiceRecord>>
   loadAgreementInvoices() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinSupplierAgreementInvoicesTable)
-          .select()
-          .order('sequence_number')
-          .order('created_at');
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kFinSupplierAgreementInvoicesTable)
+            .select()
+            .order('sequence_number')
+            .order('created_at')
+            .order('id')
+            .range(from, to),
+      );
       return (rows as List)
           .map(
             (row) => FinanzasSupplierAgreementInvoiceRecord.fromRemoteRow(

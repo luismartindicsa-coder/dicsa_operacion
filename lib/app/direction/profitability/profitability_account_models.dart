@@ -20,9 +20,17 @@ const profitAccountBlocks = <String, String>{
   'overhead': 'Estructura adicional',
 };
 
+const profitCostBasisLabels = {
+  'documents': 'Documentos y nómina publicada, directos o repartidos',
+  'inferred_purchase': 'Compra estimada o pendiente de conciliar',
+  'salary_reference': 'Nómina estimada para días sin cierre',
+  'historical_average': 'Complementos históricos',
+  'other_estimates': 'Otras estimaciones y tarifas',
+};
+
 class ProfitAccountLine {
   final String key, label;
-  double kg = 0, services = 0;
+  double kg = 0, pieces = 0, services = 0;
   final List<ProfitComponent> components = [];
   ProfitAccountLine(this.key, this.label);
   double block(String name) =>
@@ -43,6 +51,7 @@ class ProfitAccountLine {
     'key': key,
     'label': label,
     'kg': kg,
+    'pieces': pieces,
     'services': services,
     'value': materialValue,
     'income': income,
@@ -71,6 +80,27 @@ class ProfitAccountResult {
       components.where((c) => c.block == name).fold(0, (s, c) => s + c.amount!);
   double get generated => block('value') + block('income');
   double get costs => lines.fold(0, (s, l) => s + l.costs);
+
+  /// An exhaustive partition of the existing cost, never an additional charge.
+  Map<String, double> get costBasis {
+    final result = {for (final key in profitCostBasisLabels.keys) key: 0.0};
+    for (final c in components) {
+      if (['value', 'income', 'overhead'].contains(c.block)) continue;
+      final key = c.basisLevel == 'salary_reference'
+          ? 'salary_reference'
+          : c.basisLevel == 'historical_average'
+          ? 'historical_average'
+          : c.block == 'purchase' && c.sourceType == ProfitSourceType.estimated
+          ? 'inferred_purchase'
+          : c.basisLevel == 'payroll_period' ||
+                c.sourceType != ProfitSourceType.estimated
+          ? 'documents'
+          : 'other_estimates';
+      result[key] = result[key]! + (c.amount ?? 0);
+    }
+    return result;
+  }
+
   double get contribution => generated - costs;
   double get afterOverhead => contribution - block('overhead');
   double get historicalCostEstimate => components
@@ -89,6 +119,7 @@ class ProfitAccountResult {
       .fold(0, (s, c) => s + c.amount!);
   double get beforeSharedSupport => contribution + sharedSupport;
   double get kg => lines.fold(0, (s, l) => s + l.kg);
+  double get pieces => lines.fold(0, (s, l) => s + l.pieces);
   double get margin => generated > 0 ? contribution / generated : 0;
   double get perKg => kg > 0 ? contribution / kg : 0;
   double get costPerService => serviceCount > 0 ? costs / serviceCount : 0;
@@ -110,12 +141,14 @@ class ProfitAccountResult {
   ProfitRow toJson() => {
     'generated': generated,
     'costs': costs,
+    'cost_basis': costBasis,
     'contribution': contribution,
     'after_overhead': afterOverhead,
     'shared_support': sharedSupport,
     'historical_cost_estimate': historicalCostEstimate,
     'before_shared_support': beforeSharedSupport,
     'kg': kg,
+    'pieces': pieces,
     'services': serviceCount,
     'kilometers': kilometers,
     'containers': containers,

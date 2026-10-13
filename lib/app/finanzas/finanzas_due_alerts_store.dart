@@ -39,6 +39,7 @@ class FinanzasDueAlertsSummary {
   final double dueIn2DaysAmount;
   final double dueIn7DaysAmount;
   final List<FinanzasDueAlertItem> items;
+  final DateTime? referenceDate;
 
   const FinanzasDueAlertsSummary({
     required this.overdueCount,
@@ -50,6 +51,7 @@ class FinanzasDueAlertsSummary {
     required this.dueIn2DaysAmount,
     required this.dueIn7DaysAmount,
     required this.items,
+    this.referenceDate,
   });
 
   const FinanzasDueAlertsSummary.empty()
@@ -61,33 +63,54 @@ class FinanzasDueAlertsSummary {
       dueTodayAmount = 0,
       dueIn2DaysAmount = 0,
       dueIn7DaysAmount = 0,
+      referenceDate = null,
       items = const <FinanzasDueAlertItem>[];
 
-  int get totalCount =>
-      overdueCount + dueTodayCount + dueIn2DaysCount + dueIn7DaysCount;
+  int get totalCount => items.length;
 
   double get totalAmount =>
-      overdueAmount + dueTodayAmount + dueIn2DaysAmount + dueIn7DaysAmount;
+      items.fold<double>(0, (sum, item) => sum + item.amount);
+
+  DateTime get weekStart {
+    final date = DateUtils.dateOnly(referenceDate ?? DateTime.now());
+    return DateTime(date.year, date.month, date.day - date.weekday + 1);
+  }
+
+  DateTime get weekEnd =>
+      DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
+
+  List<FinanzasDueAlertItem> get weekItems => items
+      .where(
+        (item) =>
+            !item.dueDate.isBefore(weekStart) && item.dueDate.isBefore(weekEnd),
+      )
+      .toList(growable: false);
+
+  List<FinanzasDueAlertItem> get pastDueItems => items
+      .where((item) => item.dueDate.isBefore(weekStart))
+      .toList(growable: false);
+
+  int get notificationCount => weekItems.length + pastDueItems.length;
 }
 
 enum FinanzasDueAlertsSessionScope { finanzasDashboard, directionDashboard }
 
 class FinanzasDueAlertsSessionGate {
-  static const int maxPresentationsPerSession = 3;
-  static final Map<FinanzasDueAlertsSessionScope, int> _presentationCounts =
-      <FinanzasDueAlertsSessionScope, int>{};
+  static const int maxPresentationsPerSession = 1;
+  static bool _presented = false;
 
-  static bool canPresent(FinanzasDueAlertsSessionScope scope) =>
-      (_presentationCounts[scope] ?? 0) < maxPresentationsPerSession;
+  static bool canPresent(FinanzasDueAlertsSessionScope scope) => !_presented;
 
   static int remainingPresentations(FinanzasDueAlertsSessionScope scope) =>
-      maxPresentationsPerSession - (_presentationCounts[scope] ?? 0);
+      _presented ? 0 : maxPresentationsPerSession;
 
   static bool registerPresentation(FinanzasDueAlertsSessionScope scope) {
     if (!canPresent(scope)) return false;
-    _presentationCounts[scope] = (_presentationCounts[scope] ?? 0) + 1;
+    _presented = true;
     return true;
   }
+
+  static void reset() => _presented = false;
 }
 
 class FinanzasDueAlertsStore {
@@ -108,7 +131,24 @@ class FinanzasDueAlertsStore {
     final agreementInvoiceLinks =
         results[4] as List<FinanzasSupplierAgreementInvoiceRecord>;
 
-    final today = DateUtils.dateOnly(DateTime.now());
+    return summarize(
+      invoices: invoices,
+      fixedPayments: fixedPayments,
+      agreements: agreements,
+      installments: installments,
+      agreementInvoiceLinks: agreementInvoiceLinks,
+    );
+  }
+
+  static FinanzasDueAlertsSummary summarize({
+    required List<FinanzasSupplierInvoiceRecord> invoices,
+    required List<FinanzasFixedPaymentRecord> fixedPayments,
+    required List<FinanzasSupplierAgreementRecord> agreements,
+    required List<FinanzasSupplierAgreementInstallmentRecord> installments,
+    required List<FinanzasSupplierAgreementInvoiceRecord> agreementInvoiceLinks,
+    DateTime? now,
+  }) {
+    final today = DateUtils.dateOnly(now ?? DateTime.now());
     final agreementById = <String, FinanzasSupplierAgreementRecord>{
       for (final row in agreements) row.id: row,
     };
@@ -199,10 +239,7 @@ class FinanzasDueAlertsStore {
       }
       final normalizedDue = DateUtils.dateOnly(installment.dueDate);
       final daysUntilDue = normalizedDue.difference(today).inDays;
-      // A supplier agreement remains an active commitment until its installment
-      // is paid. Regular invoices and fixed payments retain their scheduled
-      // reminder windows, but an overdue agreement must carry into tomorrow.
-      final meta = _agreementReminderMeta(daysUntilDue);
+      final meta = _reminderMeta(daysUntilDue);
       if (meta == null) continue;
       final agreement = agreementById[installment.agreementId];
       if (agreement == null ||
@@ -254,12 +291,21 @@ class FinanzasDueAlertsStore {
       dueIn7DaysAmount: items
           .where((row) => row.daysUntilDue == 7)
           .fold<double>(0, (sum, row) => sum + row.amount),
-      items: items.take(8).toList(growable: false),
+      items: items.toList(growable: false),
+      referenceDate: today,
     );
   }
 }
 
 (String, String, FinanzasDueAlertSeverity)? _reminderMeta(int daysUntilDue) {
+  if (daysUntilDue < 0) {
+    final overdueDays = daysUntilDue.abs();
+    return (
+      'overdue',
+      overdueDays == 1 ? 'venció ayer' : 'venció hace $overdueDays días',
+      FinanzasDueAlertSeverity.critical,
+    );
+  }
   if (daysUntilDue == 0) {
     return ('today', 'vence hoy', FinanzasDueAlertSeverity.critical);
   }
@@ -269,19 +315,14 @@ class FinanzasDueAlertsStore {
   if (daysUntilDue == 7) {
     return ('seven_days', 'vence en 1 semana', FinanzasDueAlertSeverity.info);
   }
-  return null;
-}
-
-(String, String, FinanzasDueAlertSeverity)? _agreementReminderMeta(
-  int daysUntilDue,
-) {
-  if (daysUntilDue < 0) {
-    final overdueDays = daysUntilDue.abs();
+  if (daysUntilDue < 7) {
     return (
-      'overdue',
-      overdueDays == 1 ? 'venció ayer' : 'venció hace $overdueDays días',
-      FinanzasDueAlertSeverity.critical,
+      'upcoming',
+      daysUntilDue == 1 ? 'vence mañana' : 'vence en $daysUntilDue días',
+      daysUntilDue <= 2
+          ? FinanzasDueAlertSeverity.warning
+          : FinanzasDueAlertSeverity.info,
     );
   }
-  return _reminderMeta(daysUntilDue);
+  return null;
 }

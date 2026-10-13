@@ -648,6 +648,72 @@ class CommercialDirectoryBundle {
     required this.followUpsByAccountId,
     required this.alertsByAccountId,
   });
+
+  List<CommercialLeadAlert> leadAlerts({DateTime? now}) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final result = <CommercialLeadAlert>[];
+    for (final account in accounts) {
+      if (!account.active ||
+          account.status == 'cerrado' ||
+          account.status == 'dormido' ||
+          (account.kind != 'prospect' && account.status != 'prospecto')) {
+        continue;
+      }
+      final pending =
+          (followUpsByAccountId[account.id] ??
+                  const <CommercialFollowUpRecord>[])
+              .where(
+                (row) => row.status != 'hecho' && row.nextFollowUpAt != null,
+              )
+              .toList()
+            ..sort((a, b) => a.nextFollowUpAt!.compareTo(b.nextFollowUpAt!));
+      final next = pending.firstOrNull;
+      final due = next?.nextFollowUpAt?.toLocal();
+      final date = due == null ? null : DateTime(due.year, due.month, due.day);
+      if (date != null && date.isAfter(today)) continue;
+      result.add(
+        CommercialLeadAlert(
+          account: account,
+          followUp: next,
+          label: date == null
+              ? 'Sin próximo seguimiento'
+              : date.isBefore(today)
+              ? 'Seguimiento vencido'
+              : 'Seguimiento para hoy',
+          rank: date == null
+              ? 2
+              : date.isBefore(today)
+              ? 0
+              : 1,
+        ),
+      );
+    }
+    result.sort((a, b) {
+      final rank = a.rank.compareTo(b.rank);
+      if (rank != 0) return rank;
+      final date = (a.followUp?.nextFollowUpAt ?? today).compareTo(
+        b.followUp?.nextFollowUpAt ?? today,
+      );
+      return date != 0
+          ? date
+          : a.account.displayName.compareTo(b.account.displayName);
+    });
+    return result;
+  }
+}
+
+class CommercialLeadAlert {
+  final CommercialDirectoryAccountRecord account;
+  final CommercialFollowUpRecord? followUp;
+  final String label;
+  final int rank;
+  const CommercialLeadAlert({
+    required this.account,
+    required this.followUp,
+    required this.label,
+    required this.rank,
+  });
 }
 
 class CommercialWeeklyFollowUpSummaryRecord {
@@ -779,6 +845,18 @@ class CommercialStore {
           ..sort((a, b) => a.referenceDate.compareTo(b.referenceDate));
 
     return records;
+  }
+
+  static Future<int> loadCriticalAlertCount() async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from(_kCommercialAlertsView)
+          .select('severity')
+          .eq('severity', 'critica')
+          .order('entity_label')
+          .range(from, to),
+    );
+    return rows.length;
   }
 
   static Future<CommercialDashboardBundle> loadDashboard() async {
@@ -1311,9 +1389,24 @@ class CommercialStore {
       'next_follow_up_at': nextFollowUpAt?.toIso8601String(),
       'status': status,
     };
-    await _supa.from(_kCommercialFollowUpsTable).upsert(<Map<String, dynamic>>[
-      payload,
-    ]);
+    if (followUpId != null && followUpId.isNotEmpty) {
+      if (contactId == null) payload.remove('contact_id');
+      await _supa
+          .from(_kCommercialFollowUpsTable)
+          .update(payload)
+          .eq('id', followUpId)
+          .eq('account_id', accountId);
+    } else {
+      await _supa.from(_kCommercialFollowUpsTable).insert(payload);
+    }
+  }
+
+  static Future<void> completeFollowUp(CommercialFollowUpRecord row) async {
+    await _supa
+        .from(_kCommercialFollowUpsTable)
+        .update({'status': 'hecho'})
+        .eq('id', row.id)
+        .eq('account_id', row.accountId);
   }
 
   static Future<String?> _findAccountIdBySource({

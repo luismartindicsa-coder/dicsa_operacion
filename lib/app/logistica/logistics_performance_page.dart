@@ -21,6 +21,7 @@ import '../services/services_visual_mode.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_operations_pages.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
@@ -697,6 +698,20 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
 
   void _handleNavigationAction(String label) {
     switch (label) {
+      case kLogisticsNavFleetStatusLabel:
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsUnitsPage())),
+        );
+        return;
+      case kLogisticsNavIncidentsLabel:
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsIncidentsPage())),
+        );
+        return;
       case kLogisticsNavDashboardLabel:
         unawaited(_openDashboard());
         return;
@@ -715,8 +730,6 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage> {
       case kLogisticsNavDirectionDashboardLabel:
         unawaited(_openDirection());
         return;
-      case kLogisticsNavFleetStatusLabel:
-      case kLogisticsNavIncidentsLabel:
       case kLogisticsNavSavingsLabel:
         unawaited(
           Navigator.of(

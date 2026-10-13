@@ -33,6 +33,8 @@ HrLoan loan({
   num? installmentAmount,
   num openingPaid = 0,
   int openingCount = 0,
+  num adjustment = 0,
+  int revision = 0,
   String issued = '2026-01-01',
   Map<String, dynamic> openingSnapshot = const {},
 }) => HrLoan.fromRow({
@@ -46,6 +48,8 @@ HrLoan loan({
   'installment_amount': installmentAmount,
   'opening_paid_amount': openingPaid,
   'opening_paid_installments': openingCount,
+  'paid_adjustment_amount': adjustment,
+  'revision': revision,
   'opening_snapshot': openingSnapshot,
   'repayment_method': method,
   'payroll_channel': channel,
@@ -58,10 +62,12 @@ HrLoanPayment payment(
   num amount, {
   String method = 'efectivo',
   String loanId = 'loan-1',
+  num extra = 0,
 }) => HrLoanPayment.fromRow({
   'id': 'pay-$amount',
   'loan_id': loanId,
   'amount': amount,
+  'principal_only_amount': extra,
   'method': method,
   'paid_on': '2026-09-05',
 });
@@ -110,7 +116,7 @@ void main() {
   setUpAll(() async {
     if (!const bool.fromEnvironment('HR_LOANS_PREVIEW')) return;
     final bytes = File(
-      '/opt/homebrew/share/flutter/engine/src/flutter/txt/third_party/fonts/Roboto-Regular.ttf',
+      '/opt/homebrew/share/flutter/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf',
     ).readAsBytesSync();
     for (final name in ['Ahem', 'Roboto']) {
       await (FontLoader(
@@ -375,7 +381,7 @@ void main() {
   );
 
   test(
-    'cash-only loans stay outside payroll, and advance payments reduce subsequent dues',
+    'cash-only loans stay outside payroll and legacy advance receipts retain their original allocation',
     () {
       final state = fund(
         loans: [
@@ -544,6 +550,71 @@ void main() {
     expect(row['payload']['source_snapshot']['loan_fund']['amount'], 0);
   });
 
+  test(
+    'new extra payment keeps the following quota and shortens final terms',
+    () {
+      final item = loan();
+      final state = fund(loans: [item], payments: [payment(400, extra: 100)]);
+      expect(state.paidCents(item), 40000);
+      expect(state.balanceCents(item), 80000);
+      expect(state.dueCents(item, DateTime(2026, 9, 10)), 0);
+      expect(state.dueCents(item, DateTime(2026, 9, 17)), 30000);
+      expect(state.scheduledAmountCents(item, 3), 20000);
+      expect(state.scheduledPaidCents(item), 30000);
+      final more = fund(loans: [item], payments: [payment(700, extra: 400)]);
+      expect(more.scheduledAmountCents(item, 2), 20000);
+      expect(more.scheduledAmountCents(item, 3), 0);
+      expect(more.dueCents(item, DateTime(2026, 9, 17)), 30000);
+    },
+  );
+
+  test(
+    'paid corrections preserve the usual installment, close/reopen balances and reconcile the fund',
+    () {
+      final item = loan(adjustment: 200);
+      final state = fund(
+        loans: [item],
+        payments: [payment(300, method: 'nomina')],
+      );
+      expect(state.paidCents(item), 50000);
+      expect(state.availableCents, 1430000);
+      expect(state.dueCents(item, DateTime(2026, 9, 17)), 30000);
+      final closed = loan(adjustment: 900);
+      final settled = fund(
+        loans: [closed],
+        payments: [payment(300, method: 'nomina')],
+      );
+      expect(settled.dueCents(closed, DateTime(2026, 9, 24)), 0);
+      expect(settled.availableCents, 1500000);
+      final reopened = loan(adjustment: -200);
+      final corrected = fund(loans: [reopened], payments: [payment(300)]);
+      expect(corrected.dueCents(reopened, DateTime(2026, 12, 1)), 110000);
+      expect(corrected.availableCents, 1390000);
+    },
+  );
+
+  test(
+    'monthly and 14-day schedules cap the final payroll to the corrected balance',
+    () {
+      for (final frequency in ['mensual', 'quincenal']) {
+        final item = loan(frequency: frequency, first: '2026-01-31');
+        final state = fund(
+          loans: [item],
+          payments: [payment(1000, extra: 700)],
+        );
+        expect(state.dueCents(item, item.dueOn(1)!), 20000);
+        expect(state.scheduledAmountCents(item, 1), 20000);
+        expect(state.scheduledAmountCents(item, 2), 0);
+        final plan = state.payrollPlan(
+          'test-1',
+          item.dueOn(1)!,
+          flowAvailableCents: 100000,
+        );
+        expect(plan.cents, 20000);
+      }
+    },
+  );
+
   testWidgets(
     'workspace shows the fund, selected schedule, cash action and searchable list',
     (tester) async {
@@ -552,6 +623,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       var cashCalls = 0;
+      var editCalls = 0;
       final boundary = GlobalKey();
       await tester.pumpWidget(
         RepaintBoundary(
@@ -568,6 +640,9 @@ void main() {
                   child: HrLoansWorkspace(
                     fund: fund(payments: [payment(100)]),
                     onCreate: () async {},
+                    onEdit: (_) async {
+                      editCalls++;
+                    },
                     onCashPayment: (_) async {
                       cashCalls++;
                     },
@@ -587,6 +662,8 @@ void main() {
       await capture(tester, boundary, 'workspace');
       await tester.tap(find.text('Abono en efectivo'));
       expect(cashCalls, 1);
+      await tester.tap(find.text('Editar préstamo'));
+      expect(editCalls, 1);
       await tester.tap(find.text('Historial de abonos'));
       await tester.pumpAndSettle();
       expect(find.text(r'$100.00 · Efectivo'), findsOneWidget);
@@ -708,6 +785,250 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'editing dates, amounts and paid previews the balance and preserves focus, cents, Enter and a single in-flight save',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final item = loan(revision: 7, issued: '2026-09-01');
+      final pending = Completer<void>();
+      final calls = <Map<String, dynamic>>[];
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: boundary,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(fontFamily: 'Roboto'),
+            home: AreaThemeScope(
+              tokens: humanResourcesAreaTokens,
+              child: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () => showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => AreaThemeScope(
+                        tokens: humanResourcesAreaTokens,
+                        child: hrLoanEditFormForTesting(
+                          loan: item,
+                          fund: fund(
+                            loans: [item],
+                            payments: [payment(300, method: 'nomina')],
+                          ),
+                          onSave: (params) {
+                            calls.add(params);
+                            return pending.future;
+                          },
+                        ),
+                      ),
+                    ),
+                    child: const Text('Abrir'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Abrir'));
+      await tester.pumpAndSettle();
+      Finder field(String label) => find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == label,
+      );
+      final amount = field('Monto del préstamo'),
+          paid = field('Total aportado');
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(of: amount, matching: find.byType(EditableText)),
+            )
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      await tester.enterText(paid, '200');
+      await tester.tap(find.text('Guardar cambios'));
+      await tester.pumpAndSettle();
+      expect(calls, isEmpty);
+      expect(find.textContaining('nóminas cerradas').first, findsOneWidget);
+      await tester.enterText(amount, '1,500.50');
+      await tester.enterText(paid, '550.25');
+      await tester.pump();
+      expect(find.text(r'Saldo pendiente: $950.25'), findsOneWidget);
+      final editable = tester.widget<EditableText>(
+        find.descendant(of: paid, matching: find.byType(EditableText)),
+      );
+      expect(editable.focusNode.hasFocus, isTrue);
+      await tester.tap(find.text('Fecha del préstamo: 2026-09-01'));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Fecha del préstamo: 2026-08-31'), findsOneWidget);
+      await tester.tap(find.text('Primer vencimiento: 2026-09-04'));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        field('Comentarios'),
+        'Abono extraordinario confirmado',
+      );
+      await tester.pumpAndSettle();
+      await capture(tester, boundary, 'edit');
+      await tester.tap(paid);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(calls.length, 1);
+      expect(calls.single['p_expected_revision'], 7);
+      expect(calls.single['p_expected_paid'], 300);
+      expect(calls.single['p_principal'], 1500.50);
+      expect(calls.single['p_paid_amount'], 550.25);
+      expect(calls.single['p_requested_on'], '2026-08-31');
+      expect(calls.single['p_first_due_on'], '2026-09-05');
+      expect(calls.single['p_notes'], 'Abono extraordinario confirmado');
+      await tester.tap(find.text('Guardando…'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(calls.length, 1);
+      expect(find.byType(Dialog), findsOneWidget);
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'edit keeps failed values for retry and Escape cancels without saving',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final item = loan();
+      final calls = <Map<String, dynamic>>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AreaThemeScope(
+            tokens: humanResourcesAreaTokens,
+            child: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  child: const Text('Abrir'),
+                  onPressed: () => showDialog<bool>(
+                    context: context,
+                    builder: (_) => AreaThemeScope(
+                      tokens: humanResourcesAreaTokens,
+                      child: hrLoanEditFormForTesting(
+                        loan: item,
+                        fund: fund(),
+                        onSave: (params) async {
+                          calls.add(params);
+                          if (calls.length == 1) throw Exception('Offline');
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Abrir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guardar cambios'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.tap(find.text('Guardar cambios'));
+      await tester.pumpAndSettle();
+      expect(calls.length, 2);
+      expect(calls[0], calls[1]);
+      expect(find.byType(Dialog), findsNothing);
+      await tester.tap(find.text('Abrir'));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(calls.length, 2);
+      expect(find.byType(Dialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'settled loans remain editable and history explains corrections and extra amounts',
+    (tester) async {
+      tester.view.physicalSize = const Size(1140, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final item = loan(adjustment: 800);
+      var edits = 0;
+      final boundary = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: boundary,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(fontFamily: 'Roboto'),
+            home: AreaThemeScope(
+              tokens: humanResourcesAreaTokens,
+              child: Scaffold(
+                backgroundColor: humanResourcesAreaTokens.primaryStrong,
+                body: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: HrLoansWorkspace(
+                    onEdit: (_) async {
+                      edits++;
+                    },
+                    fund: HrLoanFundState(
+                      capitalCents: 1500000,
+                      loans: [item],
+                      payments: [payment(400, extra: 100)],
+                      changes: [
+                        {
+                          'loan_id': item.id,
+                          'created_at': '2026-10-12T12:00:00Z',
+                          'before_values': {
+                            'principal': 1200,
+                            'paid_amount': 400,
+                          },
+                          'after_values': {
+                            'principal': 1200,
+                            'paid_amount': 1200,
+                          },
+                        },
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Liquidados'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(item.employeeName));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Editar préstamo'));
+      expect(edits, 1);
+      await tester.tap(find.text('Historial de abonos'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(r'Aportado: $400.00 a $1,200.00'),
+        findsOneWidget,
+      );
+      expect(find.textContaining(r'Extra al saldo: $100.00'), findsOneWidget);
+      await capture(tester, boundary, 'correction_history');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'new loan validates the fund, keeps one request and disables double submit',
     (tester) async {

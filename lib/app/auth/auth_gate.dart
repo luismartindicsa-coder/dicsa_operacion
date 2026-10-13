@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_access.dart';
 import 'auth_navigation.dart';
 import '../direction/direction_operations_repository.dart';
+import '../finanzas/finanzas_due_alerts_store.dart';
 import '../direction/direction_purchase_orders_page.dart';
 import 'login_page.dart';
 import 'role_router.dart';
@@ -81,6 +82,7 @@ class _AuthGateState extends State<AuthGate>
         );
       }
       if (state.event == AuthChangeEvent.signedOut) {
+        FinanzasDueAlertsSessionGate.reset();
         AuthAccess.invalidateResolvedProfileCache();
         await SessionExpiryService.instance.clearSessionStart();
         _expiring = false;

@@ -6,7 +6,7 @@ class HrLoanRepository {
   final SupabaseClient client;
   HrLoanRepository(this.client);
 
-  Future<HrLoanFundState> load() async {
+  Future<HrLoanFundState> load({bool includeChanges = false}) async {
     final results = await Future.wait([
       client
           .from('hr_loan_fund')
@@ -30,6 +30,15 @@ class HrLoanRepository {
             .order('id')
             .range(from, to),
       ),
+      if (includeChanges)
+        fetchAllSupabaseRows(
+          (from, to) => client
+              .from('hr_loan_changes')
+              .select()
+              .order('created_at', ascending: false)
+              .order('id')
+              .range(from, to),
+        ),
     ]);
     return HrLoanFundState(
       capitalCents: hrLoanCents((results[0] as Map)['capital']),
@@ -38,6 +47,9 @@ class HrLoanRepository {
           .toList(),
       payments: (results[2] as List)
           .map((r) => HrLoanPayment.fromRow(Map<String, dynamic>.from(r)))
+          .toList(),
+      changes: (includeChanges ? results[3] as List : const [])
+          .map((r) => Map<String, dynamic>.from(r))
           .toList(),
     );
   }
@@ -55,6 +67,10 @@ class HrLoanRepository {
       (await client.rpc('hr_loan_create', params: parameters)).toString();
   Future<void> cashPayment(Map<String, dynamic> parameters) async {
     await client.rpc('hr_loan_record_cash_payment', params: parameters);
+  }
+
+  Future<void> edit(Map<String, dynamic> parameters) async {
+    await client.rpc('hr_loan_edit', params: parameters);
   }
 
   Future<void> setPayrollChannel(Map<String, dynamic> parameters) async {

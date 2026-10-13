@@ -32,6 +32,8 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_terminations_page.dart';
 import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_source.dart';
@@ -1519,6 +1521,24 @@ class _HumanResourcesAttendancePageState
               onDismiss: () => setState(() => _menuOpen = false),
               canReturnToDirection: _canReturnToDirection,
               sections: buildHumanResourcesAreaSections(
+                openVacancies: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesVacanciesPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
+                openDocumentation: () async {
+                  await Navigator.of(context).pushReplacement(
+                    appPageRoute(
+                      page: const HumanResourcesDocumentationPage(
+                        instantOpen: true,
+                      ),
+                    ),
+                  );
+                },
                 activeScreen: HumanResourcesAreaScreen.attendance,
                 openPersonnel: _openPersonnel,
                 openAttendance: () async {},

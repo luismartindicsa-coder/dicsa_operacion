@@ -6,6 +6,8 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../shared/utils/number_formatters.dart';
 import '../direction_shipments_store.dart';
 import '../operating_program/operating_program_models.dart';
+import '../projection/weekly_projection_detail_pdf.dart';
+import 'expected_income_collection_report.dart';
 import 'expected_income_engine.dart';
 import 'expected_income_models.dart';
 
@@ -15,6 +17,7 @@ class ExpectedIncomePrintData {
   final DateTime week, generatedAt;
   final ExpectedIncomeProjection projection;
   final String productionSource;
+  late final ExpectedIncomeCollectionReport collectionReport;
   ExpectedIncomePrintData({
     required DirectionShipmentPlanningBundle bundle,
     required ExpectedIncomeData data,
@@ -25,7 +28,14 @@ class ExpectedIncomePrintData {
          data: data,
          now: generatedAt,
        ),
-       productionSource = data.productionSource;
+       productionSource = data.productionSource {
+    collectionReport = ExpectedIncomeCollectionReport(
+      projection: projection,
+      sourceCollections: data.collections,
+      week: week,
+      generatedAt: generatedAt,
+    );
+  }
 
   String get fileName =>
       'ingreso_proyectado_embarques_${programDate(week)}.pdf';
@@ -106,6 +116,7 @@ Future<Uint8List> buildExpectedIncomePdf(
   ExpectedIncomePrintData data, {
   AssetBundle? assetBundle,
 }) async {
+  data.collectionReport.validate(data.projection);
   final assets = assetBundle ?? rootBundle;
   final logo = pw.MemoryImage(
     (await assets.load('assets/images/logo_dicsa.png')).buffer.asUint8List(),
@@ -249,10 +260,12 @@ Future<Uint8List> buildExpectedIncomePdf(
       : !p.palomar.complete
       ? 'Faltan embarques por valuar'
       : p.palomar.availableDraw > 0
-      ? 'Disposición estimada al cierre de la semana'
+      ? p.palomar.undatedDraw == 0
+            ? 'Disposición con fechas de recepción'
+            : 'Disposición prevista; falta definir fechas'
       : 'Sin disposición disponible al cierre';
-  // Fixed executive layout: aggregate every shipment/account into these panels.
-  // Record counts, names and notes cannot add pages or shrink the whole report.
+  // Preserve the executive summary as the first page. The collection checklist
+  // follows on the pages it needs instead of shrinking or truncating documents.
   document.addPage(
     pw.Page(
       pageFormat: PdfPageFormat.a4.landscape,
@@ -429,6 +442,12 @@ Future<Uint8List> buildExpectedIncomePdf(
                   ),
                   pw.SizedBox(height: 10),
                   text(palomarStatus, size: 8, bold: true),
+                  pw.SizedBox(height: 5),
+                  for (final type in ['EFECTIVO', 'FISCAL'])
+                    text(
+                      'Recepción $type: ${p.palomar.dateFor(type) == null ? 'Sin fecha' : _date(p.palomar.dateFor(type)!)}',
+                      size: 8,
+                    ),
                   pw.Spacer(),
                   text(
                     'Las remisiones reducen el saldo. La disposición ya está incluida en el flujo semanal.',
@@ -445,15 +464,162 @@ Future<Uint8List> buildExpectedIncomePdf(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               text(
-                'Proyección sujeta a embarque y cobro. Detalle disponible en Ingresos esperados.',
+                data.collectionReport.rows.isEmpty
+                    ? 'Sin cobranza pendiente con fecha en esta semana. Proyección sujeta a embarque y cobro.'
+                    : 'Proyección sujeta a embarque y cobro. Desglose de cobranza en las páginas siguientes.',
                 size: 8,
               ),
-              text('1 / 1', size: 8),
+              text('Página 1', size: 8),
             ],
           ),
         ],
       ),
     ),
   );
+  final collections = data.collectionReport;
+  if (collections.rows.isNotEmpty) {
+    String count(int value) =>
+        '$value ${value == 1 ? 'pendiente' : 'pendientes'}';
+    pw.Table table(List<IncomeCollectionPrintRow> items, String totalLabel) {
+      final rows = <ProjectionPdfRow>[];
+      for (var d = 0; d < 7; d++) {
+        final date = incomeDay(data.week).add(Duration(days: d));
+        final daily = items.where((r) => r.date == date).toList();
+        if (daily.isEmpty) continue;
+        for (final r in daily) {
+          rows.add(
+            ProjectionPdfRow([
+              '${projectionPdfDays[d]}\n${_date(date)}',
+              r.client,
+              r.document,
+              '${r.material} / ${r.status}',
+              r.type,
+              _money(r.pendingCents),
+            ]),
+          );
+        }
+        rows.add(
+          ProjectionPdfRow([
+            '',
+            'Subtotal ${projectionPdfDays[d]}',
+            count(daily.length),
+            '',
+            '',
+            _money(daily.fold<int>(0, (sum, r) => sum + r.pendingCents)),
+          ], subtotal: true),
+        );
+      }
+      rows.add(
+        ProjectionPdfRow([
+          '',
+          totalLabel,
+          count(items.length),
+          '',
+          '',
+          _money(items.fold<int>(0, (sum, r) => sum + r.pendingCents)),
+        ], subtotal: true),
+      );
+      return projectionDetailTable([
+        'Fecha de cobro',
+        'Cliente',
+        'Factura / remisión',
+        'Material / seguimiento',
+        'Tipo',
+        'Saldo pendiente',
+      ], rows);
+    }
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(28),
+        // Bounded continuation rows support long client/document names; the
+        // existing detail-table helper repeats headers on every continuation.
+        maxPages:
+            10 +
+            collections.rows.fold<int>(
+              0,
+              (n, r) =>
+                  n +
+                  1 +
+                  (r.client.length + r.document.length + r.material.length) ~/
+                      120,
+            ),
+        header: (context) => pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 12),
+          child: pw.Row(
+            children: [
+              pw.Image(logo, width: 30, height: 30),
+              pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    text(
+                      'Cobranza semanal / Ventas Mayoreo',
+                      size: 17,
+                      bold: true,
+                    ),
+                    text(
+                      'Semana ${_date(data.week)} al ${_date(data.week.add(const Duration(days: 6)))}  |  MXN',
+                      size: 9,
+                    ),
+                  ],
+                ),
+              ),
+              text('Lectura ${_date(data.generatedAt)}', size: 8),
+            ],
+          ),
+        ),
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            text(
+              'Saldos pendientes netos de abonos al corte. El Palomar permanece en el resumen como financiamiento.',
+              size: 8,
+            ),
+            text('${context.pageNumber} / ${context.pagesCount}', size: 8),
+          ],
+        ),
+        build: (context) => [
+          text('Cobranza de la semana', size: 12, bold: true, color: _accent),
+          pw.SizedBox(height: 5),
+          text(
+            'Documentos y embarques realizados pendientes de cobro. Vencido indica una fecha de cobro anterior a la lectura, dentro de esta semana.',
+            size: 9,
+          ),
+          pw.SizedBox(height: 8),
+          if (collections.receivables.isEmpty)
+            text(
+              'Sin documentos ni embarques realizados pendientes de cobro en esta semana.',
+            )
+          else
+            table(collections.receivables, 'TOTAL COBRANZA'),
+          if (collections.expected.isNotEmpty) ...[
+            pw.SizedBox(height: 18),
+            text(
+              'Cobros previstos sujetos a embarque',
+              size: 12,
+              bold: true,
+              color: _accent,
+            ),
+            pw.SizedBox(height: 5),
+            text(
+              'Confirmar el envío y el documento antes de gestionar estos cobros.',
+              size: 9,
+            ),
+            pw.SizedBox(height: 8),
+            table(collections.expected, 'TOTAL SUJETO A EMBARQUE'),
+          ],
+          pw.SizedBox(height: 12),
+          text(
+            'TOTAL COBROS DE LA SEMANA: ${_money(collections.total)}',
+            size: 11,
+            bold: true,
+          ),
+        ],
+      ),
+    );
+  }
   return document.save();
 }

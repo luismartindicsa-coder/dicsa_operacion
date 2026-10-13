@@ -35,7 +35,7 @@ class _CommercialDevelopmentDashboardPageState
   bool _menuOpen = false;
   bool _loading = true;
   bool _canReturnToDirection = false;
-  CommercialDashboardBundle? _radar;
+  int _criticalAlerts = 0;
   CommercialDirectoryBundle? _directory;
   List<CommercialAgendaEntryRecord> _agenda = const [];
 
@@ -59,13 +59,13 @@ class _CommercialDevelopmentDashboardPageState
     setState(() => _loading = true);
     try {
       final results = await Future.wait<dynamic>([
-        CommercialStore.loadDashboard(),
+        CommercialStore.loadCriticalAlertCount(),
         CommercialStore.loadDirectory(),
         CommercialStore.loadAgenda(),
       ]);
       if (!mounted) return;
       setState(() {
-        _radar = results[0] as CommercialDashboardBundle;
+        _criticalAlerts = results[0] as int;
         _directory = results[1] as CommercialDirectoryBundle;
         _agenda = results[2] as List<CommercialAgendaEntryRecord>;
       });
@@ -84,6 +84,17 @@ class _CommercialDevelopmentDashboardPageState
     appPageRoute(page: const CommercialDirectoryPage(instantOpen: true)),
   );
 
+  Future<void> _openLead([String? accountId]) async =>
+      Navigator.of(context).pushReplacement(
+        appPageRoute(
+          page: CommercialDirectoryPage(
+            instantOpen: true,
+            initialAccountId: accountId,
+            showLeadAlerts: accountId == null,
+          ),
+        ),
+      );
+
   Future<void> _openAgenda() async => Navigator.of(context).pushReplacement(
     appPageRoute(page: const CommercialAgendaPage(instantOpen: true)),
   );
@@ -97,14 +108,12 @@ class _CommercialDevelopmentDashboardPageState
   Widget build(BuildContext context) {
     final accounts =
         _directory?.accounts ?? const <CommercialDirectoryAccountRecord>[];
-    final alerts = _radar?.alerts ?? const <CommercialAlertRecord>[];
+    final leadAlerts =
+        _directory?.leadAlerts() ?? const <CommercialLeadAlert>[];
     final today = DateUtils.dateOnly(DateTime.now());
     final directProspects = accounts.where(_isDirectProspect).length;
     final accountsWithFollowUp = accounts
         .where((row) => row.followUpCount > 0)
-        .length;
-    final criticalAlerts = alerts
-        .where((alert) => alert.severity == 'critica')
         .length;
     final plannedAgenda =
         _agenda
@@ -177,7 +186,9 @@ class _CommercialDevelopmentDashboardPageState
                           : ListView(
                               children: [
                                 _DevelopmentPriorityCard(
-                                  criticalAlerts: criticalAlerts,
+                                  criticalAlerts: _criticalAlerts,
+                                  leadAlerts: leadAlerts.length,
+                                  onOpenLeads: () => _openLead(),
                                   nextEvent: nextEvent,
                                   directProspects: directProspects,
                                   onOpenRadar: _openRadar,
@@ -200,15 +211,16 @@ class _CommercialDevelopmentDashboardPageState
                                         onTap: _openDirectory,
                                       ),
                                       _DevelopmentSummaryCard(
-                                        icon: Icons.radar_rounded,
-                                        title: 'Radar',
-                                        metric: '${alerts.length}',
-                                        metricLabel: 'alertas activas',
+                                        icon: Icons.point_of_sale_outlined,
+                                        title: 'Compras y ventas',
+                                        metric: 'Por material',
+                                        metricLabel: 'peso y precio promedio',
                                         details:
-                                            '${_radar?.kpis.materialsActive30d ?? 0} materiales activos en 30 días',
-                                        tone: const Color(0xFFF2C94C),
-                                        actionLabel: 'Revisar radar',
-                                        onTap: _openRadar,
+                                            'Consulta el resumen de cada cuenta',
+                                        tone:
+                                            commercialAreaTokens.primaryStrong,
+                                        actionLabel: 'Ver cuentas',
+                                        onTap: _openDirectory,
                                       ),
                                       _DevelopmentSummaryCard(
                                         icon: Icons.calendar_month_rounded,
@@ -256,6 +268,13 @@ class _CommercialDevelopmentDashboardPageState
                                   },
                                 ),
                                 const SizedBox(height: 14),
+                                if (leadAlerts.isNotEmpty) ...[
+                                  _DevelopmentLeadList(
+                                    alerts: leadAlerts,
+                                    onOpenLead: _openLead,
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
                                 _DevelopmentQuickList(
                                   title: 'Próximos eventos',
                                   emptyLabel:
@@ -386,7 +405,7 @@ class _CommercialDevelopmentHeader extends StatelessWidget {
             ),
             const SizedBox(height: 5),
             Text(
-              'Prospectos, señales de mercado y agenda',
+              'Cuentas, compras, ventas y seguimiento',
               style: TextStyle(
                 color: tokens.badgeText,
                 fontSize: 12.5,
@@ -401,7 +420,8 @@ class _CommercialDevelopmentHeader extends StatelessWidget {
 }
 
 class _DevelopmentPriorityCard extends StatelessWidget {
-  final int criticalAlerts;
+  final int criticalAlerts, leadAlerts;
+  final Future<void> Function() onOpenLeads;
   final CommercialAgendaEntryRecord? nextEvent;
   final int directProspects;
   final Future<void> Function() onOpenRadar;
@@ -409,6 +429,8 @@ class _DevelopmentPriorityCard extends StatelessWidget {
 
   const _DevelopmentPriorityCard({
     required this.criticalAlerts,
+    required this.leadAlerts,
+    required this.onOpenLeads,
     required this.nextEvent,
     required this.directProspects,
     required this.onOpenRadar,
@@ -419,7 +441,11 @@ class _DevelopmentPriorityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final hasCritical = criticalAlerts > 0;
-    final primaryLabel = hasCritical
+    final primaryLabel = leadAlerts > 0
+        ? leadAlerts == 1
+              ? '1 prospecto requiere seguimiento'
+              : '$leadAlerts prospectos requieren seguimiento'
+        : hasCritical
         ? '$criticalAlerts alertas críticas requieren revisión'
         : 'No hay alertas críticas pendientes';
     return Container(
@@ -470,6 +496,12 @@ class _DevelopmentPriorityCard extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
+              if (leadAlerts > 0)
+                _DevelopmentAction(
+                  label: 'Ver prospectos',
+                  icon: Icons.notifications_active_outlined,
+                  onTap: onOpenLeads,
+                ),
               _DevelopmentAction(
                 label: 'Ver radar',
                 icon: Icons.radar_rounded,
@@ -753,3 +785,51 @@ String _agendaTypeLabel(String type) => switch (type) {
 
 String _agendaDateTimeLabel(DateTime value) =>
     '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')} · ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+class _DevelopmentLeadList extends StatelessWidget {
+  final List<CommercialLeadAlert> alerts;
+  final Future<void> Function([String?]) onOpenLead;
+  const _DevelopmentLeadList({required this.alerts, required this.onOpenLead});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      gradient: kCommercialPanelGradient,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: commercialAreaTokens.border),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Seguimiento de prospectos',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ),
+            TextButton(
+              onPressed: () => onOpenLead(),
+              child: Text('Ver todos (${alerts.length})'),
+            ),
+          ],
+        ),
+        for (final alert in alerts.take(3))
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.notifications_active_outlined,
+              color: commercialAreaTokens.primaryStrong,
+            ),
+            title: Text(alert.account.displayName),
+            subtitle: Text(
+              '${alert.label}${alert.followUp?.nextAction.isNotEmpty == true ? ' · ${alert.followUp!.nextAction}' : ''}',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => onOpenLead(alert.account.id),
+          ),
+      ],
+    ),
+  );
+}

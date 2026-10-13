@@ -3690,7 +3690,10 @@ class _PaymentLearningRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _MiniInfoPill(label: 'Tipo', value: row.itemType),
+              _TinyChip(
+                label: row.itemType,
+                tone: finanzasPaymentSourceTone(row.itemType),
+              ),
               _MiniInfoPill(label: 'Vence', value: dateFormatter(row.dueDate)),
               _MiniInfoPill(
                 label: 'Sugerido',
@@ -5047,12 +5050,15 @@ class _PaymentCenterCompactCard extends StatelessWidget {
         featured ? 16 : 14,
       ),
       decoration: BoxDecoration(
-        color: featured ? kFinanzasPanelSurfaceStrong : kFinanzasPanelSurface,
+        color: Color.alphaBlend(
+          finanzasPaymentSourceTone(row.itemType).withValues(alpha: 0.08),
+          featured ? kFinanzasPanelSurfaceStrong : kFinanzasPanelSurface,
+        ),
         borderRadius: BorderRadius.circular(featured ? 24 : 22),
         border: Border.all(
-          color: row.isPreviewMock
-              ? tone.withValues(alpha: 0.26)
-              : tokens.border.withValues(alpha: 0.18),
+          color: finanzasPaymentSourceTone(
+            row.itemType,
+          ).withValues(alpha: 0.40),
         ),
         boxShadow: [
           BoxShadow(
@@ -5092,7 +5098,10 @@ class _PaymentCenterCompactCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _TinyChip(label: row.itemType, tone: tone),
+                  _TinyChip(
+                    label: row.itemType,
+                    tone: finanzasPaymentSourceTone(row.itemType),
+                  ),
                   if (row.isPreviewMock) ...[
                     const SizedBox(height: 6),
                     const _PreviewLabelChip(label: 'Preview'),

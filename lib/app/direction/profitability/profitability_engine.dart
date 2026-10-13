@@ -3,6 +3,8 @@ import 'profitability_parameters.dart';
 import 'profitability_operating.dart';
 import 'profitability_inference.dart';
 import 'profitability_cost_basis.dart';
+import 'profitability_material_basis.dart';
+import 'profitability_material_units.dart';
 
 String resolveProfitEntity(String key, ProfitReview review) {
   final seen = <String>{};
@@ -172,13 +174,6 @@ ProfitAnalysis analyzeProfitability(
     for (final r in sources.rows('mayoreo_material_catalog'))
       profitText(r['id']): r,
   };
-  bool kgCatalog(ProfitRow? material) => [
-    'KG',
-    'KGS',
-    'KILOGRAMO',
-    'KILOGRAMOS',
-  ].contains(profitKey(material?['unit']));
-
   void addPurchase(ProfitRow row, {required bool retail}) {
     if (!within(row['ticket_date'])) return;
     final prefix = retail ? 'men' : 'compras';
@@ -239,6 +234,16 @@ ProfitAnalysis analyzeProfitability(
         'Compra ${row['ticket_number']}: peso, material o importe incompleto.',
       );
     }
+    final quantityUnit = profitPurchaseUnit(
+      row,
+      retail: retail,
+      catalog: purchaseCatalog[materialId],
+    );
+    final validQuantity =
+        amount != null &&
+        payable != null &&
+        physical != null &&
+        materialId.isNotEmpty;
     purchases.add(
       ProfitPurchase(
         key: key,
@@ -249,21 +254,20 @@ ProfitAnalysis analyzeProfitability(
         source: retail ? 'Menudeo' : 'Compras',
         signature: signature,
         date: profitDate(row['ticket_date'])!,
-        physicalKg: physical ?? 0,
-        payableKg: payable ?? 0,
+        physicalKg: quantityUnit == 'PZA' ? 0 : physical ?? 0,
+        payableKg: quantityUnit == 'PZA' ? 0 : payable ?? 0,
+        pieces: quantityUnit == 'PZA' ? physical ?? 0 : 0,
+        payablePieces: quantityUnit == 'PZA' ? payable ?? 0 : 0,
+        pieceUnit: validQuantity && quantityUnit == 'PZA',
         amount: amount ?? 0,
         amountKnown: amount != null && amount >= 0,
-        kgUnit:
-            amount != null &&
-            payable != null &&
-            physical != null &&
-            materialId.isNotEmpty &&
-            (retail || kgCatalog(purchaseCatalog[materialId])),
+        kgUnit: validQuantity && quantityUnit == 'KG',
       ),
     );
   }
 
   void addSale(ProfitRow row, {required bool retail, bool historical = false}) {
+    if (retail && row['direction'] != 'sale') return;
     final saleDay = profitDate(row[retail ? 'ticket_date' : 'sale_date']);
     if (saleDay == null ||
         (historical
@@ -286,9 +290,12 @@ ProfitAnalysis analyzeProfitability(
     final id = profitText(
       row[retail ? 'commercial_material_id' : 'material_id'],
     );
+    final unit = retail
+        ? profitRetailSaleUnit(row)
+        : profitQuantityUnit(saleCatalog[id]?['unit']);
     final eligible = retail
         ? ['PAGADO', 'PENDIENTE'].contains(profitKey(row['status']))
-        : kgCatalog(saleCatalog[id]);
+        : ['KG', 'PZA'].contains(unit);
     if (!eligible ||
         id.isEmpty ||
         weight == null ||
@@ -300,7 +307,8 @@ ProfitAnalysis analyzeProfitability(
       excludedSales++;
       return;
     }
-    final key = '${retail ? 'men' : 'ventas'}:$id';
+    final key =
+        '${retail ? 'men' : 'ventas'}:$id${unit == 'KG' ? '' : '@$unit'}';
     final benchmark = (historical ? historicalBenchmarks : benchmarks)
         .putIfAbsent(
           key,
@@ -312,9 +320,10 @@ ProfitAnalysis analyzeProfitability(
                   : 'material_name_snapshot'],
             ),
             retail ? 'Menudeo' : 'Mayoreo',
+            unit: unit,
           ),
         );
-    benchmark.kg += weight;
+    benchmark.quantity += weight;
     benchmark.amount += amount;
     benchmark.count++;
     final date = profitDate(row[retail ? 'ticket_date' : 'sale_date'])!;
@@ -346,6 +355,7 @@ ProfitAnalysis analyzeProfitability(
   for (final entry in historicalBenchmarks.entries) {
     benchmarks.putIfAbsent(entry.key, () => entry.value);
   }
+  final materialBasis = ProfitMaterialBasis(sources, profitMaterialFamily);
 
   ProfitCostKind kind(String text) {
     final n = profitKey(text);
@@ -678,7 +688,11 @@ ProfitAnalysis analyzeProfitability(
     final warnings = <String>[];
     double? value;
     if (rows.any(
-      (p) => !p.kgUnit || p.physicalKg <= 0 || p.payableKg < 0 || p.amount < 0,
+      (p) =>
+          (!p.kgUnit && !p.pieceUnit) ||
+          p.quantity <= 0 ||
+          p.payableQuantity < 0 ||
+          p.amount < 0,
     )) {
       warnings.add('Unidad o peso de entrada pendiente de validar.');
     }
@@ -688,17 +702,21 @@ ProfitAnalysis analyzeProfitability(
     if (recipe != null && warnings.isEmpty) {
       var perKg = 0.0;
       for (final output in recipe.outputs) {
-        final benchmark = benchmarks[output.benchmark];
-        if (benchmark?.price == null) {
+        final valuation = materialBasis.outputPrice(
+          benchmarks,
+          output.benchmark,
+          unit: rows.first.unit,
+        );
+        if (valuation.price == null) {
           warnings.add(
             'No hay venta aprobada comparable en el corte para ${output.benchmark}.',
           );
         } else {
-          perKg += output.yieldFraction * benchmark!.price!;
+          perKg += output.yieldFraction * valuation.price!;
         }
       }
       if (warnings.isEmpty) {
-        value = rows.fold<double>(0, (s, p) => s + p.physicalKg) * perKg;
+        value = rows.fold<double>(0, (s, p) => s + p.quantity) * perKg;
       }
     }
     final result = ProfitMaterialResult(

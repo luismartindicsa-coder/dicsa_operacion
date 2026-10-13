@@ -8,13 +8,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/dicsa_logo_mark.dart';
-import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
@@ -23,17 +21,12 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
-import 'menudeo_catalog_page.dart';
-import 'menudeo_dashboard_page.dart';
-import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
-import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
-import 'menudeo_sales_page.dart';
-import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 
 class MenudeoCashCutsPage extends StatefulWidget {
   final bool instantOpen;
@@ -159,7 +152,6 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
   final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
   bool _loading = true;
-  bool _canReturnToDirection = false;
   int _currentPage = 0;
   int _pageSize = 40;
   List<_CashCutRow> _rows = const <_CashCutRow>[];
@@ -167,16 +159,7 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_resolveNavigationAccess());
     unawaited(_loadCuts());
-  }
-
-  Future<void> _resolveNavigationAccess() async {
-    final profile = await AuthAccess.resolveCurrentProfile();
-    if (!mounted) return;
-    setState(() {
-      _canReturnToDirection = AuthAccess.isDirectionRole(profile);
-    });
   }
 
   Future<void> _loadCuts() async {
@@ -239,98 +222,6 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
     final month = value.month.toString().padLeft(2, '0');
     final year = value.year.toString();
     return '$day/$month/$year';
-  }
-
-  Future<void> _goBack() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const MenudeoDashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  Future<void> _openCatalogPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoCatalogPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openTicketsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoTicketsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openSalesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoSalesPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openDepositsExpensesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoDepositsExpensesPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  void _handleNavigationAction(String label) {
-    switch (label) {
-      case 'Dashboard Menudeo':
-        unawaited(_goBack());
-        return;
-      case 'Catálogo':
-        unawaited(_openCatalogPage());
-        return;
-      case 'Ajuste de precios':
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Tickets de menudeo':
-        unawaited(_openTicketsPage());
-        return;
-      case 'Ventas menudeo':
-        unawaited(_openSalesPage());
-        return;
-      case 'Depósitos y gastos':
-        unawaited(_openDepositsExpensesPage());
-        return;
-      case 'Corte de caja':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-    }
   }
 
   Future<void> _logout() async {
@@ -477,10 +368,9 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, anim) => _CashCutsHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          leadingBuilder: (_, anim) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
             contentAnim: contentAnim,
@@ -557,35 +447,10 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
                 ),
               ),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _CashCutsSidePanel(
-                    onNavigate: _handleNavigationAction,
-                    onBack: _goBack,
-                    canReturnToDirection: _canReturnToDirection,
-                  ),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: MenudeoDestination.cashCuts,
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -2491,13 +2356,11 @@ class _CashCutsHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _CashCutsHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -2534,7 +2397,6 @@ class _CashCutsHeaderButtonState extends State<_CashCutsHeaderButton> {
                 unawaited(widget.onTap!());
                 return;
               }
-              widget.onTapSync?.call();
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -2590,253 +2452,6 @@ class _CashCutsHeaderButtonState extends State<_CashCutsHeaderButton> {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CashCutsSidePanel extends StatelessWidget {
-  final Future<void> Function() onBack;
-  final ValueChanged<String> onNavigate;
-  final bool canReturnToDirection;
-
-  const _CashCutsSidePanel({
-    required this.onBack,
-    required this.onNavigate,
-    required this.canReturnToDirection,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Menudeo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (canReturnToDirection) ...[
-                _CashCutsPanelItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  onTap: onBack,
-                ),
-                const SizedBox(height: 10),
-              ],
-              const _CashCutsSectionHeader(label: 'MENU'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _CashCutsPanelItem(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Compras',
-                      subtitle: 'Tickets virtuales de compra',
-                      onTapSync: () => onNavigate('Tickets de menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CashCutsPanelItem(
-                      icon: Icons.point_of_sale_rounded,
-                      title: 'Ventas',
-                      subtitle: 'Tickets virtuales de venta',
-                      onTapSync: () => onNavigate('Ventas menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CashCutsPanelItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Depósitos y gastos',
-                      subtitle: 'Vouchers de caja y egresos',
-                      onTapSync: () => onNavigate('Depósitos y gastos'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CashCutsPanelItem(
-                      icon: Icons.auto_graph_rounded,
-                      title: 'Ajuste de precios',
-                      subtitle: 'Cambios e historial',
-                      onTapSync: () => onNavigate('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CashCutsPanelItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
-                      subtitle: 'Materiales, grupos y precios',
-                      onTapSync: () => onNavigate('Catálogo'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _CashCutsSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              _CashCutsPanelItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Menudeo',
-                subtitle: 'Vista general del área',
-                onTap: onBack,
-              ),
-              const SizedBox(height: 8),
-              const _CashCutsPanelItem(
-                icon: Icons.inventory_2_rounded,
-                title: 'Corte de caja',
-                subtitle: 'Historial y revisión',
-                accented: true,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CashCutsSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _CashCutsSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CashCutsPanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-  final bool accented;
-
-  const _CashCutsPanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-    this.onTapSync,
-    this.accented = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () async {
-          if (onTap != null) {
-            await onTap!();
-          } else {
-            onTapSync?.call();
-          }
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: accented
-                  ? kMenudeoPanelAccentGradient
-                  : kMenudeoPanelGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.white.withValues(alpha: 0.58),
-              ),
-              boxShadow: accented
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: accented ? Colors.white : tokens.primaryStrong,
-                        ),
-                      ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: accented
-                                ? Colors.white.withValues(alpha: 0.92)
-                                : tokens.badgeText,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ),

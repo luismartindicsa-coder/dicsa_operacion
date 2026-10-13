@@ -54,7 +54,7 @@ consultada. Usa una copia consistente de las fuentes cargadas y el mismo motor
 de proyección de la pantalla. El botón espera a que termine la lectura y se
 deshabilita si hubo un error al actualizar las fuentes.
 
-El documento es un resumen ejecutivo de **una sola hoja A4 horizontal**, con:
+La primera hoja conserva el resumen ejecutivo en **A4 horizontal**, con:
 
 - Cuatro cards: flujo de esta semana, valor de embarques, próxima semana y cobrado.
 - Cantidad de embarques vigentes y pacas; cancelados excluidos.
@@ -71,16 +71,27 @@ identifican. Se mantienen los cobros parciales y la exclusión de estimaciones
 pendientes de conciliar con Mayoreo. Las remisiones de El Palomar reducen el saldo
 y no se suman como cobro ordinario. La disposición se incluye una sola vez.
 
-No imprime filas por embarque, cliente o factura, ni observaciones extensas.
-Todos los registros se agregan a los resúmenes; la cantidad de datos no aumenta
-el número de páginas. El detalle permanece en la pantalla. Generar el PDF no modifica operaciones,
+Después del resumen, el PDF incluye **Cobranza de la semana** para Ventas Mayoreo:
+fecha prevista de cobro, cliente, factura/remisión, material/seguimiento, tipo y
+saldo pendiente después de abonos, con subtotales por día y total. Incluye las
+ventas anteriores que vencen en la semana consultada y recupera el folio de la
+cuenta cuando está vinculada a un embarque, sin duplicarla. Marca documentos por
+cobrar, para cobrar hoy y vencidos dentro de esa semana. Los cobros aún sujetos a
+embarque aparecen en una sección aparte para confirmar envío y documento antes
+de gestionarlos. Los dos totales coinciden con los cobros de ventas del resumen;
+El Palomar permanece como financiamiento. Semanas previas, posteriores y partidas
+sin fecha/tipo conservan sus indicadores y no se incorporan a esta lista semanal.
+
+El detalle usa las hojas necesarias y repite encabezados; los textos largos
+continúan sin truncarse ni sumar nuevamente su importe. Si no hay cobros con fecha
+en la semana, solo se genera el resumen. Generar el PDF no modifica operaciones,
 cuentas o proyecciones. Los errores de generación/guardado y la cancelación del
 selector de archivo son visibles, con posibilidad de volver a exportar.
 
-Validación: 9 pruebas del generador y guardado verifican una sola página, cifras
-agregadas y cancelación/error del guardado. Revisión visual de semanas completas,
-vacías, sin configuración y con 108 embarques; comprobación de cifras y márgenes
-mediante extracción de texto. No requiere migración de base de datos.
+Validación: pruebas de conciliación, documentos vinculados, abonos, fechas,
+separación de cobranza y embarques pendientes, guardado, reparto Efectivo/Fiscal
+y fechas de El Palomar. Revisión visual y extracción de texto de un reporte normal
+y uno de 210 documentos con nombres y referencias extensos. No requiere migración.
 
 ### Base de datos y cálculo
 

@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_navigation.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
-import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
@@ -18,17 +17,13 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../services/inventory_movements_grid.dart';
-import 'menudeo_dashboard_page.dart';
 import 'menudeo_delete_confirm_dialog.dart';
-import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
-import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
 import 'menudeo_sorting.dart';
-import 'menudeo_sales_page.dart';
-import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 
 const double _kCatalogActionsW = 86;
 const double _kCounterpartyContentW = 1286;
@@ -382,95 +377,6 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
-  }
-
-  void _showStub(String label) {
-    _toast('$label quedará conectado en la siguiente fase de Menudeo.');
-  }
-
-  Future<void> _goBack() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const MenudeoDashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openTicketsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoTicketsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openSalesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoSalesPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openDepositsExpensesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoDepositsExpensesPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  void _handleNavigationAction(String label) {
-    switch (label) {
-      case 'Dashboard Menudeo':
-        unawaited(_goBack());
-        return;
-      case 'Catálogo':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-      case 'Ajuste de precios':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Tickets de menudeo':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        unawaited(_openTicketsPage());
-        return;
-      case 'Ventas menudeo':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        unawaited(_openSalesPage());
-        return;
-      case 'Depósitos y gastos':
-        if (_menuOpen) setState(() => _menuOpen = false);
-        unawaited(_openDepositsExpensesPage());
-        return;
-      default:
-        if (_menuOpen) setState(() => _menuOpen = false);
-        _showStub(label);
-    }
   }
 
   Future<void> _logout() async {
@@ -2065,10 +1971,9 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, _) => _CatalogHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          leadingBuilder: (_, _) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, animation) =>
               MenudeoHeaderBrand(contentAnim: animation, title: 'Catálogo'),
@@ -2081,31 +1986,10 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
             children: [
               _buildBody(context),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _CatalogSidePanel(onNavigate: _handleNavigationAction),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: MenudeoDestination.catalog,
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -6181,277 +6065,15 @@ class _RowMenuAction {
   });
 }
 
-class _CatalogSidePanel extends StatelessWidget {
-  final ValueChanged<String> onNavigate;
-
-  const _CatalogSidePanel({required this.onNavigate});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Menudeo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const _CatalogSectionHeader(label: 'MENU'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _CatalogPanelItem(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Compras',
-                      subtitle: 'Tickets virtuales de compra',
-                      onTapSync: () => onNavigate('Tickets de menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CatalogPanelItem(
-                      icon: Icons.point_of_sale_rounded,
-                      title: 'Ventas',
-                      subtitle: 'Tickets virtuales de venta',
-                      onTapSync: () => onNavigate('Ventas menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CatalogPanelItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Depósitos y gastos',
-                      subtitle: 'Vouchers de caja y egresos',
-                      onTapSync: () => onNavigate('Depósitos y gastos'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CatalogPanelItem(
-                      icon: Icons.auto_graph_rounded,
-                      title: 'Ajuste de precios',
-                      subtitle: 'Cambios e historial',
-                      onTapSync: () => onNavigate('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _CatalogPanelItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
-                      subtitle: 'Materiales, grupos y precios',
-                      isActive: true,
-                      onTapSync: () => onNavigate('Catálogo'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _CatalogSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              _CatalogPanelItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Menudeo',
-                subtitle: 'Vista general del área',
-                isAccent: true,
-                onTapSync: () => onNavigate('Dashboard Menudeo'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CatalogSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _CatalogSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CatalogPanelItem extends StatefulWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final bool isActive;
-  final bool isAccent;
-  final VoidCallback? onTapSync;
-
-  const _CatalogPanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.isActive = false,
-    this.isAccent = false,
-    this.onTapSync,
-  });
-
-  @override
-  State<_CatalogPanelItem> createState() => _CatalogPanelItemState();
-}
-
-class _CatalogPanelItemState extends State<_CatalogPanelItem> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final active = widget.isActive;
-    final hasSubtitle =
-        widget.subtitle != null && widget.subtitle!.trim().isNotEmpty;
-    final border = widget.isAccent
-        ? Colors.white.withValues(alpha: 0.72)
-        : active
-        ? tokens.primaryStrong.withValues(alpha: 0.18)
-        : Colors.white.withValues(alpha: _hovered ? 0.62 : 0.58);
-    final shadowColor = widget.isAccent
-        ? kMenudeoPanelShadow.withValues(alpha: 0.24)
-        : active
-        ? kMenudeoPanelShadow.withValues(alpha: 0.18)
-        : kMenudeoPanelShadow.withValues(alpha: _hovered ? 0.14 : 0.12);
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 140),
-        scale: _hovered ? 1.012 : 1,
-        child: Material(
-          color: Colors.transparent,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: widget.onTapSync,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: widget.isAccent
-                    ? kMenudeoPanelAccentGradient
-                    : active
-                    ? kMenudeoPanelHighlightGradient
-                    : kMenudeoPanelGradient,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: border),
-                boxShadow: [
-                  BoxShadow(
-                    color: shadowColor,
-                    blurRadius: widget.isAccent ? 22 : (_hovered ? 18 : 16),
-                    offset: Offset(0, widget.isAccent ? 12 : 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Icon(widget.icon, color: Colors.white, size: 22),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: widget.isAccent
-                                ? Colors.white
-                                : tokens.primaryStrong,
-                          ),
-                        ),
-                        if (hasSubtitle) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.subtitle!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: widget.isAccent
-                                  ? Colors.white.withValues(alpha: 0.92)
-                                  : tokens.badgeText,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (active && !widget.isAccent) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.check_circle_rounded,
-                      color: tokens.primarySoft,
-                      size: 22,
-                    ),
-                  ] else ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: widget.isAccent
-                          ? Colors.white
-                          : tokens.primaryStrong,
-                      size: 22,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CatalogHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _CatalogHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -6464,7 +6086,7 @@ class _CatalogHeaderButtonState extends State<_CatalogHeaderButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
+    final enabled = widget.onTap != null;
     final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -6488,8 +6110,6 @@ class _CatalogHeaderButtonState extends State<_CatalogHeaderButton> {
                 : () async {
                     if (widget.onTap != null) {
                       await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
                     }
                   },
             child: AnimatedContainer(

@@ -30,6 +30,8 @@ enum HumanResourcesAreaScreen {
   nomina,
   terminations,
   loans,
+  documentation,
+  vacancies,
 }
 
 class HumanResourcesAreaNavSection {
@@ -53,6 +55,8 @@ List<HumanResourcesAreaNavSection> buildHumanResourcesAreaSections({
   required Future<void> Function() openNomina,
   required Future<void> Function() openTerminations,
   required Future<void> Function() openLoans,
+  required Future<void> Function() openDocumentation,
+  required Future<void> Function() openVacancies,
 }) {
   HumanResourcesAreaNavEntry buildEntry({
     required HumanResourcesAreaScreen screen,
@@ -88,6 +92,20 @@ List<HumanResourcesAreaNavSection> buildHumanResourcesAreaSections({
           title: 'Personal',
           subtitle: 'Grid homologado de expediente base',
           onTap: openPersonnel,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.vacancies,
+          icon: Icons.person_add_alt_1_outlined,
+          title: 'Vacantes',
+          subtitle: 'Plantilla requerida, cobertura y pendientes',
+          onTap: openVacancies,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.documentation,
+          icon: Icons.folder_copy_outlined,
+          title: 'Documentación RH',
+          subtitle: 'Plantillas, archivos y documentos para impresión',
+          onTap: openDocumentation,
         ),
       ],
     ),

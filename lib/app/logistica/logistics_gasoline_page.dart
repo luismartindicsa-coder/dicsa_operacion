@@ -21,6 +21,7 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/csv_file_save.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_operations_pages.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
@@ -415,13 +416,17 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
         unawaited(_openPerformance());
         return;
       case kLogisticsNavFleetStatusLabel:
-        _showPhaseSnack(
-          'Estado de Unidades se abrirá en la siguiente fase del área.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsUnitsPage())),
         );
         return;
       case kLogisticsNavIncidentsLabel:
-        _showPhaseSnack(
-          'Incidencias se habilitará cuando quede validado el flujo base.',
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsIncidentsPage())),
         );
         return;
       case kLogisticsNavSavingsLabel:

@@ -92,6 +92,23 @@ ProfitParameter concept({
 );
 void main() {
   test(
+    'cost basis partitions the same total and distinguishes published payroll',
+    () {
+      final a = account(operational(accountFixture()));
+      expect(
+        a.costBasis.values.fold<double>(0, (t, v) => t + v),
+        closeTo(a.costs, .001),
+      );
+      expect(
+        a.costBasis['documents'],
+        940,
+      ); // Purchases 700, published RH 140, documented fuel 100.
+      expect(a.costBasis['salary_reference'], 2100);
+      expect(a.costBasis['other_estimates'], 100); // External scale reference.
+      expect(a.costBasis['inferred_purchase'], 0);
+    },
+  );
+  test(
     'American cardboard uses confirmed Celanese sale, not purchase cost',
     () {
       final a = operational(

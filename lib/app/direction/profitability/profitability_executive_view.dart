@@ -1301,7 +1301,7 @@ extension _ProfitExecutive on _ProfitabilityViewState {
         options: {
           for (final b in a.benchmarks.values)
             b.key:
-                '${b.material} · ${b.source} · ${_mxn(b.price)}/kg · ${_kg(b.kg)} kg',
+                '${b.material} · ${b.source} · ${_mxn(b.price)}/${profitUnitLabel(b.unit)} · ${_kg(b.quantity)} ${profitUnitLabel(b.unit)}',
         },
         values: {
           for (final o

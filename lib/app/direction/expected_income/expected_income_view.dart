@@ -23,6 +23,7 @@ import 'expected_income_forms.dart';
 import 'expected_income_models.dart';
 import 'expected_income_pdf.dart';
 import 'expected_income_repository.dart';
+import 'palomar_coverage_view.dart';
 
 /// Executive read-only report. Editing operational rows stays in Embarques;
 /// configuration uses the shared Dirección modal/focus contract.
@@ -555,7 +556,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
               if (_exportMessage != null)
                 _text(_exportMessage!, warning: _exportFailed),
               _text(
-                'Flujo esperado en MXN: cobros de embarques y Ventas Mayoreo + disposición posible de El Palomar al cierre de la semana consultada.',
+                'Flujo esperado en MXN: cobros de embarques y Ventas Mayoreo + disposición posible de El Palomar en la semana consultada.',
               ),
               if (_error != null)
                 _text(
@@ -635,10 +636,10 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
                             0,
                       ),
                     _metric('Próxima semana', projection.next.total),
-                    if (projection.palomar.availableDraw > 0)
+                    if (projection.palomar.undatedDraw > 0)
                       _metric(
-                        'Al cierre · El Palomar',
-                        projection.palomar.availableDraw,
+                        'Sin fecha · El Palomar',
+                        projection.palomar.undatedDraw,
                       ),
                   ],
                 ),
@@ -930,6 +931,21 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
               child: const Text('Configurar disposición'),
             ),
             OutlinedButton(
+              onPressed: _busy
+                  ? null
+                  : () => _edit(() async {
+                      await editPalomarSchedule(
+                        context,
+                        data.palomarSchedule ??
+                            PalomarReceiptSchedule(
+                              week: widget.bundle.weekStartDate,
+                            ),
+                        _repository,
+                      );
+                    }),
+              child: const Text('Fecha de recepción'),
+            ),
+            OutlinedButton(
               onPressed: _busy ? null : _adjustment,
               child: const Text('Compensación prevista'),
             ),
@@ -964,6 +980,18 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
         _text(
           'La disposición posible se incluye una sola vez en Esta semana como financiamiento, con su reparto efectivo/fiscal. Las remisiones ya aplicadas no se vuelven a descontar.',
         ),
+        for (final type in ['EFECTIVO', 'FISCAL'])
+          _text(
+            'Recepción $type: ${p.dateFor(type) == null ? 'Sin fecha' : programDate(p.dateFor(type)!)}',
+          ),
+        if ([
+          p.cashDate,
+          p.fiscalDate,
+        ].any((date) => date != null && date.isBefore(incomeDay(_now))))
+          _text(
+            'Hay una fecha de recepción anterior a hoy. Si el dinero sigue pendiente, actualiza la fecha; si ya lo recibiste, considéralo en el saldo inicial disponible.',
+            warning: true,
+          ),
         for (final movement in data.palomarMovements.where((m) => m.projected))
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -976,6 +1004,11 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
               icon: const Icon(Icons.close),
             ),
           ),
+        PalomarCoverageView(
+          data: data,
+          bundle: _reference ?? widget.bundle,
+          now: _now,
+        ),
       ],
     ),
   );
@@ -1106,7 +1139,7 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
             _text('Disposición El Palomar: ${_money(total.financingTotal)}'),
             if (palomar.availableDraw > 0)
               _text(
-                'Prevista al cierre; sujeta a cumplir las condiciones de la cuenta.',
+                'Recepción según las fechas de El Palomar; sujeta a cumplir las condiciones de la cuenta.',
               )
             else if (!palomar.configured)
               _text('El Palomar: falta configurar límite y monto.')

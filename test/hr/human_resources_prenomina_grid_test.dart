@@ -236,6 +236,7 @@ void main() {
       await tester.tap(find.text('Todas las empresas'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('MONROE').last);
+      await tester.tap(find.text('Aplicar'));
       await tester.pumpAndSettle();
       expect(snapshot['count'], 20);
       await tester.ensureVisible(find.text('Limpiar'));

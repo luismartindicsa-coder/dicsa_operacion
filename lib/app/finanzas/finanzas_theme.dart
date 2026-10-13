@@ -40,6 +40,18 @@ const Color kFinanzasSage = Color(0xFFFF7A18);
 const Color kFinanzasTaupe = Color(0xFFFF9735);
 const Color kFinanzasBronze = Color(0xFFFFAE48);
 
+// Payment origins stay recognizable independently of urgency/status colors.
+const Color kFinanzasInvoiceTone = kFinanzasAmberHighlight;
+const Color kFinanzasFixedPaymentTone = Color(0xFF68D8C2);
+const Color kFinanzasAgreementTone = Color(0xFFC7B2F4);
+
+Color finanzasPaymentSourceTone(String source) =>
+    switch (source.toUpperCase()) {
+      'PAGO_FIJO' || 'PAGO FIJO' => kFinanzasFixedPaymentTone,
+      'CONVENIO' => kFinanzasAgreementTone,
+      _ => kFinanzasInvoiceTone,
+    };
+
 const Color kFinanzasDialogSurface = kFinanzasBgWarm;
 const Color kFinanzasPanelSurface = kFinanzasSurfaceGlass;
 const Color kFinanzasPanelSurfaceStrong = kFinanzasSurfaceElevated;

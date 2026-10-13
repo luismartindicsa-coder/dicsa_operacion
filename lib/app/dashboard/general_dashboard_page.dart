@@ -32,6 +32,7 @@ import '../direction/direction_supervision_dashboard_card.dart';
 import '../direction/direction_theme.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_due_alerts_store.dart';
+import '../finanzas/finanzas_due_notification_dialog.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
@@ -104,7 +105,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     _finanzasDueAlertQueued = true;
     try {
       final summary = await _refreshFinanzasDueAlertsSummary();
-      if (!mounted || summary.totalCount <= 0 || summary.items.isEmpty) return;
+      if (!mounted || summary.notificationCount <= 0) return;
       if (!FinanzasDueAlertsSessionGate.registerPresentation(
         FinanzasDueAlertsSessionScope.directionDashboard,
       )) {
@@ -114,10 +115,11 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
         context: context,
         barrierDismissible: true,
         builder: (dialogContext) {
-          return _DirectionFinanzasDueNotificationDialog(
+          return FinanzasDueNotificationDialog(
             summary: summary,
-            visibleItems: summary.items.toList(growable: false),
-            onOpenFinanzas: () async {
+            tokens: directionAreaTokens,
+            actionLabel: 'Abrir Finanzas',
+            onOpenPayments: () async {
               Navigator.of(dialogContext).pop();
               await _openFinanzasDashboard();
             },
@@ -132,17 +134,18 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
   Future<void> _openFinanzasDueAlertsDialog() async {
     try {
       final summary = await _refreshFinanzasDueAlertsSummary();
-      if (!mounted || summary.totalCount <= 0 || summary.items.isEmpty) {
+      if (!mounted || summary.notificationCount <= 0) {
         return;
       }
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
         builder: (dialogContext) {
-          return _DirectionFinanzasDueNotificationDialog(
+          return FinanzasDueNotificationDialog(
             summary: summary,
-            visibleItems: summary.items.toList(growable: false),
-            onOpenFinanzas: () async {
+            tokens: directionAreaTokens,
+            actionLabel: 'Abrir Finanzas',
+            onOpenPayments: () async {
               Navigator.of(dialogContext).pop();
               await _openFinanzasDashboard();
             },
@@ -467,7 +470,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
               _GeneralHeaderButton(
                 label: 'Pendientes',
                 icon: Icons.notifications_none_rounded,
-                notificationCount: _finanzasDueAlertsSummary.totalCount,
+                notificationCount: _finanzasDueAlertsSummary.notificationCount,
                 onTap: _openFinanzasDueAlertsDialog,
               ),
               const SizedBox(width: 10),
@@ -2165,332 +2168,6 @@ class _DirectionTradeDashboardSummaryState
         ),
       ),
     );
-  }
-}
-
-class _DirectionFinanzasDueNotificationDialog extends StatefulWidget {
-  final FinanzasDueAlertsSummary summary;
-  final List<FinanzasDueAlertItem> visibleItems;
-  final Future<void> Function() onOpenFinanzas;
-
-  const _DirectionFinanzasDueNotificationDialog({
-    required this.summary,
-    required this.visibleItems,
-    required this.onOpenFinanzas,
-  });
-
-  @override
-  State<_DirectionFinanzasDueNotificationDialog> createState() =>
-      _DirectionFinanzasDueNotificationDialogState();
-}
-
-class _DirectionFinanzasDueNotificationDialogState
-    extends State<_DirectionFinanzasDueNotificationDialog> {
-  final ScrollController _commitmentsScrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _commitmentsScrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final primaryItem = widget.visibleItems.first;
-    final accent = switch (primaryItem.severity) {
-      FinanzasDueAlertSeverity.critical => const Color(0xFFFFB35C),
-      FinanzasDueAlertSeverity.warning => const Color(0xFFFFD36E),
-      FinanzasDueAlertSeverity.info => const Color(0xFF89F0C7),
-    };
-    final commitmentsListMaxHeight = MediaQuery.of(context).size.height * 0.38;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: _DirectionGlassPanel(
-          padding: const EdgeInsets.fromLTRB(28, 26, 28, 22),
-          borderRadius: BorderRadius.circular(34),
-          fillColor: const Color(0xFF0D1E3C).withValues(alpha: 0.96),
-          borderColor: accent.withValues(alpha: 0.45),
-          edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
-          glowColor: accent.withValues(alpha: 0.18),
-          shadowColor: Colors.black.withValues(alpha: 0.32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: accent.withValues(alpha: 0.14),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.28),
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.notifications_active_rounded,
-                      color: accent,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Finanzas requiere atención',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _directionFinanzasDialogHeadline(widget.summary),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.88),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _DirectionNotificationPill(
-                    label: 'Hoy: ${widget.summary.dueTodayCount}',
-                  ),
-                  _DirectionNotificationPill(
-                    label: '2 días: ${widget.summary.dueIn2DaysCount}',
-                  ),
-                  _DirectionNotificationPill(
-                    label: '1 semana: ${widget.summary.dueIn7DaysCount}',
-                  ),
-                  _DirectionNotificationPill(
-                    label: 'Monto: ${formatMoney(widget.summary.totalAmount)}',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  color: Colors.white.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Compromisos prioritarios',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: commitmentsListMaxHeight,
-                      ),
-                      child: Scrollbar(
-                        controller: _commitmentsScrollController,
-                        thumbVisibility: widget.visibleItems.length > 3,
-                        child: SingleChildScrollView(
-                          controller: _commitmentsScrollController,
-                          child: Column(
-                            children: [
-                              for (
-                                var index = 0;
-                                index < widget.visibleItems.length;
-                                index++
-                              ) ...[
-                                _DirectionFinanzasDueNotificationItemCard(
-                                  item: widget.visibleItems[index],
-                                  accent: accent,
-                                ),
-                                if (index != widget.visibleItems.length - 1)
-                                  const SizedBox(height: 10),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF37E1A3),
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.24),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 16,
-                      ),
-                    ),
-                    child: const Text('Después'),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: widget.onOpenFinanzas,
-                    icon: const Icon(Icons.open_in_new_rounded),
-                    label: const Text('Abrir Finanzas'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF1FDE9A),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 16,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DirectionFinanzasDueNotificationItemCard extends StatelessWidget {
-  final FinanzasDueAlertItem item;
-  final Color accent;
-
-  const _DirectionFinanzasDueNotificationItemCard({
-    required this.item,
-    required this.accent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: Colors.white.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _directionFinanzasAlertSourceLabel(item),
-            style: TextStyle(
-              color: accent,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            item.title,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.90),
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            item.subtitle,
-            style: const TextStyle(
-              color: Color(0xFFD5E2FF),
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            '${item.reminderLabel} · ${formatMoney(item.amount)}',
-            style: TextStyle(
-              color: accent,
-              fontSize: 12.8,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DirectionNotificationPill extends StatelessWidget {
-  final String label;
-
-  const _DirectionNotificationPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withValues(alpha: 0.08),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-String _directionFinanzasDialogHeadline(FinanzasDueAlertsSummary summary) {
-  if (summary.dueTodayCount > 0) {
-    return 'Hay ${summary.dueTodayCount} pagos que vencen hoy y conviene resolver en esta jornada.';
-  }
-  if (summary.dueIn2DaysCount > 0) {
-    return 'Hay ${summary.dueIn2DaysCount} compromisos que vencen en 48 horas y ya están entrando a foco ejecutivo.';
-  }
-  return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
-}
-
-String _directionFinanzasAlertSourceLabel(FinanzasDueAlertItem item) {
-  switch (item.sourceType) {
-    case 'FACTURA':
-      return 'Factura proveedor';
-    case 'PAGO_FIJO':
-      return 'Pago fijo';
-    case 'CONVENIO':
-      return 'Convenio';
-    default:
-      return 'Compromiso';
   }
 }
 

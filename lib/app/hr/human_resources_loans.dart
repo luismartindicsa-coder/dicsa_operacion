@@ -10,6 +10,7 @@ class HrLoan {
   final int folio, principalCents, installments;
   final int? fixedInstallmentCents;
   final int openingPaidCents, openingPaidInstallments;
+  final int paidAdjustmentCents, revision;
   final Map<String, dynamic> openingSnapshot;
   final DateTime issuedOn, firstDueOn;
 
@@ -29,6 +30,8 @@ class HrLoan {
           ? null
           : hrLoanCents(row['installment_amount']),
       openingPaidCents = hrLoanCents(row['opening_paid_amount']),
+      paidAdjustmentCents = hrLoanCents(row['paid_adjustment_amount']),
+      revision = (row['revision'] as num? ?? 0).toInt(),
       openingPaidInstallments = (row['opening_paid_installments'] as num? ?? 0)
           .toInt(),
       openingSnapshot = Map<String, dynamic>.from(
@@ -75,7 +78,7 @@ class HrLoan {
 class HrLoanPayment {
   final String id, loanId, method, notes, periodLabel;
   final String? payrollChannel;
-  final int cents;
+  final int cents, principalOnlyCents;
   final DateTime paidOn;
 
   HrLoanPayment.fromRow(Map<String, dynamic> row)
@@ -88,6 +91,7 @@ class HrLoanPayment {
       notes = '${row['notes'] ?? ''}',
       periodLabel = '${row['period_label'] ?? ''}',
       cents = hrLoanCents(row['amount']),
+      principalOnlyCents = hrLoanCents(row['principal_only_amount']),
       paidOn = DateTime.parse('${row['paid_on']}');
 
   String get methodLabel => method == 'efectivo'
@@ -101,27 +105,35 @@ class HrLoanFundState {
   final int capitalCents;
   final List<HrLoan> loans;
   final List<HrLoanPayment> payments;
+  final List<Map<String, dynamic>> changes;
   const HrLoanFundState({
     required this.capitalCents,
     required this.loans,
     required this.payments,
+    this.changes = const [],
   });
 
   int get lentCents => loans.fold(0, (sum, loan) => sum + loan.principalCents);
   int get recoveredCents =>
-      loans.fold<int>(0, (sum, loan) => sum + loan.openingPaidCents) +
+      loans.fold<int>(
+        0,
+        (sum, loan) => sum + loan.openingPaidCents + loan.paidAdjustmentCents,
+      ) +
       payments.fold(0, (sum, payment) => sum + payment.cents);
   int get outstandingCents => lentCents - recoveredCents;
   int get availableCents => capitalCents - outstandingCents;
   int paidCents(HrLoan loan) =>
       loan.openingPaidCents +
+      loan.paidAdjustmentCents +
       payments
           .where((p) => p.loanId == loan.id)
           .fold(0, (sum, p) => sum + p.cents);
   int balanceCents(HrLoan loan) =>
       math.max(0, loan.principalCents - paidCents(loan));
   int dueCents(HrLoan loan, DateTime through) {
-    if (loan.issuedOn.isAfter(through)) return 0;
+    if (loan.issuedOn.isAfter(through) || loan.firstDueOn.isAfter(through)) {
+      return 0;
+    }
     var scheduled = 0;
     for (var i = 0; i < loan.installments; i++) {
       final due = loan.dueOn(i);
@@ -129,8 +141,38 @@ class HrLoanFundState {
         scheduled += loan.installmentCents(i);
       }
     }
-    return math.max(0, scheduled - (paidCents(loan) - loan.openingPaidCents));
+    final credited = payments
+        .where((p) => p.loanId == loan.id)
+        .fold<int>(0, (sum, p) => sum + p.cents - p.principalOnlyCents);
+    return math.min(
+      balanceCents(loan),
+      math.max(0, scheduled - credited - math.min(loan.paidAdjustmentCents, 0)),
+    );
   }
+
+  /// Extra contributions retire the final installments, leaving the usual
+  /// installment unchanged. Keep the original dates for the remaining rows.
+  int scheduledAmountCents(HrLoan loan, int index) {
+    final extra =
+        math.max(0, loan.paidAdjustmentCents) +
+        payments
+            .where((p) => p.loanId == loan.id)
+            .fold<int>(0, (sum, p) => sum + p.principalOnlyCents);
+    return math.min(
+      loan.installmentCents(index),
+      math.max(
+        0,
+        loan.principalCents - extra - loan.paidBeforeInstallment(index),
+      ),
+    );
+  }
+
+  int scheduledPaidCents(HrLoan loan) =>
+      paidCents(loan) -
+      math.max<int>(0, loan.paidAdjustmentCents) -
+      payments
+          .where((p) => p.loanId == loan.id)
+          .fold<int>(0, (sum, p) => sum + p.principalOnlyCents);
 
   HrLoanPayrollPlan payrollPlan(
     String employeeId,

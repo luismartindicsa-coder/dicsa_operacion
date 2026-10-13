@@ -1,6 +1,9 @@
 import 'profitability_models.dart';
 import 'profitability_parameters.dart';
 import 'profitability_engine.dart' show profitPayrollPeriod;
+import 'profitability_inference.dart' show profitMaterialFamily;
+import 'profitability_material_basis.dart';
+import 'profitability_material_units.dart';
 
 /// Enriches the SAME consolidated analysis used by reconciliation and snapshots.
 /// Documentary completeness remains available; it does not gate this result.
@@ -9,6 +12,7 @@ void populateProfitOperating(
   String Function(String, [DateTime?]) resolve,
 ) {
   final master = a.master, period = a.sources.period;
+  final materialBasis = ProfitMaterialBasis(a.sources, profitMaterialFamily);
   final costRules = a.effectiveCostRules;
   final components = <String, List<ProfitComponent>>{};
   final alerts = <String, List<String>>{};
@@ -241,7 +245,7 @@ void populateProfitOperating(
           ProfitSourceType.actual,
           '${p.key}:purchase',
           '${p.key} · ${p.signature}',
-          '${p.payableKg} kg pagables · importe registrado',
+          '${p.payableQuantity} ${profitUnitLabel(p.unit)} pagables · importe registrado',
         );
         final standard = master.recipe(key, p.materialKey, p.date);
         final recipe =
@@ -249,23 +253,30 @@ void populateProfitOperating(
             (standard == null ? null : ProfitRecipe.fromJson(standard.data));
         double? value;
         final refs = <String>[];
+        final outputs = [
+          for (final o in recipe?.outputs ?? <ProfitOutputRule>[])
+            (
+              rule: o,
+              valuation: materialBasis.outputPrice(
+                a.benchmarks,
+                o.benchmark,
+                unit: p.unit,
+              ),
+            ),
+        ];
         if (recipe != null &&
-            p.kgUnit &&
-            p.physicalKg > 0 &&
-            recipe.outputs.every(
-              (o) => a.benchmarks[o.benchmark]?.price != null,
-            )) {
+            (p.kgUnit || p.pieceUnit) &&
+            p.quantity > 0 &&
+            outputs.every((o) => o.valuation.price != null)) {
           value =
-              p.physicalKg *
-              recipe.outputs.fold<double>(
+              p.quantity *
+              outputs.fold<double>(
                 0,
-                (s, o) =>
-                    s + o.yieldFraction * a.benchmarks[o.benchmark]!.price!,
+                (s, o) => s + o.rule.yieldFraction * o.valuation.price!,
               );
-          for (final o in recipe.outputs) {
-            final b = a.benchmarks[o.benchmark]!;
+          for (final o in outputs) {
             refs.add(
-              '${b.key}: ${b.kg.toStringAsFixed(2)} kg vendidos, ${b.count} ventas, ${profitDateText(b.first!)} a ${profitDateText(b.last!)}; ${o.yieldFraction * 100}% × ${b.price!.toStringAsFixed(4)}/kg',
+              '${o.valuation.reference}; ${o.rule.yieldFraction * 100}% × ${o.valuation.description}',
             );
           }
         }
@@ -279,7 +290,7 @@ void populateProfitOperating(
           '${p.key}; ${standard == null ? 'receta del corte ${m.key}' : 'parámetro ${standard.id}'}; ${refs.join('; ')}',
           value == null
               ? 'Falta rendimiento, peso válido o venta comparable.'
-              : '${p.physicalKg} kg físicos × Σ(rendimiento × venta ponderada). ${recipe!.note}',
+              : '${p.quantity} ${profitUnitLabel(p.unit)} × Σ(rendimiento × venta ponderada). ${recipe!.note}',
         );
       }
     }

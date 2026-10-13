@@ -44,6 +44,15 @@ Estas areas ya quedan oficiales con base en la UI actual y no deben reinterpreta
   - `#52CFA6`
   - `#6CB7E2`
 
+#### Excepción aprobada: Pesadas y Entradas y Salidas
+
+- Desde el 12/10/2026, únicamente `Pesadas` y `Entradas y Salidas` usan rojo operativo / vino / rojo suave.
+- Tokens: `operationsRedTokens` y `OperationsRedColors`, en `services/operations_red_theme.dart`.
+- Anclas: `#C43C45`, `#8F2028`, `#4A1518`, `#F8DADC`, `#FFF3F1`, `#DB9AA0`.
+- El alcance incluye fondo, navegación, botones, grid, selección, edición, filtros, calendarios, dropdowns y diálogos abiertos desde esas dos páginas.
+- Los componentes compartidos conservan su paleta anterior fuera de ese contexto. Producción, Inventario, Almacén, Servicios, dashboards y las demás áreas no adoptan esta excepción.
+- Se conserva la geometría, interacción y semántica de estados del contrato base.
+
 ### Direccion
 
 - estado: `congelada`
@@ -355,6 +364,8 @@ Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens f
 
 - caracter: ejecutivo, control, claridad
 - familia sugerida: verde sobrio
+- Distinción de origen solicitada el 12/10/2026: en el aviso de vencimientos y Centro de pagos, las facturas usan `kFinanzasInvoiceTone` (naranja), los pagos fijos `kFinanzasFixedPaymentTone` (turquesa) y los convenios `kFinanzasAgreementTone` (lila).
+- Esta distinción conserva la identidad del área anfitriona y las etiquetas de tipo y vencimiento; se aplica al fondo, borde y texto de identificación del compromiso.
 
 ### Contabilidad
 

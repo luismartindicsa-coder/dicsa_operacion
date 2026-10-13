@@ -44,8 +44,9 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
     String id,
     String label,
     String value,
-    ValueChanged<String> write,
-  ) {
+    ValueChanged<String> write, {
+    Widget? suffix,
+  }) {
     return SizedBox(
       width: 240,
       child: TextFormField(
@@ -55,7 +56,9 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
           decimal: true,
           signed: true,
         ),
-        decoration: _prenominaInputDecoration(label),
+        decoration: _prenominaInputDecoration(
+          label,
+        ).copyWith(suffixIcon: suffix),
         onChanged: (text) {
           write(text);
           _changed();
@@ -383,6 +386,30 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                       (v) {
                         _draft.manualBonusAmountText = v;
                       },
+                      suffix: IconButton(
+                        key: const ValueKey('fixed-bonus-toggle'),
+                        tooltip:
+                            _draft.sourceSnapshot[_kPrenominaFixedBonus] == true
+                            ? 'Bono fijo: repetir en próximos periodos. Clic para desactivar.'
+                            : 'Fijar bono para próximos periodos',
+                        isSelected:
+                            _draft.sourceSnapshot[_kPrenominaFixedBonus] ==
+                            true,
+                        icon: Icon(
+                          Icons.push_pin_outlined,
+                          color: humanResourcesAreaTokens.badgeText,
+                        ),
+                        selectedIcon: Icon(
+                          Icons.push_pin_rounded,
+                          color: humanResourcesAreaTokens.accent,
+                        ),
+                        onPressed: () {
+                          _draft.sourceSnapshot[_kPrenominaFixedBonus] =
+                              _draft.sourceSnapshot[_kPrenominaFixedBonus] !=
+                              true;
+                          _changed();
+                        },
+                      ),
                     ),
                     _money(
                       'paymentOutsideAmount',

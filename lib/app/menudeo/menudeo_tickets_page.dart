@@ -11,7 +11,6 @@ import '../auth/auth_navigation.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/dicsa_logo_mark.dart';
-import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/keyboard/grid_keyboard_contract.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
@@ -23,17 +22,14 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
-import 'menudeo_catalog_page.dart';
-import 'menudeo_dashboard_page.dart';
 import 'menudeo_delete_confirm_dialog.dart';
-import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
-import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
 import 'menudeo_sorting.dart';
 import 'menudeo_theme.dart';
+import 'menudeo_navigation.dart';
 
 class MenudeoTicketsPage extends StatefulWidget {
   final bool instantOpen;
@@ -65,6 +61,7 @@ const double _kTicketsActionsW = 180;
 final Object _kTicketsSelectionTapRegionGroup = Object();
 const double _kTicketPrintWidthMm = 78;
 const double _kTicketPrintHeightMm = 133;
+const int _kTicketPrintCopies = 2;
 
 const TextStyle _kTicketsMenuTextStyle = TextStyle(
   fontSize: 13.5,
@@ -1605,110 +1602,6 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     await _loadTickets();
   }
 
-  Future<void> _goBack() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const MenudeoDashboardPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openCatalogPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoCatalogPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  void _showStub(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$label quedará conectado en la siguiente fase de Tickets.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _handleNavigationAction(String label) {
-    switch (label) {
-      case 'Dashboard Menudeo':
-        unawaited(_goBack());
-        return;
-      case 'Catálogo':
-        unawaited(_openCatalogPage());
-        return;
-      case 'Ajuste de precios':
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Tickets de menudeo':
-        if (_isSales) {
-          unawaited(
-            Navigator.of(context).pushReplacement(
-              appPageRoute(
-                page: const MenudeoTicketsPage(instantOpen: true),
-                duration: const Duration(milliseconds: 300),
-                reverseDuration: const Duration(milliseconds: 220),
-              ),
-            ),
-          );
-          return;
-        }
-        if (_menuOpen) setState(() => _menuOpen = false);
-        return;
-      case 'Ventas menudeo':
-        if (_isSales) {
-          if (_menuOpen) setState(() => _menuOpen = false);
-          return;
-        }
-        unawaited(
-          Navigator.of(context).pushReplacement(
-            appPageRoute(
-              page: const MenudeoTicketsPage(
-                instantOpen: true,
-                flow: MenudeoTicketFlow.sale,
-              ),
-              duration: const Duration(milliseconds: 300),
-              reverseDuration: const Duration(milliseconds: 220),
-            ),
-          ),
-        );
-        return;
-      case 'Depósitos y gastos':
-        unawaited(
-          Navigator.of(context).push(
-            appPageRoute(
-              page: const MenudeoDepositsExpensesPage(instantOpen: true),
-              duration: const Duration(milliseconds: 300),
-              reverseDuration: const Duration(milliseconds: 220),
-            ),
-          ),
-        );
-        return;
-      default:
-        _showStub(label);
-    }
-  }
-
   Future<void> _logout() async {
     final ok = await showMenudeoSessionConfirmDialog(context);
     if (ok != true || !mounted) return;
@@ -1902,7 +1795,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           );
           await file.writeAsBytes(pdfBytes, flush: true);
           await _dispatchTicketPdf(file.path);
-          _toast('Ticket enviado a impresión');
+          _toast('Ticket enviado a impresión ($_kTicketPrintCopies copias)');
         } catch (e) {
           _toast('No se pudo generar el ticket: $e');
         }
@@ -2169,8 +2062,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       marginBottom: 3.5 * PdfPageFormat.mm,
     );
 
-    doc.addPage(
-      pw.Page(
+    pw.Page buildTicketPage() {
+      return pw.Page(
         pageFormat: ticketPageFormat,
         margin: const pw.EdgeInsets.fromLTRB(4, 5, 4, 6),
         build: (context) {
@@ -2464,8 +2357,13 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
             ),
           );
         },
-      ),
-    );
+      );
+    }
+
+    // Un solo trabajo de impresión contiene las dos copias del mismo ticket.
+    for (var copy = 0; copy < _kTicketPrintCopies; copy++) {
+      doc.addPage(buildTicketPage());
+    }
     return doc.save();
   }
 
@@ -2637,10 +2535,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, _) => _TicketsHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+          leadingBuilder: (_, _) => MenudeoNavigationButton(
+            isOpen: _menuOpen,
+            onToggle: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, animation) =>
               MenudeoHeaderBrand(contentAnim: animation, title: _headerTitle),
@@ -2774,35 +2671,12 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                     : null,
               ),
               Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: _TicketsSidePanel(
-                    isSales: _isSales,
-                    onNavigate: _handleNavigationAction,
-                    onBack: _goBack,
-                  ),
+                child: MenudeoNavigationOverlay(
+                  isOpen: _menuOpen,
+                  currentDestination: (_isSales
+                      ? MenudeoDestination.sales
+                      : MenudeoDestination.purchases),
+                  onClose: () => setState(() => _menuOpen = false),
                 ),
               ),
             ],
@@ -7069,13 +6943,11 @@ class _TicketsHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
 
   const _TicketsHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
-    this.onTapSync,
   });
 
   @override
@@ -7088,7 +6960,7 @@ class _TicketsHeaderButtonState extends State<_TicketsHeaderButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
+    final enabled = widget.onTap != null;
     final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -7107,8 +6979,6 @@ class _TicketsHeaderButtonState extends State<_TicketsHeaderButton> {
                 : () async {
                     if (widget.onTap != null) {
                       await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
                     }
                   },
             child: AnimatedContainer(
@@ -7161,272 +7031,6 @@ class _TicketsHeaderButtonState extends State<_TicketsHeaderButton> {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TicketsSidePanel extends StatelessWidget {
-  final bool isSales;
-  final Future<void> Function() onBack;
-  final ValueChanged<String> onNavigate;
-
-  const _TicketsSidePanel({
-    required this.isSales,
-    required this.onBack,
-    required this.onNavigate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        borderRadius: BorderRadius.circular(28),
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Menudeo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const _SidePanelSectionHeader(label: 'MENÚ'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _SidePanelItem(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Compras',
-                      subtitle: 'Tickets virtuales de compra',
-                      highlighted: !isSales,
-                      onTapSync: () => onNavigate('Tickets de menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _SidePanelItem(
-                      icon: Icons.point_of_sale_rounded,
-                      title: 'Ventas',
-                      subtitle: 'Tickets virtuales de venta',
-                      highlighted: isSales,
-                      onTapSync: () => onNavigate('Ventas menudeo'),
-                    ),
-                    const SizedBox(height: 8),
-                    _SidePanelItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Depósitos y gastos',
-                      subtitle: 'Vouchers de caja y egresos',
-                      onTapSync: () => onNavigate('Depósitos y gastos'),
-                    ),
-                    const SizedBox(height: 8),
-                    _SidePanelItem(
-                      icon: Icons.auto_graph_rounded,
-                      title: 'Ajuste de precios',
-                      subtitle: 'Cambios e historial',
-                      onTapSync: () => onNavigate('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _SidePanelItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
-                      subtitle: 'Materiales, grupos y precios',
-                      onTapSync: () => onNavigate('Catálogo'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _SidePanelSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              _SidePanelItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Menudeo',
-                subtitle: 'Vista general del área',
-                accented: true,
-                onTap: onBack,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SidePanelSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _SidePanelSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SidePanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-  final bool highlighted;
-  final bool accented;
-
-  const _SidePanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-    this.onTapSync,
-    this.highlighted = false,
-    this.accented = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final enabled = onTap != null || onTapSync != null;
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: !enabled
-            ? null
-            : () async {
-                if (onTap != null) {
-                  await onTap!();
-                } else {
-                  onTapSync?.call();
-                }
-              },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: accented
-                  ? kMenudeoPanelAccentGradient
-                  : highlighted
-                  ? kMenudeoPanelHighlightGradient
-                  : kMenudeoPanelGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : highlighted
-                    ? tokens.primaryStrong.withValues(alpha: 0.18)
-                    : Colors.white.withValues(alpha: 0.58),
-              ),
-              boxShadow: accented
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : highlighted
-                  ? [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.18),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: tokens.primaryStrong,
-                        ),
-                      ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: tokens.badgeText,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (highlighted && !accented) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: tokens.primarySoft,
-                    size: 22,
-                  ),
-                ] else ...[
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ],
-              ],
             ),
           ),
         ),

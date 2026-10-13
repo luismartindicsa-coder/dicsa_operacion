@@ -13,6 +13,7 @@ import 'package:dicsa_operacion/app/direction/profitability/profitability_forms.
 import 'profitability_fixtures.dart';
 import 'profitability_account_test.dart' show accountFixture;
 import 'profitability_operating_test.dart' show operatingMaster;
+import 'profitability_sale_price_test.dart' show priceAnalysis, retailSale;
 import 'package:dicsa_operacion/app/direction/profitability/profitability_parameters.dart';
 
 class MemoryProfitRepo extends ProfitabilityRepository {
@@ -299,6 +300,85 @@ void main() {
       await t.pumpAndSettle();
       expect(t.takeException(), isNull);
       await capture(t, key, 'dicsa_profit_pending_narrow.png');
+      await t.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'operational cost breakdown is visible without the accounting companion',
+    (t) async {
+      await surface(t);
+      final repo = MemoryProfitRepo()..infer = true;
+      final key = GlobalKey();
+      await t.pumpWidget(
+        app(
+          ProfitabilityView(
+            repository: repo,
+            initialPeriod: ProfitPeriod.pilot(),
+          ),
+          boundary: key,
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(repo.reads, 1);
+      expect(find.text('Utilidad contable atribuida'), findsNothing);
+      expect(
+        find.textContaining('aunque todavía no se haya vendido'),
+        findsOneWidget,
+      );
+      await t.tap(find.textContaining('El costo incluye'));
+      await t.pumpAndSettle();
+      expect(find.text('MISMO COSTO TOTAL'), findsOneWidget);
+      expect(find.text('Nómina estimada para días sin cierre'), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await capture(t, key, 'dicsa_operating_cost_basis.png');
+      await t.binding.setSurfaceSize(const Size(760, 1000));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      await capture(t, key, 'dicsa_operating_cost_basis_narrow.png');
+      await t.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'pallet pieces are visible separately from kilos at desktop and narrow widths',
+    (t) async {
+      await surface(t);
+      final repo = MemoryProfitRepo()
+        ..infer = true
+        ..overrideSources = priceAnalysis(
+          supplier: 'MONROE',
+          purchaseMaterial: 'TARIMAS',
+          saleMaterial: 'TARIMA',
+          retail: [
+            retailSale(
+              'r',
+              100,
+              3300,
+              material: 'TARIMA',
+              buyer: 'EMILIO SANDOVAL',
+            ),
+          ],
+        ).sources;
+      final key = GlobalKey();
+      await t.pumpWidget(
+        app(
+          ProfitabilityView(
+            repository: repo,
+            initialPeriod: ProfitPeriod.pilot(),
+          ),
+          boundary: key,
+        ),
+      );
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('account:site:s1')));
+      await t.pumpAndSettle();
+      expect(find.text('Cantidad'), findsOneWidget);
+      expect(find.textContaining('100.0 pzas'), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await capture(t, key, 'dicsa_material_units.png');
+      await t.binding.setSurfaceSize(const Size(760, 1000));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      await capture(t, key, 'dicsa_material_units_narrow.png');
       await t.pumpWidget(const SizedBox.shrink());
     },
   );

@@ -80,6 +80,12 @@ ThemeData buildCommercialAreaTheme(ThemeData base) {
   return base.copyWith(
     brightness: Brightness.dark,
     colorScheme: colorScheme,
+    textTheme: base.textTheme.apply(bodyColor: ink, displayColor: ink),
+    primaryTextTheme: base.primaryTextTheme.apply(
+      bodyColor: ink,
+      displayColor: ink,
+    ),
+    iconTheme: base.iconTheme.copyWith(color: ink),
     scaffoldBackgroundColor: Colors.transparent,
     canvasColor: surfaceSoft,
     cardColor: surface,

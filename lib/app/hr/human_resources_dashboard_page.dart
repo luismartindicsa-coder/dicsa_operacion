@@ -12,6 +12,9 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'vacancies/hr_vacancy_alerts.dart';
+import 'human_resources_vacancies_page.dart';
+import 'human_resources_documentation_page.dart';
 import 'human_resources_terminations_page.dart';
 import 'human_resources_loans_page.dart';
 import 'human_resources_attendance_source.dart';
@@ -218,6 +221,24 @@ class HumanResourcesDashboardPage extends StatelessWidget {
                   label: 'Recursos Humanos',
                   canReturnToDirection: canReturnToDirection,
                   sections: buildHumanResourcesAreaSections(
+                    openVacancies: () async {
+                      await Navigator.of(context).push(
+                        appPageRoute(
+                          page: const HumanResourcesVacanciesPage(
+                            instantOpen: true,
+                          ),
+                        ),
+                      );
+                    },
+                    openDocumentation: () async {
+                      await Navigator.of(context).push(
+                        appPageRoute(
+                          page: const HumanResourcesDocumentationPage(
+                            instantOpen: true,
+                          ),
+                        ),
+                      );
+                    },
                     activeScreen: HumanResourcesAreaScreen.dashboard,
                     openPersonnel: openPersonnel,
                     openAttendance: openAttendance,
@@ -837,6 +858,11 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Align(
+            alignment: Alignment.centerRight,
+            child: HrVacancyPendingButton(),
+          ),
+          const SizedBox(height: 10),
           _dashboardTopBar(data),
           const SizedBox(height: 12),
           _workflow(data),

@@ -34,6 +34,7 @@ import 'services_page.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart';
+import 'operations_red_theme.dart';
 
 const List<_MaterialOption> _kInventoryMaterials = [
   _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Carton granel'),
@@ -338,14 +339,22 @@ Future<void> _inventoryGoToGeneralDashboardFlow(BuildContext context) async {
   );
 }
 
-class InventoryPage extends StatefulWidget {
+class InventoryPage extends StatelessWidget {
   const InventoryPage({super.key});
 
   @override
-  State<InventoryPage> createState() => _InventoryPageState();
+  Widget build(BuildContext context) =>
+      const OperationsRedTheme(child: _EntriesAndOutputsContent());
 }
 
-class _InventoryPageState extends State<InventoryPage>
+class _EntriesAndOutputsContent extends StatefulWidget {
+  const _EntriesAndOutputsContent();
+
+  @override
+  State<_EntriesAndOutputsContent> createState() => _InventoryPageState();
+}
+
+class _InventoryPageState extends State<_EntriesAndOutputsContent>
     with WidgetsBindingObserver {
   final SupabaseClient supa = Supabase.instance.client;
 
@@ -826,7 +835,7 @@ class _InventoryFolderTabs extends StatelessWidget {
                           children: [
                             Icon(
                               icon,
-                              color: const Color(0xFF0B2B2B),
+                              color: OperationsRedColors.ink,
                               size: 20,
                             ),
                             const SizedBox(height: 2),
@@ -836,7 +845,7 @@ class _InventoryFolderTabs extends StatelessWidget {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                                 height: 1.0,
-                                color: Color(0xFF0B2B2B),
+                                color: OperationsRedColors.ink,
                               ),
                             ),
                           ],
