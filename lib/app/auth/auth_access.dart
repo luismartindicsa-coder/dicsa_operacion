@@ -22,6 +22,7 @@ class AuthAccess {
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   static const String _directionEmail = 'direccion@dicsamx.com';
   static const String _operationsEmail = 'operacion@dicsamx.com';
+  static const String _basculaEmail = 'bascula@dicsamx.com';
   static const String _accountingEmail = 'contabilidad@dicsamx.com';
   static const String _financeEmail = 'finanzas@dicsamx.com';
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
@@ -147,6 +148,7 @@ class AuthAccess {
   }
 
   static bool hasFullOperationsAccess(AuthResolvedProfile? profile) {
+    if (hasBasculaAccess(profile)) return false;
     if (_isDirectionRoleValue(profile?.role ?? '') ||
         _isDirectionEmailValue(profile?.email)) {
       return true;
@@ -161,7 +163,14 @@ class AuthAccess {
   }
 
   static bool hasLogisticsAccess(AuthResolvedProfile? profile) {
+    if (hasBasculaAccess(profile)) return false;
     return _roleIn(profile, {'services', 'logistics', 'logistica'});
+  }
+
+  static bool hasBasculaAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    return profile.role == 'bascula' ||
+        profile.email.toLowerCase().trim() == _basculaEmail;
   }
 
   static bool canAccessLogisticsControlDaily(AuthResolvedProfile? profile) {
@@ -199,6 +208,7 @@ class AuthAccess {
   }
 
   static bool isDirectionRole(AuthResolvedProfile? profile) {
+    if (hasBasculaAccess(profile)) return false;
     return _isDirectionRoleValue(profile?.role ?? '') ||
         _isDirectionEmailValue(profile?.email);
   }
@@ -297,7 +307,11 @@ class AuthAccess {
       final normalizedRole = _normalizeRoleValue((row?['role'] as String?));
       final profile = AuthResolvedProfile(
         email: email,
-        role: normalizedRole.isEmpty ? 'viewer' : normalizedRole,
+        role: email == _basculaEmail
+            ? 'bascula'
+            : normalizedRole.isEmpty
+            ? 'viewer'
+            : normalizedRole,
         isActive: (row?['is_active'] as bool?) ?? true,
       );
       _storeResolvedProfile(user.id, profile);
@@ -310,7 +324,7 @@ class AuthAccess {
       );
       final fallback = AuthResolvedProfile(
         email: email,
-        role: 'viewer',
+        role: email == _basculaEmail ? 'bascula' : 'viewer',
         isActive: true,
       );
       _storeResolvedProfile(user.id, fallback);
@@ -352,6 +366,11 @@ class AuthAccess {
     ServicesOverlayNavModule module,
   ) {
     if (profile == null || !profile.isActive) return false;
+    if (hasBasculaAccess(profile)) {
+      return module == ServicesOverlayNavModule.entradasSalidas ||
+          module == ServicesOverlayNavModule.pesadas ||
+          module == ServicesOverlayNavModule.almacen;
+    }
     if (hasFullOperationsAccess(profile)) {
       return module != ServicesOverlayNavModule.servicios;
     }
@@ -381,6 +400,7 @@ class AuthAccess {
 
   static String routeKeyForProfile(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return 'blocked';
+    if (hasBasculaAccess(profile)) return 'entradas_salidas';
     if (canAccessGeneralDashboard(profile)) return 'dashboard_general';
     if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
     if (hasManagementAccess(profile)) return 'gerencia_dashboard';

@@ -14,6 +14,7 @@ import '../logistica/logistics_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/services_page.dart';
+import '../services/inventory_page.dart';
 import '../dashboard/dashboard_page.dart';
 
 class RoleRouter extends StatefulWidget {
@@ -39,6 +40,8 @@ class _RoleRouterState extends State<RoleRouter> {
     if (!profile.isActive) return _BlockedUser(email: profile.email);
 
     switch (AuthAccess.routeKeyForProfile(profile)) {
+      case 'entradas_salidas':
+        return const InventoryPage();
       case 'gestion_documental_dashboard':
         return const GestionDocumentalDashboardPage();
       case 'menudeo_dashboard':
