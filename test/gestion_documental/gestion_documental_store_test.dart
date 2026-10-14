@@ -56,6 +56,64 @@ Future<SupabaseClient> clientFor(
 
 void main() {
   test(
+    'global title search uses RLS table access, literal text and server pagination',
+    () async {
+      var calls = 0;
+      final client = await clientFor((request) async {
+        calls++;
+        expect(request.method, 'GET');
+        expect(request.url.path, endsWith('/documental_records'));
+        final params = request.url.queryParameters;
+        expect(params['title'], r'ilike.%Acta\_50\%%');
+        expect(params.containsKey('category'), false);
+        expect(params.containsKey('status'), false);
+        expect(params['order'], 'title.asc.nullslast,id.asc.nullslast');
+        expect(params['offset'], '10');
+        expect(params['limit'], '10');
+        expect(request.headers['prefer'], contains('count=exact'));
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'doc-1',
+              'category': 'seguros',
+              'title': 'Acta_50%',
+              'document_type': 'Póliza',
+              'reference': 'S-1',
+              'status': 'Completado',
+            },
+          ]),
+          206,
+          headers: {'content-range': '10-10/11'},
+        );
+      });
+      final store = SupabaseDocumentalStore(client);
+      expect((await store.searchByTitle('  ')).total, 0);
+      expect(calls, 0);
+      final result = await store.searchByTitle(' Acta_50% ', page: 1);
+      expect(result.total, 11);
+      expect(result.records.single.title, 'Acta_50%');
+      expect(result.records.single.kind.key, 'seguros');
+      expect(calls, 1);
+    },
+  );
+
+  test(
+    'search errors are surfaced instead of being reported as no matches',
+    () async {
+      final client = await clientFor(
+        (request) async => http.Response(
+          jsonEncode({'code': '42501', 'message': 'Sin acceso'}),
+          403,
+        ),
+      );
+      await expectLater(
+        SupabaseDocumentalStore(client).searchByTitle('Acta'),
+        throwsA(isA<PostgrestException>()),
+      );
+    },
+  );
+
+  test(
     'an uncertain save retries the same request and never reuploads or deletes its files',
     () async {
       final calls = <http.Request>[];

@@ -33,7 +33,6 @@ const commonDestinations = [
 ];
 const restrictedDestinations = [
   MenudeoDestination.cashCuts,
-  MenudeoDestination.cashTaxonomy,
   MenudeoDestination.direction,
   MenudeoDestination.operation,
 ];
@@ -74,7 +73,9 @@ void main() {
       ),
       httpClient: MockClient(
         (request) async => http.Response(
-          '[]',
+          request.url.pathSegments.last == 'profiles'
+              ? jsonEncode({'role': 'menudeo', 'is_active': true})
+              : '[]',
           200,
           request: request,
           headers: {'content-type': 'application/json', 'content-range': '*/0'},
@@ -127,6 +128,7 @@ void main() {
                   child: MenudeoNavigationPanel(
                     currentDestination: MenudeoDestination.dashboard,
                     canReturnToDirection: false,
+                    canOpenCashTaxonomy: true,
                     onNavigate: selections.add,
                   ),
                 ),
@@ -141,7 +143,10 @@ void main() {
       );
       await mouse.addPointer(location: const Offset(1000, 50));
       addTearDown(mouse.removePointer);
-      for (final destination in commonDestinations) {
+      for (final destination in [
+        ...commonDestinations,
+        MenudeoDestination.cashTaxonomy,
+      ]) {
         for (final edge in ['center', 'top', 'left', 'right', 'bottom']) {
           await mouse.moveTo(const Offset(1000, 50));
           await tester.pumpAndSettle();
@@ -416,6 +421,130 @@ void main() {
     },
   );
 
+  test('cash taxonomy admits active Menudeo and Direction profiles only', () {
+    for (final role in [
+      'menudeo',
+      'retail',
+      'retail_cashier',
+      'caja_menudeo',
+      'menudeo_cajero',
+      'auxiliar_menudeo',
+      'direccion',
+    ]) {
+      expect(
+        canNavigateMenudeo(
+          MenudeoDestination.cashTaxonomy,
+          AuthResolvedProfile(
+            email: 'test@example.invalid',
+            role: role,
+            isActive: true,
+          ),
+        ),
+        true,
+        reason: role,
+      );
+      expect(
+        canNavigateMenudeo(
+          MenudeoDestination.cashTaxonomy,
+          AuthResolvedProfile(
+            email: 'test@example.invalid',
+            role: role,
+            isActive: false,
+          ),
+        ),
+        false,
+        reason: '$role inactive',
+      );
+    }
+    for (final role in ['mayoreo', 'operacion', 'finanzas', 'viewer']) {
+      expect(
+        canNavigateMenudeo(
+          MenudeoDestination.cashTaxonomy,
+          AuthResolvedProfile(
+            email: 'test@example.invalid',
+            role: role,
+            isActive: true,
+          ),
+        ),
+        false,
+        reason: role,
+      );
+    }
+    expect(canNavigateMenudeo(MenudeoDestination.cashTaxonomy, null), false);
+    expect(
+      canNavigateMenudeo(
+        MenudeoDestination.cashTaxonomy,
+        const AuthResolvedProfile(
+          email: 'menudeo@dicsamx.com',
+          role: 'viewer',
+          isActive: true,
+        ),
+      ),
+      true,
+    );
+  });
+
+  testWidgets(
+    'Menudeo user can open cash taxonomy with one click from every area page',
+    (tester) async {
+      viewport(tester);
+      await Supabase.instance.client.auth.setInitialSession(
+        jsonEncode({
+          'access_token': 'test-token',
+          'token_type': 'bearer',
+          'refresh_token': 'test-refresh',
+          'user': {
+            'id': '00000000-0000-4000-8000-000000000001',
+            'email': 'cashier@example.invalid',
+            'aud': 'authenticated',
+            'created_at': '2026-01-01T00:00:00Z',
+          },
+        }),
+      );
+      try {
+        for (final entry in pages.entries) {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: ThemeData(fontFamily: 'Roboto'),
+              home: entry.value(),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.byType(MenudeoNavigationButton));
+          await tester.pumpAndSettle();
+          expect(
+            item(MenudeoDestination.cashTaxonomy),
+            findsOneWidget,
+            reason: entry.key.name,
+          );
+          for (final restricted in restrictedDestinations) {
+            expect(item(restricted), findsNothing);
+          }
+          expect(find.text('Volver a Dirección'), findsNothing);
+          await tester.ensureVisible(item(MenudeoDestination.cashTaxonomy));
+          await tester.tap(item(MenudeoDestination.cashTaxonomy));
+          await tester.pumpAndSettle();
+          expect(find.byType(MenudeoCashTaxonomyPage), findsOneWidget);
+          expect(find.text('Catálogo Efectivo'), findsOneWidget);
+          expect(
+            tester
+                .widget<MenudeoNavigationOverlay>(
+                  find.byType(MenudeoNavigationOverlay),
+                )
+                .isOpen,
+            false,
+          );
+          expect(tester.takeException(), isNull, reason: entry.key.name);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.runAsync(() => Supabase.instance.client.auth.signOut());
+      }
+    },
+  );
+
   test('restricted destinations retain user permissions', () {
     for (final role in ['menudeo', 'mayoreo', 'operacion']) {
       final profile = AuthResolvedProfile(
@@ -462,6 +591,7 @@ void main() {
                       child: MenudeoNavigationPanel(
                         currentDestination: current,
                         canReturnToDirection: true,
+                        canOpenCashTaxonomy: true,
                         onNavigate: (_) {},
                       ),
                     ),
@@ -473,7 +603,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         final positions = {
-          for (final d in [...commonDestinations, ...restrictedDestinations])
+          for (final d in [
+            ...commonDestinations,
+            MenudeoDestination.cashTaxonomy,
+            ...restrictedDestinations,
+          ])
             d: tester.getRect(item(d)),
         };
         reference ??= positions;

@@ -40,6 +40,7 @@ class MenudeoNavigationButton extends StatelessWidget {
 class MenudeoNavigationPanel extends StatelessWidget {
   final MenudeoDestination currentDestination;
   final bool canReturnToDirection;
+  final bool canOpenCashTaxonomy;
   final ValueChanged<MenudeoDestination> onNavigate;
   final ScrollController? scrollController;
 
@@ -47,6 +48,7 @@ class MenudeoNavigationPanel extends StatelessWidget {
     super.key,
     required this.currentDestination,
     required this.canReturnToDirection,
+    required this.canOpenCashTaxonomy,
     required this.onNavigate,
     this.scrollController,
   });
@@ -167,6 +169,8 @@ class MenudeoNavigationPanel extends StatelessWidget {
                   'Corte de caja',
                   'Historial y revisión',
                 ),
+              ],
+              if (canOpenCashTaxonomy) ...[
                 const SizedBox(height: 8),
                 _item(
                   MenudeoDestination.cashTaxonomy,
@@ -174,6 +178,8 @@ class MenudeoNavigationPanel extends StatelessWidget {
                   'Catálogo efectivo',
                   'Conceptos y parámetros',
                 ),
+              ],
+              if (canReturnToDirection) ...[
                 const SizedBox(height: 8),
                 _item(
                   MenudeoDestination.direction,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -133,6 +134,183 @@ void main() {
     );
   });
   tearDownAll(() => Supabase.instance.dispose());
+
+  testWidgets(
+    'dashboard search finds all categories and opens the original document with one click',
+    (tester) async {
+      final store = _SearchTestRepository();
+      final legal = await _seedSearch(store, 'Acta corporativa');
+      await _seedSearch(
+        store,
+        'Acta de seguro',
+        kind: DocumentalRecordKind.insurance,
+        status: 'Completado',
+      );
+      await _seedSearch(
+        store,
+        'Permiso municipal',
+        kind: DocumentalRecordKind.procedures,
+      );
+      await mount(tester, const Size(1440, 1000), repository: store);
+      final search = find.byKey(const ValueKey('documental-dashboard-search'));
+      await tester.tap(search);
+      await tester.enterText(search, 'ACTA');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(store.searches, ['ACTA']);
+      expect(find.text('2 documentos encontrados'), findsOneWidget);
+      expect(find.text('Acta corporativa'), findsOneWidget);
+      expect(find.text('Acta de seguro'), findsOneWidget);
+      expect(find.text('Permiso municipal'), findsNothing);
+      final editable = find.descendant(
+        of: search,
+        matching: find.byType(EditableText),
+      );
+      expect(tester.widget<EditableText>(editable).focusNode.hasFocus, true);
+      await capture(tester, 'dashboard_search');
+      final result = find.byKey(
+        ValueKey('documental-search-result-${legal.record.id}'),
+      );
+      await tester.tap(result);
+      await tester.pumpAndSettle();
+      expect(store.openedIds, [legal.record.id]);
+      expect(find.text('Detalle del documento'), findsOneWidget);
+      expect(find.text('Editar expediente'), findsOneWidget);
+      expect(
+        AreaThemeScope.of(tester.element(find.byType(Dialog))),
+        same(documentalAreaTokens),
+      );
+      await tapText(tester, 'Editar expediente');
+      await tester.enterText(
+        find.byKey(const ValueKey('Nombre del documento')),
+        'Escritura actualizada',
+      );
+      final queries = store.searches.length;
+      store.events.add(null);
+      await tester.pumpAndSettle();
+      expect(store.searches.length, queries);
+      await tapText(tester, 'Vista previa');
+      await tapText(tester, 'Guardar documento');
+      await tapText(tester, 'Cerrar');
+      expect(find.text('1 documento encontrado'), findsOneWidget);
+      expect(find.text('Acta corporativa'), findsNothing);
+      expect(tester.widget<TextField>(search).controller!.text, 'ACTA');
+      expect(
+        store.records[legal.record.id]!.record.title,
+        'Escritura actualizada',
+      );
+      await tester.tap(find.byTooltip('Limpiar búsqueda'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 documento encontrado'), findsNothing);
+      expect(tester.widget<EditableText>(editable).focusNode.hasFocus, true);
+      expect(find.text('Expedientes por categoría'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'dashboard search paginates, accepts partial names and fits compact widths',
+    (tester) async {
+      final store = _SearchTestRepository();
+      for (var i = 0; i < 11; i++) {
+        await _seedSearch(store, 'Documento ${i.toString().padLeft(2, '0')}');
+      }
+      await mount(tester, const Size(390, 844), repository: store);
+      final search = find.byKey(const ValueKey('documental-dashboard-search'));
+      await tester.enterText(search, 'cumento');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(find.text('11 documentos encontrados'), findsOneWidget);
+      expect(find.text('Página 1 de 2'), findsOneWidget);
+      final next = find.widgetWithText(TextButton, 'Siguiente');
+      await tester.ensureVisible(next);
+      await tester.pumpAndSettle();
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      expect(find.text('Documento 10'), findsOneWidget);
+      expect(find.text('Página 2 de 2'), findsOneWidget);
+      expect(find.text('Página 2 de 2').hitTestable(), findsOneWidget);
+      expect(tester.widget<TextButton>(next).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(search);
+      await tester.pumpAndSettle();
+      await capture(tester, 'dashboard_search_compact');
+      await tester.enterText(search, 'Documento 10');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(store.openedIds, hasLength(1));
+      await tapText(tester, 'Cerrar');
+      await tester.tap(search);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(search).controller!.text, isEmpty);
+      expect(find.text('11 documentos encontrados'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'dashboard search ignores stale responses and distinguishes empty results from errors',
+    (tester) async {
+      final store = _SearchTestRepository();
+      final old = await _seedSearch(store, 'Acta anterior');
+      final current = await _seedSearch(store, 'Permiso actual');
+      final oldRequest = Completer<DocumentalResultPage>();
+      final newRequest = Completer<DocumentalResultPage>();
+      store.deferred['Acta'] = oldRequest;
+      store.deferred['Permiso'] = newRequest;
+      await mount(tester, const Size(1280, 900), repository: store);
+      final search = find.byKey(const ValueKey('documental-dashboard-search'));
+      await tester.enterText(search, 'Acta');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(search, 'Permiso');
+      await tester.pump(const Duration(milliseconds: 300));
+      newRequest.complete(DocumentalResultPage([current.record], 1));
+      await tester.pumpAndSettle();
+      oldRequest.complete(DocumentalResultPage([old.record], 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Permiso actual'), findsOneWidget);
+      expect(find.text('Acta anterior'), findsNothing);
+      await tester.enterText(search, 'Inexistente');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('No se encontraron documentos con ese nombre.'),
+        findsOneWidget,
+      );
+      store.failSearch = true;
+      await tester.enterText(search, 'Acta anterior');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('No se encontraron documentos con ese nombre.'),
+        findsNothing,
+      );
+      expect(find.textContaining('Revisa la conexión'), findsOneWidget);
+      store.failSearch = false;
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(ValueKey('documental-search-result-${old.record.id}')),
+        findsOneWidget,
+      );
+      // A late response cannot restore results after the search is cleared.
+      final pending = Completer<DocumentalResultPage>();
+      store.deferred['Acta pendiente'] = pending;
+      await tester.enterText(search, 'Acta pendiente');
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byTooltip('Limpiar búsqueda'));
+      pending.complete(DocumentalResultPage([old.record], 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Acta anterior'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('documental dashboard opens the central supervision report hub', (
     tester,
@@ -2501,3 +2679,41 @@ class _LegalTestFilePicker extends FilePicker {
     return result;
   }
 }
+
+class _SearchTestRepository extends DocumentalTestRepository {
+  final searches = <String>[];
+  final openedIds = <String>[];
+  final deferred = <String, Completer<DocumentalResultPage>>{};
+  bool failSearch = false;
+  @override
+  Future<DocumentalResultPage> searchByTitle(String title, {int page = 0}) {
+    searches.add(title);
+    if (failSearch) {
+      return Future.error(const PostgrestException(message: 'Sin conexión'));
+    }
+    return deferred[title]?.future ?? super.searchByTitle(title, page: page);
+  }
+
+  @override
+  Future<DocumentalDetail> loadDetail(String id) {
+    openedIds.add(id);
+    return super.loadDetail(id);
+  }
+}
+
+Future<DocumentalDetail> _seedSearch(
+  DocumentalTestRepository store,
+  String title, {
+  DocumentalRecordKind kind = DocumentalRecordKind.legal,
+  String status = 'Pendiente',
+}) => store.save(
+  DocumentalSaveOperation(
+    DocumentalRecordDraft(kind: kind)
+      ..title = title
+      ..documentType = documentalTypesFor(kind).first
+      ..responsibleId = '00000000-0000-4000-8000-000000000001'
+      ..status = status
+      ..priority = 'Media'
+      ..progressPercentage = kind.tracksProgress ? 0 : null,
+  ),
+);

@@ -13,6 +13,7 @@ import 'gestion_documental_widgets.dart';
 import 'gestion_documental_store.dart';
 import 'gestion_documental_overview.dart';
 import 'gestion_documental_live_overview.dart';
+import 'gestion_documental_dashboard_search.dart';
 import '../shared/ui_contract_core/refresh/lifecycle_refresh_scope.dart';
 
 /// Dashboard archetype, based on EmptyAreaDashboard; pink area palette.
@@ -84,6 +85,10 @@ class _DocumentalDashboardWorkspaceState
               icon: const Icon(Icons.calendar_month_rounded, size: 20),
               label: const Text('Calendario'),
             ),
+          ),
+          const SizedBox(height: 18),
+          DocumentalDashboardSearch(
+            onOpen: (record) => _live!.openRecord(context, record),
           ),
           const SizedBox(height: 18),
           DocumentalOverviewFeedback(

@@ -63,6 +63,34 @@ class DocumentalTestRepository implements DocumentalRepository {
   }
 
   @override
+  Future<DocumentalResultPage> searchByTitle(
+    String title, {
+    int page = 0,
+  }) async {
+    if (unavailable) throw const PostgrestException(message: 'Sin conexión');
+    final matches =
+        records.values
+            .map((detail) => detail.record)
+            .where(
+              (record) => record.title.toLowerCase().contains(
+                title.trim().toLowerCase(),
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byTitle = a.title.compareTo(b.title);
+            return byTitle != 0 ? byTitle : a.id.compareTo(b.id);
+          });
+    return DocumentalResultPage(
+      matches
+          .skip(page * documentalSearchPageSize)
+          .take(documentalSearchPageSize)
+          .toList(),
+      matches.length,
+    );
+  }
+
+  @override
   Future<DocumentalResultPage> loadPage(DocumentalQuery query) async {
     final all = records.values
         .map((r) => r.record)

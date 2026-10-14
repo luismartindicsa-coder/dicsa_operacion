@@ -37,6 +37,7 @@ abstract class DocumentalRepository {
     DocumentalRecordKind kind = DocumentalRecordKind.legal,
   });
   Future<DocumentalResultPage> loadPage(DocumentalQuery query);
+  Future<DocumentalResultPage> searchByTitle(String title, {int page = 0});
   Future<DocumentalDashboardData> loadDashboard();
   Future<DocumentalCalendarData> loadCalendar(DocumentalCalendarQuery query);
   Future<DocumentalDetail> loadDetail(String id);
@@ -110,6 +111,34 @@ class SupabaseDocumentalStore implements DocumentalRepository {
       for (final r in json['records'] as List)
         DocumentalRecord(Map<String, dynamic>.from(r as Map)),
     ], json['total'] as int);
+  }
+
+  @override
+  Future<DocumentalResultPage> searchByTitle(
+    String title, {
+    int page = 0,
+  }) async {
+    final query = title.trim();
+    if (query.isEmpty) return const DocumentalResultPage([], 0);
+    // Escape LIKE wildcards so names containing % or _ are searched literally.
+    final pattern = query
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final offset = page * documentalSearchPageSize;
+    // The existing documental_records SELECT policy enforces area access.
+    final response = await client
+        .from('documental_records')
+        .select('id,category,title,document_type,reference,status')
+        .ilike('title', '%$pattern%')
+        .order('title', ascending: true)
+        .order('id', ascending: true)
+        .range(offset, offset + documentalSearchPageSize - 1)
+        .count(CountOption.exact);
+    return DocumentalResultPage(
+      response.data.map(DocumentalRecord.new).toList(growable: false),
+      response.count,
+    );
   }
 
   @override

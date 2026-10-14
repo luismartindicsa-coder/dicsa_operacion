@@ -24,9 +24,9 @@ bool canNavigateMenudeo(
   MenudeoDestination destination,
   AuthResolvedProfile? profile,
 ) => switch (destination) {
+  MenudeoDestination.cashTaxonomy => AuthAccess.hasMenudeoAccess(profile),
   MenudeoDestination.direction ||
   MenudeoDestination.operation ||
-  MenudeoDestination.cashTaxonomy ||
   MenudeoDestination.cashCuts => AuthAccess.isDirectionRole(profile),
   _ => true,
 };
@@ -53,6 +53,7 @@ class _MenudeoNavigationOverlayState extends State<MenudeoNavigationOverlay> {
   final _scrollController = ScrollController();
   FocusNode? _previousFocus;
   bool _canReturnToDirection = false;
+  bool _canOpenCashTaxonomy = false;
   bool _navigating = false;
 
   @override
@@ -67,6 +68,10 @@ class _MenudeoNavigationOverlayState extends State<MenudeoNavigationOverlay> {
     setState(() {
       _canReturnToDirection = canNavigateMenudeo(
         MenudeoDestination.direction,
+        profile,
+      );
+      _canOpenCashTaxonomy = canNavigateMenudeo(
+        MenudeoDestination.cashTaxonomy,
         profile,
       );
     });
@@ -186,6 +191,7 @@ class _MenudeoNavigationOverlayState extends State<MenudeoNavigationOverlay> {
               child: MenudeoNavigationPanel(
                 currentDestination: widget.currentDestination,
                 canReturnToDirection: _canReturnToDirection,
+                canOpenCashTaxonomy: _canOpenCashTaxonomy,
                 onNavigate: (destination) => unawaited(_navigate(destination)),
                 scrollController: _scrollController,
               ),

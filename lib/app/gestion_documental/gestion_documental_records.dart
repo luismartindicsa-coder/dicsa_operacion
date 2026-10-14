@@ -236,6 +236,8 @@ class DocumentalQuery {
   };
 }
 
+const int documentalSearchPageSize = 10;
+
 class DocumentalResultPage {
   final List<DocumentalRecord> records;
   final int total;
