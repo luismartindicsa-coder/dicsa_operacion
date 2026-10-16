@@ -212,16 +212,17 @@ Future<void> showProductionUsageGuideDialog(BuildContext context) {
         heading: 'Cómo capturar una fila',
         lines: [
           'Selecciona la fecha, el turno, el origen y el material clasificado que salió a patio.',
-          'Captura siempre los kg de salida. Las unidades o pacas se llenan solo cuando aplican.',
-          'El comentario sirve para anotar aclaraciones operativas del movimiento.',
+          'En Cartón, captura las pacas y selecciona COMPACTADORA 1 o COMPACTADORA 2.',
+          'Kg salida y Consumo se calculan automáticamente: pacas × 750 para COMPACTADORA 1 y pacas × 850 para COMPACTADORA 2.',
+          'En las demás familias, captura los kg de salida; las unidades y el comentario se llenan cuando aplican.',
         ],
       ),
       _GuideSectionData(
         heading: 'Qué significa Consumo',
         lines: [
           'Consumo es el material base que realmente se gastó en el proceso.',
-          'Si se deja vacío, el sistema toma los mismos kg de salida como descuento del inventario general.',
-          'Si sí mides merma o diferencia real, puedes capturarlo para reflejar un consumo distinto.',
+          'En Cartón, Consumo siempre es igual a los kg de salida calculados con las pacas y la compactadora.',
+          'En las demás familias, si se deja vacío, se usan los kg de salida; puedes capturar un consumo distinto si mides merma o diferencia real.',
         ],
       ),
       _GuideSectionData(

@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'utils/fetch_all_supabase_rows.dart';
+import 'utils/production_compactor.dart';
+
 class ProductionDailySummaryPalette {
   final Color surface;
   final Color border;
@@ -115,21 +118,22 @@ class _ProductionDailySummaryWidgetState
       return;
     }
     _refreshing = true;
+    final requestedWeekStart = _selectedWeekStart;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
     }
     try {
       final bundle = await ProductionDailySummaryStore.loadWeek(
-        _selectedWeekStart,
+        requestedWeekStart,
+        forceRefresh: true,
       );
-      if (!mounted) return;
+      if (!mounted || _selectedWeekStart != requestedWeekStart) return;
       setState(() {
         _bundle = bundle;
-        _selectedWeekStart = bundle.weekStart;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _selectedWeekStart != requestedWeekStart) return;
       setState(() => _loading = false);
     } finally {
       _refreshing = false;
@@ -253,7 +257,7 @@ class _ProductionDailySummaryWidgetState
             if (bundle.unassignedNationalCount > 0) ...[
               const SizedBox(height: 12),
               Text(
-                'Hay ${bundle.unassignedNationalCount} pacas nacionales sin C1/C2 reconocible en comentario.',
+                '${bundle.unassignedNationalCount} pacas nacionales están incluidas en el total como Revuelta sin compactadora.',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -275,6 +279,8 @@ class _ProductionDailySummaryWidgetState
   void _changeWeek(int dayDelta) {
     setState(() {
       _selectedWeekStart = _selectedWeekStart.add(Duration(days: dayDelta));
+      _bundle = null;
+      _loading = true;
     });
     unawaited(_load());
   }
@@ -282,6 +288,8 @@ class _ProductionDailySummaryWidgetState
   void _goToCurrentWeek() {
     setState(() {
       _selectedWeekStart = _weekStartMonday(DateTime.now());
+      _bundle = null;
+      _loading = true;
     });
     unawaited(_load());
   }
@@ -536,6 +544,7 @@ class _ProductionSummaryTable extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: Table(
           defaultColumnWidth: const FixedColumnWidth(78),
+          columnWidths: const {0: FixedColumnWidth(170)},
           border: TableBorder.all(color: palette.gridLine, width: 0.85),
           children: rows,
         ),
@@ -733,14 +742,16 @@ class ProductionDailySummaryStore {
   }
 
   static Future<ProductionDailySummaryBundle> loadWeek(
-    DateTime weekDate,
-  ) async {
+    DateTime weekDate, {
+    bool forceRefresh = false,
+  }) async {
     final weekStart = _weekStartMonday(weekDate);
     final cacheKey = _fmtDate(weekStart);
     final now = DateTime.now();
     final cachedBundle = _cachedBundles[cacheKey];
     final cachedAt = _cachedAtByWeek[cacheKey];
-    if (cachedBundle != null &&
+    if (!forceRefresh &&
+        cachedBundle != null &&
         cachedAt != null &&
         now.difference(cachedAt) <= _kCacheTtl) {
       return cachedBundle;
@@ -778,21 +789,28 @@ class ProductionDailySummaryStore {
 
     var hasCartonTransformationData = false;
     if (cartonGeneral != null) {
-      final cartonRows = await _supa
-          .from('material_transformation_runs_v2')
-          .select(
-            'op_date,shift,notes,'
-            'outputs:material_transformation_run_outputs_v2('
-            'output_unit_count,notes,'
-            'commercial_material:commercial_material_id(code)'
-            ')',
-          )
-          .eq('source_general_material_id', cartonGeneral['id'])
-          .gte('op_date', _fmtDate(weekStart))
-          .lte('op_date', _fmtDate(weekEnd));
+      final cartonRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('material_transformation_runs_v2')
+            .select(
+              'op_date,shift,notes,'
+              'outputs:material_transformation_run_outputs_v2('
+              'output_unit_count,notes,'
+              'commercial_material:commercial_material_id(code)'
+              ')',
+            )
+            .eq('source_general_material_id', cartonGeneral['id'])
+            .gte('op_date', _fmtDate(weekStart))
+            .lte('op_date', _fmtDate(weekEnd))
+            .order('id')
+            .range(from, to),
+      );
 
-      for (final row
-          in (cartonRows as List<dynamic>).cast<Map<String, dynamic>>()) {
+      // A modern run remains the source even if its outputs or machine are
+      // incomplete; substituting legacy rows would show unrelated production.
+      hasCartonTransformationData = cartonRows.isNotEmpty;
+
+      for (final row in cartonRows) {
         final opDate = _parseDate(row['op_date']);
         final shiftKey = _normalizeShift(row['shift']?.toString());
         final outputs = (row['outputs'] as List<dynamic>? ?? const <dynamic>[])
@@ -804,23 +822,14 @@ class ProductionDailySummaryStore {
               ?.cast<String, dynamic>();
           final summaryKey = _mapProductionRowKey(
             baleMaterial: commercial?['code']?.toString(),
-            notes: (output['notes'] ?? row['notes'])?.toString(),
+            notes: (output['notes']?.toString().trim().isNotEmpty ?? false)
+                ? output['notes'].toString()
+                : row['notes']?.toString(),
           );
-          if (summaryKey == null) {
-            final commercialCode = (commercial?['code'] ?? '')
-                .toString()
-                .trim()
-                .toUpperCase();
-            final outputNotes = (output['notes'] ?? row['notes'])?.toString();
-            if (commercialCode == 'BALE_NATIONAL' ||
-                commercialCode == 'PACA_NACIONAL') {
-              if (_compactadoraFromNotes(outputNotes) == null) {
-                unassignedNationalCount += count;
-              }
-            }
-            continue;
+          if (summaryKey == null) continue;
+          if (summaryKey == _SummaryRowKey.revueltaSinCompactadora) {
+            unassignedNationalCount += count;
           }
-          hasCartonTransformationData = true;
           final bucket = dayBuckets.putIfAbsent(
             summaryKey,
             () => <_SummaryCellKey, int>{},
@@ -832,14 +841,17 @@ class ProductionDailySummaryStore {
     }
 
     if (!hasCartonTransformationData) {
-      final productionRows = await _supa
-          .from('production_runs')
-          .select('op_date,shift,bale_material,bale_count,notes')
-          .gte('op_date', _fmtDate(weekStart))
-          .lte('op_date', _fmtDate(weekEnd));
+      final productionRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('production_runs')
+            .select('op_date,shift,bale_material,bale_count,notes')
+            .gte('op_date', _fmtDate(weekStart))
+            .lte('op_date', _fmtDate(weekEnd))
+            .order('id')
+            .range(from, to),
+      );
 
-      for (final row
-          in (productionRows as List<dynamic>).cast<Map<String, dynamic>>()) {
+      for (final row in productionRows) {
         final opDate = _parseDate(row['op_date']);
         final shiftKey = _normalizeShift(row['shift']?.toString());
         final count = (row['bale_count'] as num?)?.toInt() ?? 0;
@@ -848,16 +860,9 @@ class ProductionDailySummaryStore {
           baleMaterial: row['bale_material']?.toString(),
           notes: row['notes']?.toString(),
         );
-        if (summaryKey == null) {
-          final code = (row['bale_material'] ?? '')
-              .toString()
-              .trim()
-              .toUpperCase();
-          if ((code == 'BALE_NATIONAL' || code == 'PACA_NACIONAL') &&
-              _compactadoraFromNotes(row['notes']?.toString()) == null) {
-            unassignedNationalCount += count;
-          }
-          continue;
+        if (summaryKey == null) continue;
+        if (summaryKey == _SummaryRowKey.revueltaSinCompactadora) {
+          unassignedNationalCount += count;
         }
         final bucket = dayBuckets.putIfAbsent(
           summaryKey,
@@ -874,16 +879,19 @@ class ProductionDailySummaryStore {
         .eq('code', 'PAPEL')
         .maybeSingle();
     if (paperGeneral != null) {
-      final paperRows = await _supa
-          .from('material_transformation_runs_v2')
-          .select(
-            'op_date,shift,outputs:material_transformation_run_outputs_v2(output_unit_count)',
-          )
-          .eq('source_general_material_id', paperGeneral['id'])
-          .gte('op_date', _fmtDate(weekStart))
-          .lte('op_date', _fmtDate(weekEnd));
-      for (final row
-          in (paperRows as List<dynamic>).cast<Map<String, dynamic>>()) {
+      final paperRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('material_transformation_runs_v2')
+            .select(
+              'op_date,shift,outputs:material_transformation_run_outputs_v2(output_unit_count)',
+            )
+            .eq('source_general_material_id', paperGeneral['id'])
+            .gte('op_date', _fmtDate(weekStart))
+            .lte('op_date', _fmtDate(weekEnd))
+            .order('id')
+            .range(from, to),
+      );
+      for (final row in paperRows) {
         final opDate = _parseDate(row['op_date']);
         final shiftKey = _normalizeShift(row['shift']?.toString());
         final outputs = (row['outputs'] as List<dynamic>? ?? const <dynamic>[])
@@ -929,6 +937,11 @@ class ProductionDailySummaryStore {
     ];
 
     final rows = _kSummaryRowOrder
+        .where(
+          (key) =>
+              key != _SummaryRowKey.revueltaSinCompactadora ||
+              unassignedNationalCount > 0,
+        )
         .map(
           (key) => ProductionDailySummaryRow._(
             key: key.name,
@@ -1006,6 +1019,7 @@ enum _SummaryRowKey {
   limpia,
   revueltaC1,
   revueltaC2,
+  revueltaSinCompactadora,
   americana,
   caple,
   papel,
@@ -1016,6 +1030,7 @@ const List<_SummaryRowKey> _kSummaryRowOrder = <_SummaryRowKey>[
   _SummaryRowKey.limpia,
   _SummaryRowKey.revueltaC1,
   _SummaryRowKey.revueltaC2,
+  _SummaryRowKey.revueltaSinCompactadora,
   _SummaryRowKey.americana,
   _SummaryRowKey.caple,
   _SummaryRowKey.papel,
@@ -1052,10 +1067,10 @@ _SummaryRowKey? _mapProductionRowKey({
       return _SummaryRowKey.limpia;
     case 'BALE_NATIONAL':
     case 'PACA_NACIONAL':
-      final compactadora = _compactadoraFromNotes(notes);
+      final compactadora = productionCompactorNumberFromNotes(notes);
       if (compactadora == 1) return _SummaryRowKey.revueltaC1;
       if (compactadora == 2) return _SummaryRowKey.revueltaC2;
-      return null;
+      return _SummaryRowKey.revueltaSinCompactadora;
     case 'BALE_AMERICAN':
     case 'PACA_AMERICANA':
       return _SummaryRowKey.americana;
@@ -1070,21 +1085,6 @@ _SummaryRowKey? _mapProductionRowKey({
   }
 }
 
-int? _compactadoraFromNotes(String? notes) {
-  final normalized = (notes ?? '').trim().toUpperCase();
-  if (normalized.isEmpty) return null;
-  // La captura real ya usa variantes como "C1", "COMPACTADORA 1" y "compactadora 2".
-  if (normalized.contains('COMPACTADORA 1') ||
-      RegExp(r'(^|[^A-Z0-9])C1([^A-Z0-9]|$)').hasMatch(normalized)) {
-    return 1;
-  }
-  if (normalized.contains('COMPACTADORA 2') ||
-      RegExp(r'(^|[^A-Z0-9])C2([^A-Z0-9]|$)').hasMatch(normalized)) {
-    return 2;
-  }
-  return null;
-}
-
 String _summaryRowLabel(_SummaryRowKey key) {
   switch (key) {
     case _SummaryRowKey.limpia:
@@ -1093,6 +1093,8 @@ String _summaryRowLabel(_SummaryRowKey key) {
       return 'Revuelta C1';
     case _SummaryRowKey.revueltaC2:
       return 'Revuelta C2';
+    case _SummaryRowKey.revueltaSinCompactadora:
+      return 'Revuelta sin compactadora';
     case _SummaryRowKey.americana:
       return 'Americana';
     case _SummaryRowKey.caple:

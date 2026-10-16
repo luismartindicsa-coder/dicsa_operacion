@@ -15,6 +15,7 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
+import '../shared/utils/production_compactor.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import 'inventory_movements_grid.dart';
 
@@ -46,6 +47,51 @@ const double _kTrFixedColsW =
 
 double _trNotesColWFor(double availableWidth) =>
     math.max(_kTrNotesColW, availableWidth - _kTrFixedColsW);
+
+enum _ProductionCompactor {
+  first('COMPACTADORA 1', 750),
+  second('COMPACTADORA 2', 850);
+
+  const _ProductionCompactor(this.label, this.kgPerBale);
+
+  final String label;
+  final int kgPerBale;
+
+  static _ProductionCompactor? fromNotes(String notes) {
+    final number = productionCompactorNumberFromNotes(notes);
+    return number == null ? null : values[number - 1];
+  }
+
+  double? weightFor(int? bales) =>
+      bales == null || bales <= 0 ? null : (bales * kgPerBale).toDouble();
+}
+
+void _syncCompactorWeights({
+  required TextEditingController notes,
+  required TextEditingController units,
+  required TextEditingController output,
+  required TextEditingController input,
+}) {
+  final weight = _ProductionCompactor.fromNotes(
+    notes.text,
+  )?.weightFor(int.tryParse(units.text.trim()));
+  final text = weight?.toStringAsFixed(2) ?? '';
+  if (output.text != text) output.text = text;
+  if (input.text != text) input.text = text;
+}
+
+Future<_ProductionCompactor?> _showCompactorPicker(
+  BuildContext context,
+  String notes,
+) => showSearchablePickerDialog<_ProductionCompactor>(
+  context,
+  title: 'Selecciona compactadora',
+  initialValue: _ProductionCompactor.fromNotes(notes),
+  options: [
+    for (final compactor in _ProductionCompactor.values)
+      SearchablePickerOption(value: compactor, label: compactor.label),
+  ],
+);
 
 class InventoryTransformationGrid extends StatefulWidget {
   final String sourceGeneralCode;
@@ -133,6 +179,26 @@ class _InventoryTransformationGridState
   String get _unitsHeaderLabel => _usesBaleLanguage ? 'PACAS' : 'UNIDADES';
   String get _unitsValidationLabel => _usesBaleLanguage ? 'Pacas' : 'Unidades';
 
+  void _syncDraftWeights() {
+    if (!_usesBaleLanguage) return;
+    _syncCompactorWeights(
+      notes: _notesC,
+      units: _unitsC,
+      output: _outputKgC,
+      input: _inputKgC,
+    );
+  }
+
+  Future<void> _pickDraftCompactor() async {
+    _setActiveInsertColumn(7);
+    final selected = await _showCompactorPicker(context, _notesC.text);
+    if (!mounted || selected == null) return;
+    setState(() {
+      _notesC.text = selected.label;
+      _syncDraftWeights();
+    });
+  }
+
   double _effectiveInputKg({
     required double? inputKg,
     required double? outputKg,
@@ -205,7 +271,9 @@ class _InventoryTransformationGridState
           FocusScope.of(context).requestFocus(_inputKgFocusNode);
           break;
         case 7:
-          FocusScope.of(context).requestFocus(_notesFocusNode);
+          FocusScope.of(context).requestFocus(
+            _usesBaleLanguage ? _insertFocusNode : _notesFocusNode,
+          );
           break;
         default:
           FocusManager.instance.primaryFocus?.unfocus();
@@ -812,6 +880,9 @@ class _InventoryTransformationGridState
       case 8:
         await _insert();
         return;
+      case 7:
+        if (_usesBaleLanguage) await _pickDraftCompactor();
+        return;
       default:
         return;
     }
@@ -827,6 +898,14 @@ class _InventoryTransformationGridState
         return;
       case 3:
         setState(() => _commercialId = null);
+        return;
+      case 7:
+        if (_usesBaleLanguage) {
+          setState(() {
+            _notesC.clear();
+            _syncDraftWeights();
+          });
+        }
         return;
       default:
         return;
@@ -1112,6 +1191,7 @@ class _InventoryTransformationGridState
       _toast('Falta material comercial de salida.');
       return;
     }
+    _syncDraftWeights();
     final inputKg = _toDouble(_inputKgC.text);
     final outputKg = _toDouble(_outputKgC.text);
     final units = int.tryParse(_unitsC.text.trim());
@@ -1120,6 +1200,7 @@ class _InventoryTransformationGridState
       inputKg: inputKg,
       outputKg: outputKg,
       units: units,
+      notes: _notesC.text,
     );
     if (validationError != null) {
       _toast(validationError);
@@ -1173,7 +1254,7 @@ class _InventoryTransformationGridState
     }
   }
 
-  Future<void> _updateRow(
+  Future<bool> _updateRow(
     _TransformationRowVm row, {
     required DateTime opDate,
     required String shift,
@@ -1186,17 +1267,23 @@ class _InventoryTransformationGridState
   }) async {
     if (commercialId == null) {
       _toast('Completa los datos obligatorios.');
-      return;
+      return false;
+    }
+    if (_usesBaleLanguage) {
+      final compactor = _ProductionCompactor.fromNotes(notes);
+      inputKg = outputKg = compactor?.weightFor(units);
+      notes = compactor?.label ?? notes;
     }
     final validationError = _validateTransformationValues(
       commercialId: commercialId,
       inputKg: inputKg,
       outputKg: outputKg,
       units: units,
+      notes: notes,
     );
     if (validationError != null) {
       _toast(validationError);
-      return;
+      return false;
     }
     try {
       final effectiveInputKg = _effectiveInputKg(
@@ -1228,6 +1315,7 @@ class _InventoryTransformationGridState
       _notifyTopBar();
       await widget.onChanged?.call();
       _toast('Transformación actualizada');
+      return true;
     } on PostgrestException catch (e) {
       _toast(
         _friendlyPostgrestMessage(
@@ -1261,7 +1349,19 @@ class _InventoryTransformationGridState
     );
     final notesC = TextEditingController(text: row.notes);
 
-    await showDialog<void>(
+    void syncWeights() {
+      if (!_usesBaleLanguage) return;
+      _syncCompactorWeights(
+        notes: notesC,
+        units: unitsC,
+        output: outputC,
+        input: inputC,
+      );
+    }
+
+    syncWeights();
+
+    final dialogRoute = DialogRoute<void>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1351,18 +1451,23 @@ class _InventoryTransformationGridState
                       const SizedBox(height: 12),
                       TextField(
                         controller: inputC,
+                        readOnly: _usesBaleLanguage,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Consumo real kg (opcional)',
-                          helperText:
-                              'Si lo dejas vacio, el sistema usa los mismos kg de salida como consumo.',
+                        decoration: InputDecoration(
+                          labelText: _usesBaleLanguage
+                              ? 'Consumo kg'
+                              : 'Consumo real kg (opcional)',
+                          helperText: _usesBaleLanguage
+                              ? null
+                              : 'Si lo dejas vacio, el sistema usa los mismos kg de salida como consumo.',
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: outputC,
+                        readOnly: _usesBaleLanguage,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -1373,18 +1478,43 @@ class _InventoryTransformationGridState
                       const SizedBox(height: 12),
                       TextField(
                         controller: unitsC,
+                        onChanged: (_) => syncWeights(),
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
                           labelText: _unitsFieldLabel,
                         ),
                       ),
                       const SizedBox(height: 12),
-                      TextField(
-                        controller: notesC,
-                        minLines: 2,
-                        maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Notas'),
-                      ),
+                      if (_usesBaleLanguage)
+                        DropdownButtonFormField<_ProductionCompactor>(
+                          initialValue: _ProductionCompactor.fromNotes(
+                            notesC.text,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Compactadora',
+                          ),
+                          items: [
+                            for (final compactor in _ProductionCompactor.values)
+                              DropdownMenuItem(
+                                value: compactor,
+                                child: Text(compactor.label),
+                              ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setLocal(() {
+                              notesC.text = value.label;
+                              syncWeights();
+                            });
+                          },
+                        )
+                      else
+                        TextField(
+                          controller: notesC,
+                          minLines: 2,
+                          maxLines: 3,
+                          decoration: const InputDecoration(labelText: 'Notas'),
+                        ),
                     ],
                   ),
                 ),
@@ -1398,68 +1528,23 @@ class _InventoryTransformationGridState
             ),
             FilledButton(
               onPressed: () async {
-                final inputKg = _toDouble(inputC.text);
-                final outputKg = _toDouble(outputC.text);
-                final units = int.tryParse(unitsC.text.trim());
-                if (commercialId == null) {
-                  _toast('Completa los datos obligatorios.');
-                  return;
-                }
-                final validationError = _validateTransformationValues(
-                  commercialId: commercialId,
-                  inputKg: inputKg,
-                  outputKg: outputKg,
-                  units: units,
-                );
-                if (validationError != null) {
-                  _toast(validationError);
-                  return;
-                }
                 try {
-                  final effectiveInputKg = _effectiveInputKg(
-                    inputKg: inputKg,
-                    outputKg: outputKg,
+                  final saved = await _updateRow(
+                    row,
+                    opDate: opDate,
+                    shift: shift,
+                    sourceMode: sourceMode,
+                    commercialId: commercialId,
+                    inputKg: _toDouble(inputC.text),
+                    outputKg: _toDouble(outputC.text),
+                    units: int.tryParse(unitsC.text.trim()),
+                    notes: notesC.text,
                   );
-                  await supa
-                      .from('material_transformation_runs_v2')
-                      .update({
-                        'op_date': _fmtDbDate(opDate),
-                        'shift': shift,
-                        'source_mode': sourceMode,
-                        'input_weight_kg': effectiveInputKg,
-                        'notes': notesC.text.trim().isEmpty
-                            ? null
-                            : notesC.text.trim(),
-                      })
-                      .eq('id', row.runId);
-                  if (row.outputId != null) {
-                    await supa
-                        .from('material_transformation_run_outputs_v2')
-                        .update({
-                          'commercial_material_id': commercialId,
-                          'output_weight_kg': outputKg,
-                          'output_unit_count': units,
-                          'notes': notesC.text.trim().isEmpty
-                              ? null
-                              : notesC.text.trim(),
-                        })
-                        .eq('id', row.outputId!);
+                  if (saved && context.mounted) {
+                    Navigator.of(context).pop();
                   }
-                  if (!mounted) return;
-                  Navigator.of(this.context).pop();
-                  await _loadRows();
-                  _notifyTopBar();
-                  await widget.onChanged?.call();
-                } on PostgrestException catch (e) {
-                  _toast(
-                    _friendlyPostgrestMessage(
-                      e,
-                      fallbackAction:
-                          'No se pudo actualizar la transformación.',
-                    ),
-                  );
-                } catch (e) {
-                  _toast('No se pudo actualizar: $e');
+                } catch (_) {
+                  // _updateRow reports the failure; keep the draft open.
                 }
               },
               child: const Text('Guardar'),
@@ -1469,6 +1554,8 @@ class _InventoryTransformationGridState
       },
     );
 
+    await Navigator.of(context).push(dialogRoute);
+    await dialogRoute.completed;
     inputC.dispose();
     outputC.dispose();
     unitsC.dispose();
@@ -1645,7 +1732,7 @@ class _InventoryTransformationGridState
       case 6:
         return 'Consumo';
       case 7:
-        return 'Comentario';
+        return _usesBaleLanguage ? 'Compactadora' : 'Comentario';
       default:
         return 'Celda';
     }
@@ -1663,7 +1750,16 @@ class _InventoryTransformationGridState
     required double? inputKg,
     required double? outputKg,
     required int? units,
+    required String notes,
   }) {
+    if (_usesBaleLanguage) {
+      if (_ProductionCompactor.fromNotes(notes) == null) {
+        return 'Selecciona una compactadora.';
+      }
+      if (units == null || units <= 0) {
+        return 'Pacas debe ser un número entero mayor a 0.';
+      }
+    }
     if (outputKg == null || outputKg <= 0) {
       return 'Kg salida debe ser mayor a 0.';
     }
@@ -1797,6 +1893,7 @@ class _InventoryTransformationGridState
           hasActiveFilter: _hasActiveFilter,
           onOpenFilter: _openColumnFilter,
           unitsHeaderLabel: _unitsHeaderLabel,
+          notesHeaderLabel: _usesBaleLanguage ? 'COMPACTADORA' : 'COMENTARIO',
         ),
         const SizedBox(height: 8),
         _buildFormCard(context),
@@ -2087,6 +2184,7 @@ class _InventoryTransformationGridState
                               ),
                               child: TextField(
                                 controller: _outputKgC,
+                                readOnly: _usesBaleLanguage,
                                 focusNode: _outputKgFocusNode,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
@@ -2117,6 +2215,7 @@ class _InventoryTransformationGridState
                               ),
                               child: TextField(
                                 controller: _unitsC,
+                                onChanged: (_) => _syncDraftWeights(),
                                 focusNode: _unitsFocusNode,
                                 keyboardType: TextInputType.number,
                                 decoration: _trGlassFieldDecoration(
@@ -2144,6 +2243,7 @@ class _InventoryTransformationGridState
                               ),
                               child: TextField(
                                 controller: _inputKgC,
+                                readOnly: _usesBaleLanguage,
                                 focusNode: _inputKgFocusNode,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
@@ -2168,25 +2268,35 @@ class _InventoryTransformationGridState
                           width: notesColWidth,
                           child: frame(
                             7,
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 2,
-                              ),
-                              child: TextField(
-                                controller: _notesC,
-                                focusNode: _notesFocusNode,
-                                decoration: _trGlassFieldDecoration(
-                                  hintText: 'Comentario / notas',
-                                  suppressFocusedBorder: true,
-                                  hideBorder: _activeInsertColumn == 7,
-                                ),
-                                onTap: () => _setActiveInsertColumn(
-                                  7,
-                                  requestFocus: false,
-                                ),
-                                onSubmitted: (_) => _insert(),
-                              ),
-                            ),
+                            _usesBaleLanguage
+                                ? _TransformationInlinePickerField(
+                                    label:
+                                        _ProductionCompactor.fromNotes(
+                                          _notesC.text,
+                                        )?.label ??
+                                        'Compactadora',
+                                    active: _activeInsertColumn == 7,
+                                    onTap: _pickDraftCompactor,
+                                  )
+                                : Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                    ),
+                                    child: TextField(
+                                      controller: _notesC,
+                                      focusNode: _notesFocusNode,
+                                      decoration: _trGlassFieldDecoration(
+                                        hintText: 'Comentario / notas',
+                                        suppressFocusedBorder: true,
+                                        hideBorder: _activeInsertColumn == 7,
+                                      ),
+                                      onTap: () => _setActiveInsertColumn(
+                                        7,
+                                        requestFocus: false,
+                                      ),
+                                      onSubmitted: (_) => _insert(),
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(width: _kTrActionsGap),
@@ -2374,6 +2484,15 @@ class _InventoryTransformationGridState
           }
           if (key == LogicalKeyboardKey.delete ||
               key == LogicalKeyboardKey.backspace) {
+            final rowStates = _rowKeys.values.map((key) => key.currentState);
+            if (rowStates.any(
+              (state) => state?.isAnyTextCellFocused ?? false,
+            )) {
+              return KeyEventResult.ignored;
+            }
+            if (rowStates.any((state) => state?.isEditing ?? false)) {
+              return KeyEventResult.handled;
+            }
             if (_selectedRowKeys.length > 1) {
               unawaited(_deleteSelectedRows());
               return KeyEventResult.handled;
@@ -2449,6 +2568,7 @@ class _InventoryTransformationGridState
                             activeGridColumn: _activeGridColumn,
                             notesColumnWidth: notesColumnWidth,
                             unitsHintText: _unitsHintText,
+                            usesCompactor: _usesBaleLanguage,
                             commercialOptions: _commercialOptions,
                             onHoverChanged: (hovering) {
                               setState(() {
@@ -2905,12 +3025,14 @@ class _TransformationTableHeader extends StatelessWidget {
   final Future<void> Function(String columnId, String label) onOpenFilter;
   final double notesColumnWidth;
   final String unitsHeaderLabel;
+  final String notesHeaderLabel;
 
   const _TransformationTableHeader({
     required this.hasActiveFilter,
     required this.onOpenFilter,
     required this.notesColumnWidth,
     required this.unitsHeaderLabel,
+    required this.notesHeaderLabel,
   });
 
   @override
@@ -2975,11 +3097,11 @@ class _TransformationTableHeader extends StatelessWidget {
         ),
         const SizedBox(width: _kTrCellGap),
         _TransformationHeaderCell(
-          'COMENTARIO',
+          notesHeaderLabel,
           notesColumnWidth,
           style,
           active: hasActiveFilter('notes'),
-          onFilter: () => onOpenFilter('notes', 'COMENTARIO'),
+          onFilter: () => onOpenFilter('notes', notesHeaderLabel),
         ),
         const SizedBox(width: _kTrActionsGap),
         const SizedBox(width: _kTrActionsColW),
@@ -2992,11 +3114,13 @@ class _TransformationHeaderRow extends StatelessWidget {
   final bool Function(String columnId) hasActiveFilter;
   final Future<void> Function(String columnId, String label) onOpenFilter;
   final String unitsHeaderLabel;
+  final String notesHeaderLabel;
 
   const _TransformationHeaderRow({
     required this.hasActiveFilter,
     required this.onOpenFilter,
     required this.unitsHeaderLabel,
+    required this.notesHeaderLabel,
   });
 
   @override
@@ -3018,6 +3142,7 @@ class _TransformationHeaderRow extends StatelessWidget {
                   onOpenFilter: onOpenFilter,
                   notesColumnWidth: notesColumnWidth,
                   unitsHeaderLabel: unitsHeaderLabel,
+                  notesHeaderLabel: notesHeaderLabel,
                 ),
               ),
             );
@@ -3093,6 +3218,7 @@ class _TransformationDataRow extends StatefulWidget {
   final int activeGridColumn;
   final double notesColumnWidth;
   final String unitsHintText;
+  final bool usesCompactor;
   final List<_CommercialMaterialV2> commercialOptions;
   final ValueChanged<bool> onHoverChanged;
   final ValueChanged<int> onActivateColumn;
@@ -3103,7 +3229,7 @@ class _TransformationDataRow extends StatefulWidget {
   final ValueChanged<Offset> onOpenActions;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final Future<void> Function(
+  final Future<bool> Function(
     DateTime opDate,
     String shift,
     String sourceMode,
@@ -3125,6 +3251,7 @@ class _TransformationDataRow extends StatefulWidget {
     required this.activeGridColumn,
     required this.notesColumnWidth,
     required this.unitsHintText,
+    required this.usesCompactor,
     required this.commercialOptions,
     required this.onHoverChanged,
     required this.onActivateColumn,
@@ -3159,6 +3286,16 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
   final FocusNode _notesFocusNode = FocusNode();
 
   bool get isEditing => _editing;
+
+  void _syncWeights() {
+    if (!widget.usesCompactor) return;
+    _syncCompactorWeights(
+      notes: _notesC,
+      units: _unitsC,
+      output: _outputKgC,
+      input: _inputKgC,
+    );
+  }
 
   @override
   void initState() {
@@ -3249,6 +3386,12 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
     _ => false,
   };
 
+  bool get isAnyTextCellFocused =>
+      _outputKgFocusNode.hasFocus ||
+      _unitsFocusNode.hasFocus ||
+      _inputKgFocusNode.hasFocus ||
+      _notesFocusNode.hasFocus;
+
   bool activeTextCaretAtStart(int col) => switch (col) {
     4 => _caretAtStart(_outputKgC, _outputKgFocusNode),
     5 => _caretAtStart(_unitsC, _unitsFocusNode),
@@ -3286,7 +3429,10 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
 
   void startEditingFromKeyboard() {
     if (!_editing) {
-      setState(() => _editing = true);
+      setState(() {
+        _editing = true;
+        _syncWeights();
+      });
       widget.onEditStateChanged();
     }
   }
@@ -3316,6 +3462,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
         FocusScope.of(context).requestFocus(_inputKgFocusNode);
         return;
       case 7:
+        if (widget.usesCompactor) return;
         FocusScope.of(context).requestFocus(_notesFocusNode);
         return;
     }
@@ -3381,6 +3528,15 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
         FocusScope.of(context).requestFocus(_inputKgFocusNode);
         return;
       case 7:
+        if (widget.usesCompactor) {
+          final compactor = await _showCompactorPicker(context, _notesC.text);
+          if (!mounted || compactor == null) return;
+          setState(() {
+            _notesC.text = compactor.label;
+            _syncWeights();
+          });
+          return;
+        }
         FocusScope.of(context).requestFocus(_notesFocusNode);
         return;
     }
@@ -3392,7 +3548,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
   }
 
   Future<void> _save() async {
-    await widget.onUpdate(
+    final saved = await widget.onUpdate(
       _opDate,
       _shift,
       _sourceMode,
@@ -3402,7 +3558,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
       int.tryParse(_unitsC.text.trim()),
       _notesC.text,
     );
-    if (mounted) {
+    if (mounted && saved) {
       setState(() => _editing = false);
       widget.onEditStateChanged();
     }
@@ -3457,6 +3613,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
     }
 
     Widget previewEditableCell({required int col, required Widget child}) {
+      if (widget.usesCompactor && (col == 4 || col == 6)) return child;
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -3478,10 +3635,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
             onDoubleTap: () {
               widget.onDoubleTap();
               widget.onActivateColumn(col);
-              if (!_editing) {
-                setState(() => _editing = true);
-                widget.onEditStateChanged();
-              }
+              startEditingFromKeyboard();
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
                 unawaited(activateGridCell(col));
@@ -3682,6 +3836,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                                         ),
                                         child: TextField(
                                           controller: _outputKgC,
+                                          readOnly: widget.usesCompactor,
                                           focusNode: _outputKgFocusNode,
                                           keyboardType:
                                               const TextInputType.numberWithOptions(
@@ -3723,6 +3878,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                                         ),
                                         child: TextField(
                                           controller: _unitsC,
+                                          onChanged: (_) => _syncWeights(),
                                           focusNode: _unitsFocusNode,
                                           keyboardType: TextInputType.number,
                                           decoration: _trGlassFieldDecoration(
@@ -3762,6 +3918,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                                         ),
                                         child: TextField(
                                           controller: _inputKgC,
+                                          readOnly: widget.usesCompactor,
                                           focusNode: _inputKgFocusNode,
                                           keyboardType:
                                               const TextInputType.numberWithOptions(
@@ -3797,25 +3954,45 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                               SizedBox(
                                 width: notesColumnWidth,
                                 child: _editing
-                                    ? Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 2,
-                                        ),
-                                        child: TextField(
-                                          controller: _notesC,
-                                          focusNode: _notesFocusNode,
-                                          decoration: _trGlassFieldDecoration(
-                                            hintText: 'Comentario / notas',
-                                            suppressFocusedBorder: true,
-                                            hideBorder:
-                                                widget.activeGridColumn == 7,
-                                          ),
-                                          onTap: () =>
-                                              widget.onActivateColumn(7),
-                                          onSubmitted: (_) =>
-                                              unawaited(_save()),
-                                        ),
-                                      )
+                                    ? widget.usesCompactor
+                                          ? _TransformationInlinePickerField(
+                                              label:
+                                                  _ProductionCompactor.fromNotes(
+                                                    _notesC.text,
+                                                  )?.label ??
+                                                  'Compactadora',
+                                              active:
+                                                  widget.activeGridColumn == 7,
+                                              onTap: () async {
+                                                widget.onActivateColumn(7);
+                                                await activateGridCell(7);
+                                              },
+                                            )
+                                          : Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2,
+                                                  ),
+                                              child: TextField(
+                                                controller: _notesC,
+                                                focusNode: _notesFocusNode,
+                                                decoration:
+                                                    _trGlassFieldDecoration(
+                                                      hintText:
+                                                          'Comentario / notas',
+                                                      suppressFocusedBorder:
+                                                          true,
+                                                      hideBorder:
+                                                          widget
+                                                              .activeGridColumn ==
+                                                          7,
+                                                    ),
+                                                onTap: () =>
+                                                    widget.onActivateColumn(7),
+                                                onSubmitted: (_) =>
+                                                    unawaited(_save()),
+                                              ),
+                                            )
                                     : previewEditableCell(
                                         col: 7,
                                         child: _TransformationReadonlyCell(

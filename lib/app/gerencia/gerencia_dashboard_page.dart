@@ -515,7 +515,7 @@ class _GerenciaWorkspace extends StatelessWidget {
               const ProductionDailySummaryWidget(
                 title: 'Producción diaria consolidada',
                 subtitle:
-                    'Semana actual por turno para seguimiento ejecutivo. Revuelta C1 y C2 se separan desde el comentario de Producción.',
+                    'Semana actual por turno para seguimiento ejecutivo. Revuelta C1 y C2 se separan por compactadora.',
                 palette: ProductionDailySummaryPalette(
                   surface: Color(0x5916070D),
                   border: Color(0x40FF9AA6),

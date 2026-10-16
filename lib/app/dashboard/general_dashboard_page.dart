@@ -692,7 +692,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
               final productionWidget = const ProductionDailySummaryWidget(
                 title: 'Producción diaria consolidada',
                 subtitle:
-                    'Semana actual por turno para lectura ejecutiva. Revuelta C1 y C2 se separan desde el comentario de Producción.',
+                    'Semana actual por turno para lectura ejecutiva. Revuelta C1 y C2 se separan por compactadora.',
                 palette: ProductionDailySummaryPalette(
                   surface: Color(0x33191F08),
                   border: Color(0x40D8E38A),
