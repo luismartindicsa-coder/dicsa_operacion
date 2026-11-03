@@ -366,6 +366,7 @@ class ExpectedIncomeData {
 class ExpectedIncomeRow {
   final IncomeAllocation? allocation;
   final bool cashExcluded;
+  final bool estimatedFromBales;
   final DirectionShipmentPlanRecord shipment;
   final IncomeState state;
   final String? paymentType;
@@ -380,6 +381,7 @@ class ExpectedIncomeRow {
   const ExpectedIncomeRow({
     this.allocation,
     this.cashExcluded = false,
+    this.estimatedFromBales = false,
     required this.shipment,
     required this.state,
     required this.paymentType,

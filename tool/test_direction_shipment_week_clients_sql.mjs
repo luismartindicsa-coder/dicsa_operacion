@@ -1,0 +1,38 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const { PGlite } = await import(process.env.DICSA_PGLITE_MODULE || '@electric-sql/pglite');
+const db = new PGlite();
+const manager = '00000000-0000-4000-8000-000000000001';
+const viewer = '00000000-0000-4000-8000-000000000002';
+await db.exec(`
+  create role authenticated; create role anon; create schema auth;
+  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+  grant usage on schema auth to authenticated;
+  create table profiles(user_id uuid primary key,role text,is_active boolean);
+  insert into profiles values('${manager}','direccion',true),('${viewer}','viewer',true);
+  create table direction_shipment_plans(id uuid primary key,ship_date date,client_name text,planning_material_code text,planned_units integer,priority text,status text,quantity_unit text);
+  create table direction_production_capacity_impacts(machine_key text,start_date date,end_date date,impact_percent integer,is_active boolean);
+`);
+await db.exec(await readFile(new URL('../supabase/migrations/20260915100000_create_direction_operating_programs.sql', import.meta.url), 'utf8'));
+await db.exec(await readFile(new URL('../supabase/migrations/20261016160000_create_direction_shipment_week_clients.sql', import.meta.url), 'utf8'));
+await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${manager}',false);`);
+const save = (week, names) => db.query(`insert into direction_shipment_week_clients(week_start, client_names)
+  values($1,$2::text[]) on conflict(week_start) do update set client_names=excluded.client_names`, [week, names]);
+await save('2026-10-19', ['EL PALOMAR', 'SAN PABLO']);
+await save('2026-10-26', ['OTRA EMPRESA']);
+await save('2026-10-19', ['SAN PABLO']);
+assert.deepEqual((await db.query('select client_names from direction_shipment_week_clients order by week_start')).rows.map(r => r.client_names), [['SAN PABLO'], ['OTRA EMPRESA']]);
+await assert.rejects(() => save('2026-10-20', ['SAN PABLO']), e => e.code === '23514');
+await save('2026-10-19', []);
+assert.deepEqual((await db.query("select client_names from direction_shipment_week_clients where week_start='2026-10-19'")).rows[0].client_names, []);
+await db.exec(`select set_config('request.jwt.claim.sub','${viewer}',false);`);
+assert.equal((await db.query('select * from direction_shipment_week_clients')).rows.length, 0);
+await assert.rejects(() => save('2026-10-19', ['NO AUTORIZADO']), e => e.code === '42501');
+await db.exec(`reset role; update profiles set is_active=false where user_id='${manager}'; set role authenticated;
+  select set_config('request.jwt.claim.sub','${manager}',false);`);
+assert.equal((await db.query('select * from direction_shipment_week_clients')).rows.length, 0);
+await assert.rejects(() => save('2026-10-19', ['INACTIVO']), e => e.code === '42501');
+await db.exec('reset role; set role anon;');
+await assert.rejects(() => db.query('select * from direction_shipment_week_clients'), e => e.code === '42501');
+console.log('Weekly companies SQL passed: isolated weeks, replacement/empty choices, Monday constraint and role permissions.');
+await db.close();

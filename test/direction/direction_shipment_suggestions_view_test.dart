@@ -92,6 +92,78 @@ void main() {
 
   for (final size in [const Size(1440, 1050), const Size(390, 844)]) {
     testWidgets(
+      'company picker filters without losing choices at ${size.width}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        List<String>? result;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark().copyWith(
+              textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Roboto'),
+            ),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => FilledButton(
+                  onPressed: () async {
+                    result = await showDialog<List<String>>(
+                      context: context,
+                      builder: (_) => DirectionShipmentClientsDialog(
+                        weekStart: data.week,
+                        availableClients: const ['ZETA', 'ALFA'],
+                        selectedClients: const [],
+                      ),
+                    );
+                  },
+                  child: const Text('Abrir empresas'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Abrir empresas'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final search = find.byKey(const ValueKey('shipment-client-search'));
+        final editable = find.descendant(
+          of: search,
+          matching: find.byType(EditableText),
+        );
+        expect(
+          tester.widget<EditableText>(editable).focusNode.hasFocus,
+          isTrue,
+        );
+        final generate = find.byKey(
+          const ValueKey('generate-selected-clients'),
+        );
+        expect(tester.widget<FilledButton>(generate).onPressed, isNull);
+        expect(
+          tester.getTopLeft(find.text('ALFA')).dy,
+          lessThan(tester.getTopLeft(find.text('ZETA')).dy),
+        );
+        await tester.tap(find.text('ALFA'));
+        await tester.pumpAndSettle();
+        expect(find.text('1 empresas seleccionadas'), findsOneWidget);
+        await tester.enterText(search, 'zeta');
+        await tester.pumpAndSettle();
+        expect(find.text('ALFA'), findsNothing);
+        await tester.tap(find.text('ZETA'));
+        await tester.pumpAndSettle();
+        expect(find.text('2 empresas seleccionadas'), findsOneWidget);
+        await tester.tap(generate);
+        await tester.pumpAndSettle();
+        expect(result, ['ALFA', 'ZETA']);
+        result = null;
+        await tester.tap(find.text('Abrir empresas'));
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(result, isNull);
+        expect(find.byType(DirectionShipmentClientsDialog), findsNothing);
+      },
+    );
+
+    testWidgets(
       'review dialog fits ${size.width}, selects and confirms program input',
       (tester) async {
         await tester.binding.setSurfaceSize(size);

@@ -255,7 +255,7 @@ Future<Uint8List> buildWeeklyCashFlowPdf(
         if (calendar.undated.total > 0) ...[
           pw.SizedBox(height: 4),
           text(
-            'Sin fecha (El Palomar): Efectivo ${money(calendar.undated.byType['EFECTIVO'] ?? 0)} / Fiscal ${money(calendar.undated.byType['FISCAL'] ?? 0)} / Mixto ${money(calendar.undated.byType['MIXTO'] ?? 0)}. Incluido en el total semanal; no disponible en un día específico.',
+            'Sin fecha de recepción: Efectivo ${money(calendar.undated.byType['EFECTIVO'] ?? 0)} / Fiscal ${money(calendar.undated.byType['FISCAL'] ?? 0)} / Mixto ${money(calendar.undated.byType['MIXTO'] ?? 0)}. Incluido en el total semanal; no disponible en un día específico.',
             size: 8,
           ),
         ],
@@ -324,9 +324,23 @@ Future<Uint8List> buildWeeklyCashFlowPdf(
         text('Ingresos de la semana', size: 14, bold: true),
         pw.SizedBox(height: 5),
         text(
-          'Cobros pendientes de embarques y de Ventas Mayoreo, más la disposición posible de El Palomar.',
+          'Cobros pendientes de embarques y de Ventas Mayoreo, incluidos los vencidos de semanas anteriores, más la disposición posible de El Palomar.',
           size: 9,
         ),
+        if (report.income.carryover.total > 0) ...[
+          pw.SizedBox(height: 4),
+          text(
+            'Vencidos incluidos: ${money(report.income.carryover.total)}. Conservan su fecha original en la referencia; nueva fecha de cobro por definir.',
+            size: 9,
+          ),
+        ],
+        if (report.income.excludedPalomar.total > 0) ...[
+          pw.SizedBox(height: 4),
+          text(
+            'El Palomar: ${money(report.income.excludedPalomar.total)} programados para el domingo o fuera de la semana se excluyen de este flujo.',
+            size: 9,
+          ),
+        ],
         if (income.financingTotal > 0) ...[
           pw.SizedBox(height: 4),
           text(

@@ -78,6 +78,8 @@ DirectionShipmentSuggestionReport propose({
   DateTime? start,
   List<DirectionShipmentTarget>? targets,
   Map<String, dynamic>? conditions,
+  List<String>? selectedClients,
+  Map<String, DirectionWeeklyYardOpening> weeklyOpeningCounts = const {},
 }) => buildDirectionShipmentSuggestions(
   weekStart: start ?? week,
   asOf: asOf ?? now,
@@ -92,9 +94,207 @@ DirectionShipmentSuggestionReport propose({
       targets ?? [target(shipping: shipping, production: productionTarget)],
   savedProgramConditions: conditions,
   movements: movements ?? supply(),
+  selectedClients: selectedClients,
+  weeklyOpeningCounts: weeklyOpeningCounts,
 );
 
 void main() {
+  test('company choice filters demand before allocating limited stock', () {
+    final rows = [
+      shipment(
+        'old',
+        week.subtract(const Duration(days: 7)),
+        60,
+        client: 'EL PALOMAR',
+      ),
+      shipment(
+        'chosen',
+        week.subtract(const Duration(days: 7)),
+        30,
+        client: 'CLIENTE ACTUAL',
+      ),
+    ];
+    final report = propose(
+      floor: 35,
+      production: [],
+      shipments: rows,
+      selectedClients: ['cliente actual'],
+    );
+    expect(report.availableClients, ['CLIENTE ACTUAL', 'EL PALOMAR']);
+    expect(report.suggestions.single.clientName, 'CLIENTE ACTUAL');
+    expect(report.suggestions.single.suggestedQuantity, 30);
+    expect(report.coverage.first.target, 30);
+    final empty = propose(shipments: rows, selectedClients: []);
+    expect(empty.suggestions, isEmpty);
+    expect(empty.availableClients, report.availableClients);
+  });
+
+  test(
+    'unselected companies reserve stock without consuming selected demand',
+    () {
+      final rows = [
+        shipment('chosen', week.subtract(const Duration(days: 7)), 30),
+        shipment(
+          'other',
+          week.add(const Duration(days: 5)),
+          60,
+          client: 'OTRA EMPRESA',
+          status: 'confirmado',
+        ),
+      ];
+      final report = propose(
+        floor: 95,
+        production: [],
+        shipments: rows,
+        selectedClients: ['CLIENTE NUEVO'],
+      );
+      expect(report.suggestions.single.suggestedQuantity, 30);
+      expect(report.coverage.first.committed, 60);
+      expect(
+        propose(
+          floor: 65,
+          production: [],
+          shipments: rows,
+          selectedClients: ['CLIENTE NUEVO'],
+        ).suggestions,
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'company aliases normalize and a changed choice invalidates the review',
+    () {
+      final rows = [
+        shipment(
+          'palomar',
+          week.subtract(const Duration(days: 7)),
+          30,
+          client: 'Cuenta El Palomar',
+        ),
+      ];
+      final first = propose(
+        shipments: rows,
+        selectedClients: ['el palomar', 'CUENTA EL PALOMAR'],
+      );
+      final same = propose(shipments: rows, selectedClients: ['EL PALOMAR']);
+      expect(first.suggestions.single.clientName, 'EL PALOMAR');
+      expect(first.selectedClients, ['EL PALOMAR']);
+      expect(first.sourceKey, same.sourceKey);
+      final changed = propose(
+        shipments: rows,
+        selectedClients: ['EL PALOMAR', 'SIN HISTORIAL'],
+      );
+      expect(
+        changed.suggestions.map(directionSuggestionKey),
+        first.suggestions.map(directionSuggestionKey),
+      );
+      expect(
+        () => DirectionShipmentsStore.prepareSuggestedShipmentRows(
+          reviewed: first,
+          fresh: changed,
+          selected: first.suggestions,
+          confirmForProgram: true,
+        ),
+        throwsStateError,
+      );
+    },
+  );
+
+  test(
+    'next-week suggestions use chosen clients and reserve earlier commitments',
+    () {
+      final next = week.add(const Duration(days: 7));
+      final rows = [
+        shipment('history', week.subtract(const Duration(days: 7)), 30),
+        shipment(
+          'before',
+          week.add(const Duration(days: 5)),
+          60,
+          client: 'OTRA EMPRESA',
+          status: 'confirmado',
+        ),
+      ];
+      final report = propose(
+        start: next,
+        floor: 95,
+        production: [],
+        shipments: rows,
+        selectedClients: ['CLIENTE NUEVO'],
+      );
+      expect(report.suggestions.single.suggestedDate, next);
+      expect(report.suggestions.single.suggestedQuantity, 30);
+      expect(report.openingFloorByMaterial[national], 35);
+      expect(report.coverage.first.committed, 0);
+      expect(report.estimatedFloorMaterials, contains(national));
+      final laterThisWeek = propose(
+        start: next,
+        asOf: week.add(const Duration(days: 5, hours: 10)),
+        floor: 95,
+        production: [],
+        shipments: [
+          rows.first,
+          shipment(
+            'overdue',
+            week.add(const Duration(days: 2)),
+            60,
+            client: 'OTRA EMPRESA',
+            status: 'confirmado',
+          ),
+        ],
+        selectedClients: ['CLIENTE NUEVO'],
+      );
+      expect(laterThisWeek.openingFloorByMaterial[national], 35);
+      expect(laterThisWeek.suggestions.single.suggestedQuantity, 30);
+      expect(
+        propose(
+          start: next,
+          floor: 65,
+          production: [],
+          shipments: rows,
+          selectedClients: ['CLIENTE NUEVO'],
+        ).suggestions,
+        isEmpty,
+      );
+      final shortage = propose(
+        start: next,
+        floor: 5,
+        shipments: rows,
+        selectedClients: ['CLIENTE NUEVO'],
+      );
+      expect(shortage.suggestions, isEmpty);
+      expect(
+        shortage.observations.any((s) => s.contains('compromisos anteriores')),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'future production starts in selected week and past weeks cannot generate',
+    () {
+      final next = week.add(const Duration(days: 7));
+      final report = propose(
+        start: next,
+        floor: 5,
+        selectedClients: ['CLIENTE NUEVO'],
+      );
+      expect(report.suggestions.single.suggestedDate, next);
+      expect(report.suggestions.single.expectedFutureQuantity, 30);
+      expect(
+        report.productionForecast.keys.every((d) => !d.isBefore(next)),
+        isTrue,
+      );
+      expect(
+        propose(
+          start: week.subtract(const Duration(days: 7)),
+          selectedClients: ['CLIENTE NUEVO'],
+        ).suggestions,
+        isEmpty,
+      );
+    },
+  );
+
   test('uses completed Dirección history outside former fixed client list', () {
     final result = propose();
     expect(result.suggestions, hasLength(1));

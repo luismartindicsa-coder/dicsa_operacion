@@ -117,11 +117,20 @@ ExpectedIncomeProjection projectExpectedIncome({
     if (rule == null || !rule.active) {
       risks.add('Condiciones comerciales sin definir o inactivas.');
     }
-    final kg =
-        sale?.weight ??
-        (material == null
-            ? null
-            : shipment.plannedQuantity * material.kgPerBale);
+    // An exit weight is not yet Mayoreo's approved amount. Until approval,
+    // value dispatched bales at the agreed 750 kg each, not that exit weight
+    // or the configurable average used for shipments still being planned.
+    final estimateFromBales =
+        !cancelled &&
+        delivered &&
+        sale?.approvedCents == null &&
+        sale?.settled != true;
+    final kg = estimateFromBales
+        ? shipment.plannedQuantity * 750.0
+        : sale?.weight ??
+              (material == null
+                  ? null
+                  : shipment.plannedQuantity * material.kgPerBale);
     final price =
         sale?.price ??
         data.clientMaterialPrices['${rule?.key ?? incomeKey(shipment.clientName)}|${shipment.materialCode}'] ??
@@ -133,6 +142,11 @@ ExpectedIncomeProjection projectExpectedIncome({
     if (kg == null) risks.add('Peso promedio sin definir.');
     if (price == null && sale?.approvedCents == null) {
       risks.add('Precio sin definir.');
+    }
+    if (estimateFromBales) {
+      risks.add(
+        'Importe estimado: ${shipment.plannedQuantity} pacas × 750 kg × precio del material; pendiente de aprobación de Mayoreo.',
+      );
     }
     final revolving = rule?.revolving == true;
     final due = revolving
@@ -231,6 +245,7 @@ ExpectedIncomeProjection projectExpectedIncome({
             sale?.paymentType ??
             (rule?.active == true ? rule?.paymentType : null),
         cashExcluded: overlapsCollection,
+        estimatedFromBales: estimateFromBales,
         kilograms: kg,
         price: price,
         valueCents: value,

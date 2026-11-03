@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-28",
+  "changed_and_verified": 208,
+  "untouched_and_verified": 575,
+  "companies": {
+    "MONROE": 96,
+    "SETEX": 20,
+    "JUAN SOLIS": 5,
+    "MONROE SUR": 51,
+    "KS": 36
+  },
+  "destination_materials": {
+    "PESADO": 180,
+    "RETORNO INDUSTRIAL": 28
+  },
+  "general_category_changed_metal_to_chatarra": 9,
+  "rebaba_preserved": true,
+  "cable_notes_preserved": true,
+  "all_other_fields_preserved_except_updated_at": true
+}

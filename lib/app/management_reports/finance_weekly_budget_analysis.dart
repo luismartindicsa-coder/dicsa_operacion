@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../compras/compras_tickets_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
+import '../finanzas/finanzas_due_alerts_store.dart';
 import '../finanzas/finanzas_fixed_payments_store.dart';
 import '../finanzas/finanzas_provider_accounts_store.dart';
 
@@ -129,6 +130,7 @@ class FinanceWeeklyBudgetAnalysis {
     this.source,
     DateTime generatedAt, {
     DateTime? targetWeek,
+    this.onlyWeekPending = false,
   }) : period = FinanceBudgetPeriod(generatedAt, targetWeek: targetWeek) {
     _build();
   }
@@ -136,6 +138,16 @@ class FinanceWeeklyBudgetAnalysis {
   static const int highDebtThreshold = 10000000; // MXN 100,000 due.
   final FinanceWeeklyBudgetSource source;
   final FinanceBudgetPeriod period;
+
+  /// Projection selects the same calendar week as Pendientes. Keep other
+  /// balances available for manual scheduling and reconciliation; the Friday
+  /// report retains its original backlog selection by default.
+  final bool onlyWeekPending;
+  bool _automaticFixed(FinanceBudgetCommitment row) =>
+      row.fixed &&
+      (!onlyWeekPending ||
+          (row.dueDate != null &&
+              finanzasDueInWeek(row.dueDate!, period.start)));
   final List<FinanceBudgetAccountPlan> accounts = [];
   final List<FinanceBudgetInvoice> invoices = [];
   final List<FinanceBudgetCommitment> commitments = [];
@@ -147,7 +159,7 @@ class FinanceWeeklyBudgetAnalysis {
   int get invoiceBalance => invoices.fold(0, (s, r) => s + r.balance);
   int get unprogrammed => invoices.fold(0, (s, r) => s + r.remaining);
   int get fixedPayments =>
-      commitments.where((r) => r.fixed).fold(0, (s, r) => s + r.amount);
+      commitments.where(_automaticFixed).fold(0, (s, r) => s + r.amount);
   int get proposedFixedPayments =>
       commitments.where((r) => r.fixed).fold(0, (s, r) => s + r.proposed);
   int get pendingFixedPayments => fixedPayments - proposedFixedPayments;
@@ -279,6 +291,8 @@ class FinanceWeeklyBudgetAnalysis {
           ? 'Confirmar vencimiento'
           : due.isAfter(period.end)
           ? 'Vence después de la semana'
+          : onlyWeekPending && !finanzasDueInWeek(due, period.start)
+          ? 'Vencimiento de una semana anterior; disponible para selección manual'
           : null;
       invoices.add(
         FinanceBudgetInvoice(
@@ -332,10 +346,13 @@ class FinanceWeeklyBudgetAnalysis {
           dueDate: _day(row.paymentDate),
         ),
       );
-      if (_validAccount(key)) {
-        plan(key).fixedRequired += amount;
-      } else {
-        unassignedCommitments += amount;
+      if (!onlyWeekPending ||
+          finanzasDueInWeek(row.paymentDate, period.start)) {
+        if (_validAccount(key)) {
+          plan(key).fixedRequired += amount;
+        } else {
+          unassignedCommitments += amount;
+        }
       }
     }
     final agreementRemaining = {
@@ -478,7 +495,7 @@ class FinanceWeeklyBudgetAnalysis {
 
   void _selectInvoices(Map<String, FinanceBudgetAccountPlan> plans) {
     var available = weeklyLimit;
-    final fixed = commitments.where((r) => r.fixed).toList()
+    final fixed = commitments.where(_automaticFixed).toList()
       ..sort((a, b) {
         final date = a.dueDate!.compareTo(b.dueDate!);
         return date != 0 ? date : a.id.compareTo(b.id);

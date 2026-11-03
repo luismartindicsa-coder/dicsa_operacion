@@ -14,6 +14,11 @@ programa. No se cambian estados ni cantidades de embarques al programar.
 
 ## Uso
 
+Las flechas de semana en **Embarques** y **Programa operativo** permiten avanzar
+a semanas futuras para planearlas desde hoy. Ambas pestañas conservan la semana
+seleccionada. La captura de embarques, las condiciones y las versiones del programa
+se guardan en esa semana; **Semana actual** permite regresar sin mezclar registros.
+
 Los subtabs **Planeado** y **Real** separan la programación de lo ejecutado.
 Real precarga Producción de Operación por fecha, turno y material y permite
 confirmar o corregir el resultado, conservando la versión planeada como referencia.
@@ -23,10 +28,22 @@ Ver [Resultados reales](RESULTADOS_REALES.md) para el efecto en futuras planeaci
    [Embarques sugeridos](EMBARQUES_SUGERIDOS_CARTON.md) y usar **Aceptar embarques**
    para incorporar la selección semanal. Se pueden editar después; la generación
    vuelve a leer la lista final de embarques confirmados guardados.
-2. Programa operativo precarga el patio inicial del lunes a partir del conteo
-   fechado y los movimientos posteriores, o de las condiciones guardadas de la
-   semana. Los saldos estimados se señalan en la propuesta y pueden editarse.
+2. Para la semana actual, Programa operativo toma el patio disponible actual
+   calculado por Embarques a partir del conteo fechado y los movimientos
+   posteriores. Ese saldo ya incluye la producción real y descuenta las salidas;
+   se aplica únicamente a los embarques que siguen confirmados. Para semanas
+   futuras o pasadas se conserva el saldo inicial correspondiente a esa semana.
+   Los saldos estimados se señalan en la propuesta y pueden editarse.
    La referencia calculada permite generar sin volver a capturar el patio.
+   El conteo por material guardado en Operación el viernes desde las 17:00, hora
+   de Celaya, se toma como piso inicial exacto del lunes siguiente. Se conserva
+   como referencia inicial aunque haya otros conteos después; durante la semana
+   en curso se usa el saldo disponible actualizado. Las versiones guardadas
+   mantienen su patio. **Crear nuevo borrador** y **Generar programa semanal**
+   incorporan la referencia vigente de todos los materiales, incluso sin cierre
+   del viernes. Generar vuelve a leer los datos y conserva los materiales
+   ajustados manualmente en la edición actual; cambiar capacidad o turnos no
+   congela el patio de los demás materiales.
 3. Revisar Histórico de Producción: periodo, semanas con registros y promedios
    por material/día/turno. La capacidad diaria parte del percentil 75 de los
    totales diarios observados, o de la capacidad guardada para esa semana.

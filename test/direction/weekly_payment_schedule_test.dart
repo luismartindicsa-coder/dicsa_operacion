@@ -378,8 +378,8 @@ void main() {
         );
       repo.saved[day(0)] = WeeklyExpensePlan(
         week: day(0),
-        openingCash: 0,
-        openingFiscal: 0,
+        openingCash: 8500000,
+        openingFiscal: 12000000,
       );
       final incomes = ScheduleIncomeRepository();
       final boundary = GlobalKey();
@@ -392,7 +392,12 @@ void main() {
         find.byKey(const ValueKey('generate-projected-payments')),
       );
       await tester.pumpAndSettle();
-      expect(repo.saved[day(0)]!.payments.single.date, day(4));
+      expect(
+        repo.saved[day(0)]!.payments
+            .singleWhere((r) => r.id == 'invoice:i')
+            .date,
+        day(4),
+      );
       expect(incomes.reads, greaterThanOrEqualTo(2));
       expect(find.text('Pago tardío · vencimiento 2026-09-22'), findsOneWidget);
       await tester.tap(find.text('Distribución diaria de pagos'));
@@ -418,7 +423,12 @@ void main() {
       incomes.receiptDay = 3;
       await tester.pump(const Duration(seconds: 31));
       await tester.pumpAndSettle();
-      expect(repo.saved[day(0)]!.payments.single.date, day(4));
+      expect(
+        repo.saved[day(0)]!.payments
+            .singleWhere((r) => r.id == 'invoice:i')
+            .date,
+        day(4),
+      );
       expect(repo.writes, 1);
       await tester.pumpWidget(const SizedBox());
     },

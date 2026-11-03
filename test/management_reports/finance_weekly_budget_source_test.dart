@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:dicsa_operacion/app/direction/projection/weekly_projection_repository.dart';
 import 'package:dicsa_operacion/app/management_reports/finance_weekly_budget_analysis.dart';
 import 'package:dicsa_operacion/app/management_reports/finance_weekly_budget_source.dart';
 import 'package:dicsa_operacion/app/management_reports/management_reports_pdf_export.dart';
@@ -161,6 +162,31 @@ void main() {
     },
   );
 
+  test(
+    'projection repository selects weekly pending obligations from the same strict sources',
+    () async {
+      final analysis = await WeeklyProjectionRepository().proposal(
+        DateTime(2026, 9, 21),
+        DateTime(2026, 9, 18),
+      );
+      expect(analysis.onlyWeekPending, isTrue);
+      expect(analysis.period.start, DateTime(2026, 9, 21));
+      expect(analysis.period.asOf, DateTime(2026, 9, 18));
+      expect(analysis.proposedFixedPayments, 30000);
+      expect(
+        analysis.proposedInvoices,
+        0,
+      ); // August debt stays available manually.
+      expect(analysis.invoices.single.balance, 90000);
+      expect(analysis.proposedTotal, 30000);
+      expect(requests.map((r) => r.url.pathSegments.last).toSet(), {
+        ...tables,
+        'compras_tickets',
+        'compras_ticket_payment_applications',
+        'finanzas_supplier_invoice_tickets',
+      });
+    },
+  );
   test(
     'pagination includes bank, invoices, fixed payments and commitments after row 500',
     () async {

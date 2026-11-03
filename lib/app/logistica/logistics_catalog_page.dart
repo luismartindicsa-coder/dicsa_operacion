@@ -13,6 +13,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../services/services_shell.dart';
 import '../services/services_visual_mode.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'logistics_area_chrome.dart';
@@ -910,6 +911,10 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
             row.sourceVehicleType,
             row.sourceStatus,
             row.capacityNote,
+            logisticsAssignedDriverLabel(
+              row.assignedDriverEmployeeId,
+              _drivers,
+            ),
             logisticsTankCapacityLabel(row.tankCapacityLiters),
             row.notes,
             logisticsUnitTypeLabel(row.logisticsUnitType),
@@ -1289,7 +1294,10 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     final updated =
         await showLogisticsContractDialog<LogisticsVehicleProfileRecord>(
           context: context,
-          builder: (_) => _LogisticsVehicleProfileEditorDialog(record: record),
+          builder: (_) => _LogisticsVehicleProfileEditorDialog(
+            record: record,
+            drivers: _drivers,
+          ),
         );
     if (updated == null) return;
 
@@ -2901,8 +2909,8 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
         _CatalogSearchBar(
           title: 'Unidades activas',
           subtitle:
-              'Reutiliza FLOTILLA, pero ya permite tipificar la unidad para Logística y definir qué carga o servicio sí soporta.',
-          searchLabel: 'Buscar unidad',
+              'Asigna el chofer de cada unidad y define qué carga o servicio puede realizar.',
+          searchLabel: 'Buscar unidad o chofer',
           value: _vehicleSearch,
           onChanged: (value) => setState(() => _vehicleSearch = value),
           resultLabel:
@@ -2934,6 +2942,13 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           : 'Serie: $serial',
                       tags: _vehicleTags(row),
                       fields: [
+                        _CatalogField(
+                          label: 'Chofer asignado',
+                          value: logisticsAssignedDriverLabel(
+                            row.assignedDriverEmployeeId,
+                            _drivers,
+                          ),
+                        ),
                         _CatalogField(
                           label: 'Tipo logístico',
                           value: logisticsUnitTypeLabel(row.logisticsUnitType),
@@ -4322,8 +4337,12 @@ class _LogisticsDriverProfileEditorDialogState
 
 class _LogisticsVehicleProfileEditorDialog extends StatefulWidget {
   final LogisticsVehicleProfileRecord record;
+  final List<LogisticsDriverProfileRecord> drivers;
 
-  const _LogisticsVehicleProfileEditorDialog({required this.record});
+  const _LogisticsVehicleProfileEditorDialog({
+    required this.record,
+    required this.drivers,
+  });
 
   @override
   State<_LogisticsVehicleProfileEditorDialog> createState() =>
@@ -4339,6 +4358,7 @@ class _LogisticsVehicleProfileEditorDialogState
   late final Set<String> _compatibleLoadTypes;
   late String _planningStatus;
   late String _logisticsUnitType;
+  late String? _assignedDriverEmployeeId;
 
   @override
   void initState() {
@@ -4353,6 +4373,7 @@ class _LogisticsVehicleProfileEditorDialogState
     _compatibleLoadTypes = widget.record.compatibleLoadTypes.toSet();
     _planningStatus = widget.record.planningStatus;
     _logisticsUnitType = widget.record.logisticsUnitType;
+    _assignedDriverEmployeeId = widget.record.assignedDriverEmployeeId;
   }
 
   @override
@@ -4408,6 +4429,31 @@ class _LogisticsVehicleProfileEditorDialogState
     });
   }
 
+  Future<void> _pickAssignedDriver() async {
+    final drivers = widget.drivers.where((driver) => driver.active).toList()
+      ..sort(
+        (a, b) =>
+            a.driverName.toLowerCase().compareTo(b.driverName.toLowerCase()),
+      );
+    final selected = await showSearchablePickerDialog<String>(
+      context,
+      title: 'Chofer asignado',
+      initialValue: _assignedDriverEmployeeId ?? '',
+      options: [
+        const SearchablePickerOption(value: '', label: 'Sin chofer asignado'),
+        for (final driver in drivers)
+          SearchablePickerOption(
+            value: driver.employeeId,
+            label: driver.driverName,
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(
+      () => _assignedDriverEmployeeId = selected.isEmpty ? null : selected,
+    );
+  }
+
   void _submit() {
     double? tank;
     try {
@@ -4425,6 +4471,7 @@ class _LogisticsVehicleProfileEditorDialogState
         planningStatus: _planningStatus,
         capacityNote: _capacityController.text.trim(),
         tankCapacityLiters: tank,
+        assignedDriverEmployeeId: _assignedDriverEmployeeId,
         notes: _notesController.text.trim(),
       ),
     );
@@ -4467,6 +4514,44 @@ class _LogisticsVehicleProfileEditorDialogState
                   ),
                 ),
                 const SizedBox(height: 16),
+                OutlinedButton(
+                  key: const ValueKey('logistics-assigned-driver-picker'),
+                  onPressed: _pickAssignedDriver,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kLogisticsSilverTextPrimary,
+                    side: const BorderSide(color: kLogisticsSilverBorder),
+                    padding: const EdgeInsets.all(14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.badge_outlined),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Chofer asignado'),
+                            const SizedBox(height: 4),
+                            Text(
+                              logisticsAssignedDriverLabel(
+                                _assignedDriverEmployeeId,
+                                widget.drivers,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down_rounded),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,
@@ -4474,6 +4559,7 @@ class _LogisticsVehicleProfileEditorDialogState
                     SizedBox(
                       width: 240,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _planningStatus,
                         decoration: _decoration('Estatus de planeación'),
                         items: kLogisticsPlanningStatusOptions
@@ -4495,6 +4581,7 @@ class _LogisticsVehicleProfileEditorDialogState
                     SizedBox(
                       width: 240,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _logisticsUnitType,
                         decoration: _decoration('Tipo logístico'),
                         items: kLogisticsUnitTypeOptions

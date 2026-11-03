@@ -104,6 +104,8 @@ class ExpectedIncomeCollectionReport {
               ? r.shipment.status == 'planeado'
                     ? 'Por confirmar y embarcar'
                     : 'Por embarcar'
+              : r.estimatedFromBales
+              ? 'Estimado · pendiente de Mayoreo'
               : status(r.collectionDate!),
           date: incomeDay(r.collectionDate!),
           pendingCents: r.pendingCents,

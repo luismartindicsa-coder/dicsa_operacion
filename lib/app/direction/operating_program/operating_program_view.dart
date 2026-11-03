@@ -48,9 +48,11 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   OperatingProgram? _selected;
   bool _loading = true, _busy = false, _dirty = false, _yardConfirmed = false;
   bool _loadFailed = false, _conditionsEdited = false;
+  final Set<String> _editedYardMaterials = {};
   final Set<String> _invalidFields = {};
   int _versionsRequest = 0;
   int _dayShareRevision = 0;
+  int _conditionsRevision = 0;
   String? _error;
   String? _exportMessage;
   bool _exportFailed = false;
@@ -84,6 +86,34 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant OperatingProgramView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final focused = FocusManager.instance.primaryFocus?.context;
+    final editingText =
+        focused?.widget is EditableText ||
+        focused?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (_selected == null &&
+        !_busy &&
+        !_dirty &&
+        !editingText &&
+        widget.bundle.weekStartDate == oldWidget.bundle.weekStartDate &&
+        widget.bundle.suggestionReport != null) {
+      final previous = _conditions;
+      _syncProductionReference(widget.bundle);
+      if (previous.dailyCapacity != _conditions.dailyCapacity ||
+          previous.dayShare != _conditions.dayShare ||
+          programMaterials.any(
+            (m) => previous.yard[m] != _conditions.yard[m],
+          )) {
+        // TextFormField keeps its controller when initialValue changes.
+        // Reset only an untouched form, with no text field holding focus.
+        _conditionsRevision++;
+      }
+      _yardConfirmed = true;
+    }
   }
 
   Future<void> _loadVersions({bool silent = false}) async {
@@ -124,6 +154,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
     _selected = program;
     _conditions = program.conditions;
     _conditionsEdited = true;
+    _editedYardMaterials.clear();
     _demands = program.demands;
     _lines = program.lines;
     _dirty = false;
@@ -324,6 +355,14 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
       return;
     }
     _conditions = _conditions.copyWith(
+      yard: reference.suggestionReport != null
+          ? {
+              ..._conditions.yard,
+              for (final material in programMaterials)
+                if (!_editedYardMaterials.contains(material))
+                  material: fresh.yard[material]!,
+            }
+          : _conditions.yard,
       history: fresh.history,
       days: [
         for (var d = 0; d < 5; d++)
@@ -594,14 +633,10 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                     ),
                     IconButton(
                       tooltip: 'Semana siguiente del programa',
-                      onPressed:
-                          !_busy &&
-                              _week.isBefore(
-                                DirectionShipmentsStore.currentWeekStartDate(),
-                              )
-                          ? () =>
-                                _changeWeek(_week.add(const Duration(days: 7)))
-                          : null,
+                      onPressed: _busy
+                          ? null
+                          : () =>
+                                _changeWeek(_week.add(const Duration(days: 7))),
                       icon: const Icon(Icons.chevron_right),
                     ),
                     if (_versions.isNotEmpty)
@@ -726,14 +761,17 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                             _conditions.yard[programMaterials[i]] ?? 0,
                             0,
                             1000000,
-                            (v) => _setCondition(
-                              _conditions.copyWith(
-                                yard: {
-                                  ..._conditions.yard,
-                                  programMaterials[i]: v,
-                                },
-                              ),
-                            ),
+                            (v) {
+                              _editedYardMaterials.add(programMaterials[i]);
+                              _setCondition(
+                                _conditions.copyWith(
+                                  yard: {
+                                    ..._conditions.yard,
+                                    programMaterials[i]: v,
+                                  },
+                                ),
+                              );
+                            },
                           ),
                       ],
                     ),
@@ -742,8 +780,8 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(
                         widget.bundle.suggestionReport != null
-                            ? 'Usar el patio inicial calculado (puedes editarlo arriba)'
-                            : 'Confirmo el patio inicial del lunes por material',
+                            ? 'Usar el patio disponible calculado (puedes editarlo arriba)'
+                            : 'Confirmo el patio disponible por material',
                         style: TextStyle(
                           color: kDirectionSurfaceText,
                           fontSize: 12,
@@ -758,7 +796,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                           : null,
                     ),
                     const Text(
-                      'Patio y capacidad se precargan con la referencia disponible. Día/Noche parte del historial y se puede ajustar. Bloquear un turno reduce capacidad; no la transfiere al otro. Maquinaria: participación nominal C1 50% y C2 50%.',
+                      'La semana actual toma el patio disponible al generar; otras semanas usan su saldo inicial. Día/Noche parte del historial y se puede ajustar. Bloquear un turno reduce capacidad; no la transfiere al otro. Maquinaria: participación nominal C1 50% y C2 50%.',
                       style: TextStyle(color: kDirectionMutedText),
                     ),
                     const SizedBox(height: 8),
@@ -798,30 +836,13 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
                           ? null
                           : () => setState(() {
                               _selected = null;
+                              _editedYardMaterials.clear();
                               _dirty = true;
                               _demands = ProgramDemand.fromShipments(
                                 _week,
                                 widget.bundle.shipments,
                               );
-                              final fresh = ProgramConditions.fromReference(
-                                widget.bundle,
-                              );
-                              _conditions = _conditions.copyWith(
-                                history: fresh.history,
-                                days: [
-                                  for (var d = 0; d < 5; d++)
-                                    ProgramDayCondition(
-                                      working: _conditions.days[d].working,
-                                      dayAvailable:
-                                          _conditions.days[d].dayAvailable,
-                                      nightAvailable:
-                                          _conditions.days[d].nightAvailable,
-                                      lossPercent: fresh.days[d].lossPercent,
-                                      machineryNote:
-                                          fresh.days[d].machineryNote,
-                                    ),
-                                ],
-                              );
+                              _syncProductionReference(widget.bundle);
                             }),
                       child: const Text('Crear nuevo borrador'),
                     ),
@@ -1043,7 +1064,7 @@ class OperatingProgramViewState extends State<OperatingProgramView> {
   }) => SizedBox(
     width: 205,
     child: TextFormField(
-      key: ValueKey('$label:${_selected?.id}:$revision'),
+      key: ValueKey('$label:${_selected?.id}:$_conditionsRevision:$revision'),
       initialValue: '$value',
       enabled: _editable,
       style: const TextStyle(color: kDirectionSurfaceText),

@@ -313,6 +313,15 @@ class ProgramConditions {
     );
     final saved = bundle.savedProgramConditions;
     final report = bundle.suggestionReport;
+    // Confirmed demands exclude shipments already sent. During the current
+    // week they must consume today's remaining yard, not Monday's balance.
+    // Other weeks retain their dated opening (including projected future stock).
+    final useCurrentYard =
+        report != null &&
+        !report.generatedAt.isBefore(bundle.weekStartDate) &&
+        report.generatedAt.isBefore(
+          bundle.weekStartDate.add(const Duration(days: 7)),
+        );
     final capacity =
         report?.dailyCapacity ??
         directionHistoricalDailyCapacity(
@@ -324,6 +333,7 @@ class ProgramConditions {
       yard: {
         for (final m in programMaterials)
           m:
+              (useCurrentYard ? report.currentFloorByMaterial[m] : null) ??
               report?.openingFloorByMaterial[m] ??
               ((saved?['yard'] as Map?)?[m] as num?)?.toInt() ??
               0,

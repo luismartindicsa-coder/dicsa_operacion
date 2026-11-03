@@ -101,6 +101,7 @@ class MemoryProjectionRepository extends WeeklyProjectionRepository {
         ),
     now,
     targetWeek: week,
+    onlyWeekPending: true,
   );
   @override
   Future<WeeklyExpensePlan> save(WeeklyExpensePlan plan) async {
@@ -186,7 +187,7 @@ void main() {
         find.byKey(const ValueKey('generate-projected-payments')),
       );
       await tester.pumpAndSettle();
-      expect(repo.saved[f.incomeWeek]!.payments.length, 2);
+      expect(repo.saved[f.incomeWeek]!.payments.length, 5);
       await tester.ensureVisible(
         find.byKey(const ValueKey('edit-payment-invoice:invoice-1')),
       );
@@ -256,7 +257,7 @@ void main() {
       await tester.pumpWidget(harness(repo, flow: true));
       await tester.pumpAndSettle();
       expect(find.textContaining('Hay ingresos mixtos'), findsNothing);
-      expect(find.text(r'$12,500.00'), findsWidgets);
+      expect(find.text(r'$217,500.00'), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
@@ -770,7 +771,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(repo.writes, 1);
-      expect(repo.saved[f.incomeWeek]!.total, 1250000);
+      expect(repo.saved[f.incomeWeek]!.total, 21750000);
       repo.failSave = true;
       await tester.tap(remove);
       await tester.pumpAndSettle();
@@ -778,7 +779,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('No se pudo guardar'), findsOneWidget);
       expect(remove, findsOneWidget);
-      expect(repo.saved[f.incomeWeek]!.total, 1250000);
+      expect(repo.saved[f.incomeWeek]!.total, 21750000);
       repo.failSave = false;
       await tester.ensureVisible(remove);
       await tester.tap(remove);
@@ -792,7 +793,7 @@ void main() {
             .removed,
         true,
       );
-      expect(repo.saved[f.incomeWeek]!.total, 250000);
+      expect(repo.saved[f.incomeWeek]!.total, 20750000);
       // Incorporate genuinely new pending items without resurrecting the removal.
       repo.includeTickets = true;
       await tester.pump(const Duration(seconds: 31));
@@ -815,12 +816,12 @@ void main() {
         repo.saved[f.incomeWeek]!.payments.where((p) => p.source == 'invoice'),
         hasLength(1),
       );
-      expect(repo.saved[f.incomeWeek]!.total, 250000);
+      expect(repo.saved[f.incomeWeek]!.total, 20750000);
       await tester.pumpWidget(const SizedBox());
-      // Reopening the flow reflects the saved removal (82,500 - 2,500).
+      // Reopening reflects removal and payroll (82,500 - 2,500 - 205,000).
       await tester.pumpWidget(harness(repo, flow: true));
       await tester.pumpAndSettle();
-      expect(find.text(r'$80,000.00'), findsWidgets);
+      expect(find.text(r'$-125,000.00'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -935,7 +936,7 @@ void main() {
         findsOneWidget,
       );
       expect(repo.writes, 1);
-      expect(repo.saved[f.incomeWeek]!.total, 1250000);
+      expect(repo.saved[f.incomeWeek]!.total, 21750000);
       expect(
         tester
             .widget<OutlinedButton>(

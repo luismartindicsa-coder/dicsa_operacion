@@ -799,7 +799,9 @@ class _ExpectedIncomeViewState extends State<ExpectedIncomeView> {
             incomeMaterialName(row.shipment.materialCode),
             '${row.shipment.plannedQuantity}',
             '${row.kilograms == null ? '—' : formatDecimal(row.kilograms!, decimals: 0)} / ${row.price == null ? '—' : formatMoney(row.price!)}',
-            row.valueCents == null ? 'Sin precio' : _money(row.valueCents!),
+            row.valueCents == null
+                ? 'Sin precio'
+                : '${_money(row.valueCents!)}${row.estimatedFromBales ? '\nEstimado' : ''}',
             row.paymentType ?? 'Sin definir',
             row.revolving
                 ? 'Cuenta revolvente'

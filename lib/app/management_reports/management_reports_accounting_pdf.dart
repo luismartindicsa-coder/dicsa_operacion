@@ -177,14 +177,14 @@ Future<Uint8List> buildAccountingWeeklySupervisionPdfBytes({
               previous.recognizedExpenses,
             ),
             compare(
-              'Utilidad neta del estado de resultados',
+              current.resultLabel,
               current.periodResult,
               previous.periodResult,
             ),
           ],
           widths: [3.5, 1.6, 1.6, 1.6, 1.2],
           closingNote:
-              'El resultado comercial usa operaciones de compra/venta. El estado de resultados usa entradas y salidas clasificadas de Bancos, Bóveda y Menudeo. Sus cifras responden a bases distintas y no se suman entre sí.',
+              'El resultado comercial compara ventas y compras registradas. El estado económico reconoce operaciones, costo de ventas y gastos sin repetir documentos o liquidaciones. Un resultado provisional no representa utilidad neta cerrada.',
         ),
         ...style.table(
           '1. Resultado comercial · comparativo',
@@ -279,12 +279,12 @@ Future<Uint8List> buildAccountingWeeklySupervisionPdfBytes({
           [
             compare('Ventas de material', current.revenue, previous.revenue),
             compare(
-              'Entradas por otros medios',
+              'Otros ingresos reconocidos',
               current.otherIncome,
               previous.otherIncome,
             ),
             compare(
-              '(-) Compra de material',
+              '(-) Costo de ventas',
               -current.commercialCost,
               -previous.commercialCost,
             ),
@@ -299,14 +299,14 @@ Future<Uint8List> buildAccountingWeeklySupervisionPdfBytes({
               -previous.recognizedExpenses,
             ),
             compare(
-              'Utilidad neta',
+              current.resultLabel,
               current.periodResult,
               previous.periodResult,
             ),
           ],
           widths: [3.5, 1.6, 1.6, 1.6, 1.2],
           closingNote:
-              'Misma lectura del Estado de Resultados de Contabilidad: ventas de material + otras entradas - compras de material - gastos, según rubros capturados. Se conservan las exclusiones de movimientos internos y la conciliación Banco-Bóveda por cheque.',
+              'Mismo motor de reconocimiento que Contabilidad. Los costos estimados, partidas sin clasificar y ajustes de cierre pendientes impiden presentar utilidad neta revisada.',
         ),
         ...style.table(
           'Gastos por rubro y fuente · variación semanal',

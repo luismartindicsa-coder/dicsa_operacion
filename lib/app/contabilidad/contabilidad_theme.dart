@@ -35,6 +35,42 @@ const ContractAreaTokens contabilidadAreaTokens = ContractAreaTokens(
   onGlass: kContabilidadInk,
 );
 
+/// Material controls in Accounting auxiliary forms share the area's glass palette.
+ThemeData contabilidadFormTheme(BuildContext context) {
+  final base = Theme.of(context);
+  return base.copyWith(
+    // DropdownButton menus use canvasColor, independently of colorScheme.
+    // Keep their opaque background in the same palette as the light form text.
+    canvasColor: kContabilidadBgTeal,
+    colorScheme: const ColorScheme.dark(
+      primary: kContabilidadGlow,
+      onPrimary: kContabilidadBgDeep,
+      secondary: kContabilidadMint,
+      surface: kContabilidadBgTeal,
+      onSurface: kContabilidadInk,
+    ),
+    textTheme: base.textTheme.apply(
+      bodyColor: kContabilidadInk,
+      displayColor: kContabilidadInk,
+    ),
+    iconTheme: const IconThemeData(color: kContabilidadMutedInk),
+    inputDecorationTheme: base.inputDecorationTheme.copyWith(
+      labelStyle: const TextStyle(color: kContabilidadMutedInk),
+      hintStyle: const TextStyle(color: kContabilidadSubtleInk),
+      enabledBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: kContabilidadLine),
+      ),
+      focusedBorder: const UnderlineInputBorder(
+        borderSide: BorderSide(color: kContabilidadGlow),
+      ),
+    ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: kContabilidadGlow,
+      selectionColor: kContabilidadLine,
+    ),
+  );
+}
+
 const LinearGradient kContabilidadSelectionGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,

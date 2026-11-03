@@ -4,6 +4,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'statement/statement_repository.dart';
+import 'statement/statement_review_panel.dart';
+import 'statement/statement_expense_coverage_panel.dart';
 
 import '../auth/auth_navigation.dart';
 import '../shared/app_shell.dart';
@@ -25,11 +29,15 @@ import 'contabilidad_trade_analysis_page.dart';
 class ContabilidadIncomeStatementPage extends StatefulWidget {
   final bool instantOpen;
   final DateTimeRange? initialDateRange;
+  final RealtimeClient? realtime;
+  final ContabilidadIncomeStatementStore store;
 
   const ContabilidadIncomeStatementPage({
     super.key,
     this.instantOpen = false,
     this.initialDateRange,
+    this.realtime,
+    this.store = const ContabilidadIncomeStatementStore(),
   });
 
   @override
@@ -38,10 +46,16 @@ class ContabilidadIncomeStatementPage extends StatefulWidget {
 }
 
 class _ContabilidadIncomeStatementPageState
-    extends State<ContabilidadIncomeStatementPage> {
-  final ContabilidadIncomeStatementStore _store =
-      const ContabilidadIncomeStatementStore();
+    extends State<ContabilidadIncomeStatementPage>
+    with WidgetsBindingObserver {
+  ContabilidadIncomeStatementStore get _store => widget.store;
 
+  // Hybrid tabs, existing Accounting shell/tokens. Refresh: realtime + resume,
+  // coalesced and deferred while an auxiliary editor is open.
+  RealtimeChannel? _recognitionChannel;
+  Timer? _refreshDebounce;
+  bool _editing = false, _refreshing = false, _pendingLoad = false;
+  int _loadVersion = 0;
   bool _menuOpen = false;
   bool _loading = true;
   String? _error;
@@ -53,41 +67,154 @@ class _ContabilidadIncomeStatementPageState
   DateTimeRange? _customRange;
   ContabilidadIncomeStatementDataset? _dataset;
   ContabilidadIncomeStatementDataset? _previousDataset;
+  ContabilidadIncomeStatementDataset? _closingDataset;
+  String? _closingError;
+  bool _closingLoading = false;
+  int _closingVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    var channel = (widget.realtime ?? Supabase.instance.client.realtime)
+        .channel('accounting-recognition-${identityHashCode(this)}');
+    for (final table in {
+      ...statementSourceSpecs.map((s) => s.table),
+      'accounting_statement_reviews',
+      'accounting_statement_closures',
+    }) {
+      channel = channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        callback: (_) {
+          _refreshDebounce?.cancel();
+          _refreshDebounce = Timer(
+            const Duration(milliseconds: 600),
+            () => _load(silent: true),
+          );
+        },
+      );
+    }
+    _recognitionChannel = channel.subscribe();
     _customRange = widget.initialDateRange;
     unawaited(_load());
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshDebounce?.cancel();
+    unawaited(_recognitionChannel?.unsubscribe());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_load(silent: true));
+  }
+
+  void _setEditing(bool value) {
+    _editing = value;
+    if (!value && _pendingLoad && mounted) unawaited(_load(silent: true));
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    final version = ++_loadVersion;
+    if (_editing || _refreshing) {
+      _pendingLoad = true;
+      return;
+    }
+    _refreshing = true;
+    _pendingLoad = false;
+    if (!silent || _dataset == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final currentRange = _customRange ?? _defaultWindowRange(_windowDays);
       final previousRange = _previousRange(currentRange);
-      final results = await Future.wait<dynamic>([
-        _store.loadSimplified(windowDays: _windowDays, dateRange: _customRange),
+      final results = await Future.wait([
+        _store.loadSimplified(windowDays: _windowDays, dateRange: currentRange),
         _store.loadSimplified(
           windowDays: _windowDays,
           dateRange: previousRange,
         ),
       ]);
-      if (!mounted) return;
+      if (!mounted || version != _loadVersion) return;
       setState(() {
-        _dataset = results[0] as ContabilidadIncomeStatementDataset;
-        _previousDataset = results[1] as ContabilidadIncomeStatementDataset;
+        _dataset = results[0];
+        _previousDataset = results[1];
         _loading = false;
+        _error = null;
+      });
+      // Closing is a separate, lazy read. Its permissions, missing information
+      // or network errors must not hide the original base result.
+      if (_selectedTab == _IncomeStatementTab.audit) {
+        unawaited(_loadClosing());
+      } else {
+        _closingVersion++;
+        _closingDataset = null;
+        _closingLoading = false;
+        _closingError = null;
+      }
+    } catch (error) {
+      if (mounted && version == _loadVersion) {
+        setState(() {
+          _error = '$error';
+          _loading = false;
+        });
+      }
+    } finally {
+      _refreshing = false;
+      if (_pendingLoad && mounted && !_editing) unawaited(_load(silent: true));
+    }
+  }
+
+  Future<void> _loadClosing() async {
+    final range = _dataset?.range;
+    if (range == null) return;
+    final version = ++_closingVersion;
+    final baseVersion = _loadVersion;
+    setState(() {
+      _closingLoading = true;
+      _closingError = null;
+    });
+    try {
+      final data = await _store.loadAccrual(
+        windowDays: _windowDays,
+        dateRange: range,
+      );
+      if (!mounted ||
+          version != _closingVersion ||
+          baseVersion != _loadVersion) {
+        return;
+      }
+      setState(() {
+        _closingDataset = data;
+        _closingLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          version != _closingVersion ||
+          baseVersion != _loadVersion) {
+        return;
+      }
       setState(() {
-        _error = '$error';
-        _loading = false;
+        _closingError = '$error';
+        _closingLoading = false;
       });
+    }
+  }
+
+  void _selectTab(_IncomeStatementTab tab) {
+    setState(() => _selectedTab = tab);
+    if (tab == _IncomeStatementTab.audit &&
+        !_closingLoading &&
+        _closingDataset == null) {
+      unawaited(_loadClosing());
     }
   }
 
@@ -124,8 +251,22 @@ class _ContabilidadIncomeStatementPageState
   }
 
   Future<void> _exportPdf() async {
-    final statement = _dataset;
-    if (statement == null) return;
+    final closing = _selectedTab == _IncomeStatementTab.audit;
+    final statement = closing ? _closingDataset : _dataset;
+    if (statement == null ||
+        _loading ||
+        _refreshing ||
+        _error != null ||
+        (closing && (_closingLoading || _closingError != null))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Espera a que el estado de resultados cargue completamente antes de exportar.',
+          ),
+        ),
+      );
+      return;
+    }
     await exportContabilidadIncomeStatementPdf(statement: statement);
   }
 
@@ -183,6 +324,7 @@ class _ContabilidadIncomeStatementPageState
   }
 
   String _statusLabel(ContabilidadIncomeStatementSnapshot snapshot) {
+    if (!snapshot.isComplete) return snapshot.statementStatus;
     if (snapshot.periodResult > 0.009) {
       return 'Resultado positivo';
     }
@@ -209,6 +351,9 @@ class _ContabilidadIncomeStatementPageState
   }
 
   String _mainReading(ContabilidadIncomeStatementSnapshot snapshot) {
+    if (!snapshot.isComplete) {
+      return 'El importe es parcial: faltan conciliaciones o costos y ajustes de cierre. No representa utilidad neta disponible.';
+    }
     if (snapshot.periodResult > 0.009) {
       return 'Después de costo y gastos reconocidos, el periodo sigue dejando resultado positivo.';
     }
@@ -310,13 +455,6 @@ class _ContabilidadIncomeStatementPageState
               ),
               const SizedBox(width: 10),
               ContabilidadPageHeaderButton(
-                label: 'Recargar',
-                icon: Icons.refresh_rounded,
-                width: 132,
-                onTap: _load,
-              ),
-              const SizedBox(width: 10),
-              ContabilidadPageHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
                 onTap: _logout,
@@ -356,30 +494,89 @@ class _ContabilidadIncomeStatementPageState
                           else if (dataset != null) ...[
                             _IncomeStatementSectionTabs(
                               selectedTab: _selectedTab,
-                              reviewCount: dataset.reviewRows.length,
-                              onSelectTab: (tab) =>
-                                  setState(() => _selectedTab = tab),
+                              reviewCount: 0,
+                              onSelectTab: _selectTab,
                             ),
                             const SizedBox(height: 14),
-                            _IncomeStatementTabContent(
-                              selectedTab: _selectedTab,
-                              dataset: dataset,
-                              previousDataset: previousDataset,
-                              periodicFlowDataset: null,
-                              periodicIncomeDataset: null,
-                              periodicOperationalDataset: null,
-                              money: _money,
-                              changeLabel: _changeLabel,
-                              statusLabel: _statusLabel(dataset.snapshot),
-                              statusColor: _statusColor(dataset.snapshot),
-                              statusIcon: _statusIcon(dataset.snapshot),
-                              mainReading: _mainReading(dataset.snapshot),
-                              proposal: _proposal(dataset.snapshot),
-                              selectedReviewKey: _selectedReviewKey,
-                              reviewDrafts: _reviewDrafts,
-                              onSelectReviewRow: _selectReviewRow,
-                              onUpdateReviewDraft: _updateReviewDraft,
-                            ),
+                            if (_selectedTab == _IncomeStatementTab.audit) ...[
+                              if (_closingLoading)
+                                const _IncomeStatementLoadingState()
+                              else if (_closingError != null)
+                                _IncomeStatementErrorState(
+                                  message: _closingError!,
+                                  onRetry: _loadClosing,
+                                )
+                              else if (_closingDataset?.recognition != null)
+                                Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    ExpansionTile(
+                                      textColor: kContabilidadInk,
+                                      collapsedTextColor: kContabilidadInk,
+                                      iconColor: kContabilidadGlow,
+                                      collapsedIconColor: kContabilidadGlow,
+                                      title: const Text(
+                                        'Resultado contable y ajustes de cierre',
+                                      ),
+                                      subtitle: const Text(
+                                        'Cálculo separado del resultado base',
+                                        style: TextStyle(
+                                          color: kContabilidadMutedInk,
+                                        ),
+                                      ),
+                                      children: [
+                                        _IncomeStatementLinesPanel(
+                                          snapshot: _closingDataset!.snapshot,
+                                          lines: _closingDataset!.lines,
+                                          money: _money,
+                                        ),
+                                        if (_closingDataset!
+                                            .warnings
+                                            .isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.all(16),
+                                            child: Text(
+                                              _closingDataset!.warnings.join(
+                                                '\n',
+                                              ),
+                                              style: const TextStyle(
+                                                color: kContabilidadMutedInk,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+                                    StatementReviewPanel(
+                                      key: ValueKey('${dataset.range}-closing'),
+                                      analysis: _closingDataset!.recognition!,
+                                      onlyPending: true,
+                                      onSaved: _load,
+                                      onEditing: _setEditing,
+                                    ),
+                                  ],
+                                ),
+                            ] else
+                              _IncomeStatementTabContent(
+                                selectedTab: _selectedTab,
+                                dataset: dataset,
+                                previousDataset: previousDataset,
+                                periodicFlowDataset: null,
+                                periodicIncomeDataset: null,
+                                periodicOperationalDataset: null,
+                                money: _money,
+                                changeLabel: _changeLabel,
+                                statusLabel: _statusLabel(dataset.snapshot),
+                                statusColor: _statusColor(dataset.snapshot),
+                                statusIcon: _statusIcon(dataset.snapshot),
+                                mainReading: _mainReading(dataset.snapshot),
+                                proposal: _proposal(dataset.snapshot),
+                                selectedReviewKey: _selectedReviewKey,
+                                reviewDrafts: _reviewDrafts,
+                                onSelectReviewRow: _selectReviewRow,
+                                onUpdateReviewDraft: _updateReviewDraft,
+                              ),
                           ],
                           const SizedBox(height: 18),
                         ],
@@ -483,7 +680,7 @@ class _IncomeStatementSectionTabs extends StatelessWidget {
         runSpacing: 10,
         children: [
           _TabPill(
-            label: 'Resumen',
+            label: 'Resultado base',
             active: selectedTab == _IncomeStatementTab.summary,
             onTap: () => onSelectTab(_IncomeStatementTab.summary),
           ),
@@ -496,6 +693,11 @@ class _IncomeStatementSectionTabs extends StatelessWidget {
             label: 'Gastos',
             active: selectedTab == _IncomeStatementTab.expenses,
             onTap: () => onSelectTab(_IncomeStatementTab.expenses),
+          ),
+          _TabPill(
+            label: 'Cierre contable',
+            active: selectedTab == _IncomeStatementTab.audit,
+            onTap: () => onSelectTab(_IncomeStatementTab.audit),
           ),
         ],
       ),
@@ -982,9 +1184,11 @@ class _IncomeStatementLinesPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Utilidad bruta = ventas de material + otras entradas - compra de material. Utilidad neta = utilidad bruta - gastos.',
-            style: TextStyle(
+          Text(
+            snapshot.isAccrual
+                ? 'Ventas reconocidas menos costo de ventas y gastos del periodo. La utilidad neta requiere un cierre revisado.'
+                : 'Ventas cobradas + otras entradas − compras pagadas − gastos pagados. Se conservan las categorías registradas en Bancos, Bóveda y Menudeo.',
+            style: const TextStyle(
               color: kContabilidadMutedInk,
               fontSize: 13.4,
               height: 1.4,
@@ -994,7 +1198,7 @@ class _IncomeStatementLinesPanel extends StatelessWidget {
           for (var i = 0; i < lines.length; i++) ...[
             _StatementLineTile(
               label: lines[i].label,
-              value: money(lines[i].amount),
+              value: lines[i].amountLabel ?? money(lines[i].amount),
               color: _tone(lines[i].tone),
               emphasis: lines[i].emphasis,
             ),
@@ -2655,23 +2859,6 @@ class _IncomeStatementSummaryTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _IncomeStatementLinesPanel(
-          snapshot: dataset.snapshot,
-          lines: dataset.lines,
-          money: money,
-        ),
-        const SizedBox(height: 14),
-        ContractGlassCard(
-          padding: const EdgeInsets.all(16),
-          child: const Text(
-            'La lectura usa solamente movimientos ya registrados en Bancos, Bóveda y Menudeo. Ventas y compras de material se identifican por su categoría o rubro; los demás movimientos externos se muestran como entradas por otros medios o gastos.',
-            style: TextStyle(
-              color: kContabilidadMutedInk,
-              fontSize: 13.5,
-              height: 1.45,
-            ),
-          ),
-        ),
         if (dataset.warnings.isNotEmpty) ...[
           const SizedBox(height: 10),
           ContractGlassCard(
@@ -2686,6 +2873,24 @@ class _IncomeStatementSummaryTab extends StatelessWidget {
             ),
           ),
         ],
+        const SizedBox(height: 14),
+        _IncomeStatementLinesPanel(
+          snapshot: dataset.snapshot,
+          lines: dataset.lines,
+          money: money,
+        ),
+        const SizedBox(height: 14),
+        ContractGlassCard(
+          padding: const EdgeInsets.all(16),
+          child: const Text(
+            'Resultado base de los movimientos registrados. Otras entradas puede incluir financiamiento; esta lectura de caja no certifica utilidad neta. Los documentos, estimaciones y ajustes se revisan por separado en Cierre contable.',
+            style: TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 13.5,
+              height: 1.45,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -2760,7 +2965,7 @@ class _SummaryTopRow extends StatelessWidget {
           statusColor: statusColor,
           statusIcon: statusIcon,
           mainReading:
-              '$mainReading Margen neto ${margin.toStringAsFixed(1)}%.',
+              '$mainReading Margen ${snapshot.isComplete ? 'revisado' : 'parcial'} ${margin.toStringAsFixed(1)}%.',
         );
         final side = Wrap(spacing: 12, runSpacing: 12, children: cards);
         if (singleColumn) {
@@ -3333,43 +3538,67 @@ class _IncomeStatementExpensesTab extends StatelessWidget {
       0,
       (sum, row) => sum + row.amount,
     );
-    return ContractGlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'DESGLOSE DE GASTOS',
-            style: TextStyle(
-              color: kContabilidadGlow,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.8,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Cada renglón conserva la categoría o rubro con el que fue capturado y su fuente.',
-            style: TextStyle(color: kContabilidadMutedInk, fontSize: 13.4),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (dataset.recognition != null) ...[
+          StatementRecognizedExpensesPanel(
+            analysis: dataset.recognition!,
+            money: money,
           ),
           const SizedBox(height: 14),
-          if (dataset.expenseBreakdown.isEmpty)
-            const Text(
-              'No hay gastos registrados en este periodo.',
-              style: TextStyle(color: kContabilidadMutedInk),
-            )
-          else
-            for (final row in dataset.expenseBreakdown) ...[
-              _SimpleTableRow(
-                leading: '${row.label} · ${row.sourceLabel}',
-                middle:
-                    '${row.count} movimientos · ${_percentOf(row.amount, total)}',
-                trailing: money(row.amount),
-              ),
-              const SizedBox(height: 10),
-            ],
         ],
-      ),
+        if (dataset.expenseCoverage.isNotEmpty) ...[
+          StatementExpenseCoveragePanel(
+            rows: dataset.expenseCoverage,
+            money: money,
+          ),
+          const SizedBox(height: 14),
+        ],
+        ContractGlassCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'DESGLOSE DE GASTOS',
+                style: TextStyle(
+                  color: kContabilidadGlow,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                dataset.snapshot.isAccrual
+                    ? 'Estos importes ya afectan al resultado contable.'
+                    : 'Estos gastos ya están descontados del resultado base, con su categoría y fuente originales.',
+                style: const TextStyle(
+                  color: kContabilidadMutedInk,
+                  fontSize: 13.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (dataset.expenseBreakdown.isEmpty)
+                const Text(
+                  'No hay gastos reconocidos en este periodo.',
+                  style: TextStyle(color: kContabilidadMutedInk),
+                )
+              else
+                for (final row in dataset.expenseBreakdown) ...[
+                  _SimpleTableRow(
+                    leading: '${row.label} · ${row.sourceLabel}',
+                    middle:
+                        '${row.count} movimientos · ${_percentOf(row.amount, total)}',
+                    trailing: money(row.amount),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

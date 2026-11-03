@@ -5,6 +5,14 @@ import 'finanzas_provider_accounts_store.dart';
 
 enum FinanzasDueAlertSeverity { info, warning, critical }
 
+/// Calendar week shared by Pendientes and the projection's automatic proposal.
+bool finanzasDueInWeek(DateTime dueDate, DateTime referenceDate) {
+  final day = DateUtils.dateOnly(referenceDate);
+  final monday = DateTime(day.year, day.month, day.day - day.weekday + 1);
+  final nextMonday = DateTime(monday.year, monday.month, monday.day + 7);
+  return !dueDate.isBefore(monday) && dueDate.isBefore(nextMonday);
+}
+
 class FinanzasDueAlertItem {
   final String id;
   final String sourceType;
@@ -80,10 +88,7 @@ class FinanzasDueAlertsSummary {
       DateTime(weekStart.year, weekStart.month, weekStart.day + 7);
 
   List<FinanzasDueAlertItem> get weekItems => items
-      .where(
-        (item) =>
-            !item.dueDate.isBefore(weekStart) && item.dueDate.isBefore(weekEnd),
-      )
+      .where((item) => finanzasDueInWeek(item.dueDate, weekStart))
       .toList(growable: false);
 
   List<FinanzasDueAlertItem> get pastDueItems => items

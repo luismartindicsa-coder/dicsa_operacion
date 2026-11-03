@@ -1,0 +1,931 @@
+[
+  {
+    "id": "0431f1ae-9587-4bfc-a854-5223389d2032",
+    "company": "KS",
+    "date": "2026-07-13",
+    "reference": "82789",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-13T23:54:22.265224+00:00"
+  },
+  {
+    "id": "0486c175-c420-474f-a8e0-c8d416876b46",
+    "company": "KS",
+    "date": "2026-06-02",
+    "reference": "81819",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-02T21:16:48.198486+00:00"
+  },
+  {
+    "id": "15caad24-3db8-4303-8936-8e3cd3481610",
+    "company": "KS",
+    "date": "2026-09-22",
+    "reference": "84946",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-22T21:28:06.343683+00:00"
+  },
+  {
+    "id": "1942ccfe-addb-4730-aaf2-3078b69beedd",
+    "company": "KS",
+    "date": "2026-07-08",
+    "reference": "82696",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-08T23:18:46.394698+00:00"
+  },
+  {
+    "id": "2f13857e-8bee-4c67-ba83-3f48b6e51843",
+    "company": "KS",
+    "date": "2026-06-04",
+    "reference": "81894",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-04T22:15:00.546789+00:00"
+  },
+  {
+    "id": "3588a2d4-bb6b-461e-839e-002cef4644c1",
+    "company": "KS",
+    "date": "2026-08-18",
+    "reference": "0635",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-18T20:25:10.016312+00:00"
+  },
+  {
+    "id": "377d7646-b23f-4d7d-9a97-66a0cd9934f9",
+    "company": "KS",
+    "date": "2026-05-14",
+    "reference": "81360",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-14T23:04:55.33355+00:00"
+  },
+  {
+    "id": "440c617b-c56c-44cb-bd91-0c4679a674c4",
+    "company": "KS",
+    "date": "2026-06-03",
+    "reference": "81831",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-03T23:31:59.24144+00:00"
+  },
+  {
+    "id": "65242987-6962-40e7-8b4b-c6d97408d234",
+    "company": "KS",
+    "date": "2026-04-07",
+    "reference": "80297",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-07T15:45:37.973745+00:00"
+  },
+  {
+    "id": "755ec900-a156-4c2a-8170-a8e159fafb87",
+    "company": "KS",
+    "date": "2026-08-13",
+    "reference": "83970",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-13T18:33:26.854146+00:00"
+  },
+  {
+    "id": "7b83e446-66f5-4e5f-aadb-f9f59cd650e9",
+    "company": "KS",
+    "date": "2026-07-14",
+    "reference": "83040",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-14T22:29:51.474065+00:00"
+  },
+  {
+    "id": "8d17f0e6-bd61-4e7b-be19-70d095abfbb5",
+    "company": "KS",
+    "date": "2026-06-18",
+    "reference": "82148",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-18T21:28:51.668386+00:00"
+  },
+  {
+    "id": "b67aa03e-4e40-4551-817a-f95877ba6faa",
+    "company": "KS",
+    "date": "2026-07-17",
+    "reference": "83155",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-17T21:34:09.957664+00:00"
+  },
+  {
+    "id": "bc4bea42-5fe8-49b0-9356-6712ac6fb5cd",
+    "company": "KS",
+    "date": "2026-08-27",
+    "reference": "84349",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-27T21:07:39.106856+00:00"
+  },
+  {
+    "id": "c0687746-5d8b-4f3d-aa4d-02bd3e8e2ab1",
+    "company": "KS",
+    "date": "2026-07-15",
+    "reference": "83062",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-16T16:03:09.991887+00:00"
+  },
+  {
+    "id": "c1ba1d63-529f-47fb-a3e4-a879aab5f563",
+    "company": "KS",
+    "date": "2026-07-13",
+    "reference": "82786",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-14T14:39:50.311475+00:00"
+  },
+  {
+    "id": "ce15bdae-67c1-4c71-a023-b447eb479acf",
+    "company": "KS",
+    "date": "2026-08-04",
+    "reference": "83750",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-04T21:08:35.732407+00:00"
+  },
+  {
+    "id": "cee9c191-acad-426f-a967-77361d63987e",
+    "company": "KS",
+    "date": "2026-04-15",
+    "reference": "80592",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-15T22:42:06.567346+00:00"
+  },
+  {
+    "id": "d1bd08db-ef6e-4374-9e36-aad48003806b",
+    "company": "KS",
+    "date": "2026-09-10",
+    "reference": "84673",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-10T17:30:20.054802+00:00"
+  },
+  {
+    "id": "d40e9ee5-fe98-4209-8f2b-3aa71a7b1bd8",
+    "company": "KS",
+    "date": "2026-09-01",
+    "reference": "84444",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-01T22:07:37.205831+00:00"
+  },
+  {
+    "id": "db6140a1-289e-4d26-879f-b069b550a755",
+    "company": "KS",
+    "date": "2026-07-14",
+    "reference": "83029",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-15T15:40:04.817017+00:00"
+  },
+  {
+    "id": "deae9f2b-ff51-4e12-9551-0f1fc2f459ef",
+    "company": "KS",
+    "date": "2026-04-27",
+    "reference": "80900",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-27T20:43:36.688892+00:00"
+  },
+  {
+    "id": "e2fad93d-6f00-43e4-8070-1b28874f46ac",
+    "company": "KS",
+    "date": "2026-07-17",
+    "reference": "83170",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-17T23:37:49.672094+00:00"
+  },
+  {
+    "id": "ef599f3c-503f-40b6-9d93-54ea1dd8899d",
+    "company": "KS",
+    "date": "2026-10-09",
+    "reference": "85402",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-09T17:24:07.349543+00:00"
+  },
+  {
+    "id": "f3c2648d-8f79-49e5-99de-6176fbc370ab",
+    "company": "KS",
+    "date": "2026-07-24",
+    "reference": "0532",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-24T18:04:52.038101+00:00"
+  },
+  {
+    "id": "f3fcbc6b-1ffe-40bb-9ef8-efeb8c0c89fd",
+    "company": "KS",
+    "date": "2026-10-27",
+    "reference": "85839",
+    "old_material": "CHATARRA",
+    "new_material": "PESADO",
+    "old_material_id": "9ea77a00-e962-4727-b065-ffd028354a74",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-27T18:01:48.773534+00:00"
+  },
+  {
+    "id": "f9be99b9-350c-465a-b7ec-68f8dcdb82d4",
+    "company": "KS",
+    "date": "2026-04-07",
+    "reference": "80318",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-07T22:16:29.713738+00:00"
+  },
+  {
+    "id": "0597f871-aabf-4051-92da-2fca690e3b51",
+    "company": "MONROE SUR",
+    "date": "2026-05-07",
+    "reference": "81169",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-07T21:21:14.831261+00:00"
+  },
+  {
+    "id": "0860867b-1fdb-49d3-8081-4bb9edb2bb4f",
+    "company": "MONROE SUR",
+    "date": "2026-10-05",
+    "reference": "85255",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-05T20:44:43.423752+00:00"
+  },
+  {
+    "id": "0ff916b5-2c64-4fcf-b035-2a5f05f1db85",
+    "company": "KS",
+    "date": "2026-06-09",
+    "reference": "81942",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-09T22:09:58.003832+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "1700fc41-8284-45d1-a2b8-bcc8615de8c0",
+    "company": "MONROE SUR",
+    "date": "2026-10-15",
+    "reference": "85554",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-15T21:01:13.444048+00:00"
+  },
+  {
+    "id": "21d1d783-9a85-4c8e-8cbb-eb672ecfe213",
+    "company": "MONROE SUR",
+    "date": "2026-08-17",
+    "reference": "58366",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-17T20:56:53.534938+00:00"
+  },
+  {
+    "id": "242a3949-40c9-4de8-86c4-789a4e0c19b0",
+    "company": "MONROE SUR",
+    "date": "2026-05-25",
+    "reference": "81597",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-25T21:11:50.414278+00:00"
+  },
+  {
+    "id": "2537de18-666e-4f16-9d60-8a67488444a2",
+    "company": "MONROE SUR",
+    "date": "2026-07-17",
+    "reference": "83105",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-17T18:00:59.005784+00:00"
+  },
+  {
+    "id": "2985ad8d-6720-49c2-87a0-973f79f3d8d7",
+    "company": "MONROE SUR",
+    "date": "2026-05-04",
+    "reference": "81058",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-05T16:33:20.167527+00:00"
+  },
+  {
+    "id": "2b3680c8-df1c-425d-8766-42290805e0c7",
+    "company": "MONROE SUR",
+    "date": "2026-06-08",
+    "reference": "81903",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-08T20:53:30.313847+00:00"
+  },
+  {
+    "id": "3a8f2fb5-91e0-48d0-8540-297f3b21adb0",
+    "company": "MONROE SUR",
+    "date": "2026-06-18",
+    "reference": "82132",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-18T21:35:25.731134+00:00"
+  },
+  {
+    "id": "3f2f3aba-9bd7-46a8-91eb-7d91ed6766c4",
+    "company": "MONROE SUR",
+    "date": "2026-09-24",
+    "reference": "85009",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-24T21:21:17.490899+00:00"
+  },
+  {
+    "id": "484a93b4-86cb-4195-8db0-102e672437f3",
+    "company": "MONROE SUR",
+    "date": "2026-09-28",
+    "reference": "85077",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-28T20:07:29.803418+00:00"
+  },
+  {
+    "id": "4979091a-e8b3-4d55-a8fa-6b24172e7ac2",
+    "company": "MONROE SUR",
+    "date": "2026-08-24",
+    "reference": "84061",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-24T20:13:50.250769+00:00"
+  },
+  {
+    "id": "4f260b93-7159-4dce-aa6b-2db8522c6084",
+    "company": "MONROE SUR",
+    "date": "2026-10-08",
+    "reference": "85373",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-08T20:25:08.466529+00:00"
+  },
+  {
+    "id": "51962d8e-881b-4ecd-bf4f-49cec4d94c93",
+    "company": "MONROE SUR",
+    "date": "2026-06-22",
+    "reference": "82223",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-22T23:04:33.755466+00:00"
+  },
+  {
+    "id": "529faef3-eb93-4a5c-a89e-4d1c21fab453",
+    "company": "MONROE SUR",
+    "date": "2026-07-09",
+    "reference": "82726",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-09T20:12:40.95132+00:00"
+  },
+  {
+    "id": "537a36d7-32db-4421-b008-8f9ef425f658",
+    "company": "MONROE SUR",
+    "date": "2026-07-02",
+    "reference": "82544",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-02T23:37:38.239951+00:00"
+  },
+  {
+    "id": "5b199b87-b099-4f59-8b65-5ed6d8d7333e",
+    "company": "MONROE",
+    "date": "2026-05-28",
+    "reference": "81719",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-28T22:09:55.648349+00:00"
+  },
+  {
+    "id": "692f35b3-fec7-4b10-b27f-dec4a9ed3625",
+    "company": "MONROE SUR",
+    "date": "2026-09-04",
+    "reference": "84540",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-04T20:10:25.27841+00:00"
+  },
+  {
+    "id": "6ba8f129-e528-44fe-98c4-f863fc0d7a09",
+    "company": "MONROE SUR",
+    "date": "2026-10-26",
+    "reference": "85808",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-26T21:28:00.542437+00:00"
+  },
+  {
+    "id": "70fd15f9-d6ad-4f71-bf3a-fe91abcb315c",
+    "company": "MONROE",
+    "date": "2026-10-01",
+    "reference": "85194",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-01T20:18:19.493838+00:00"
+  },
+  {
+    "id": "7575e77d-53d6-4cb8-b3af-63a60ceafeeb",
+    "company": "KS",
+    "date": "2026-07-01",
+    "reference": "82512",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-01T21:41:06.743574+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "7868ba99-b9e1-4e80-9fde-a80c373fabdf",
+    "company": "MONROE SUR",
+    "date": "2026-07-23",
+    "reference": "83305",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-23T23:49:33.034306+00:00"
+  },
+  {
+    "id": "7c923df0-e918-406b-9c67-9348e4cc2eab",
+    "company": "KS",
+    "date": "2026-07-08",
+    "reference": "82695",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-08T20:23:54.553693+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "85f8ae64-ade6-4170-b3fa-f398a53aac8d",
+    "company": "MONROE SUR",
+    "date": "2026-06-15",
+    "reference": "82043",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-15T20:50:10.971167+00:00"
+  },
+  {
+    "id": "89429b34-9490-4ed7-afd0-6031c6076b88",
+    "company": "MONROE SUR",
+    "date": "2026-09-07",
+    "reference": "84583",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-08T14:22:55.012584+00:00"
+  },
+  {
+    "id": "8ab0bc49-ebe5-464b-b4fa-bf0012571a95",
+    "company": "MONROE SUR",
+    "date": "2026-05-21",
+    "reference": "81521",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-21T18:48:38.067901+00:00"
+  },
+  {
+    "id": "91b84b69-856b-4de0-a532-8d817fbfd59c",
+    "company": "KS",
+    "date": "2026-04-27",
+    "reference": "80906",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-27T20:41:52.814101+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "936ac49e-4a40-4b73-9d18-d936f94c2687",
+    "company": "MONROE SUR",
+    "date": "2026-09-21",
+    "reference": "84894",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-21T20:11:04.052561+00:00"
+  },
+  {
+    "id": "969bf4a3-5923-4503-8907-617b31358a2b",
+    "company": "MONROE SUR",
+    "date": "2026-10-19",
+    "reference": "85626",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-19T20:19:04.674733+00:00"
+  },
+  {
+    "id": "99324345-8503-4d90-ad96-9cd2fbfe5bc5",
+    "company": "MONROE SUR",
+    "date": "2026-08-03",
+    "reference": "83712",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-03T21:23:49.667979+00:00"
+  },
+  {
+    "id": "ac74a0a8-49a3-4fd0-8d13-c33f9f272409",
+    "company": "MONROE SUR",
+    "date": "2026-06-26",
+    "reference": "82337",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-26T15:50:00.63768+00:00"
+  },
+  {
+    "id": "af02e5b6-4e81-4617-ba91-dca41ec7b23c",
+    "company": "MONROE SUR",
+    "date": "2026-04-28",
+    "reference": "80938",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-28T21:40:09.549309+00:00"
+  },
+  {
+    "id": "af4797a3-e363-46b5-a897-4614d423e9e9",
+    "company": "MONROE SUR",
+    "date": "2026-10-12",
+    "reference": "85451",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-12T20:14:55.432625+00:00"
+  },
+  {
+    "id": "af9f97c4-1900-4158-9055-908659c64be0",
+    "company": "MONROE SUR",
+    "date": "2026-05-18",
+    "reference": "81419",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-18T23:27:49.876389+00:00"
+  },
+  {
+    "id": "b6d6b019-dc9c-46f9-87b1-0dfd31d3d1a4",
+    "company": "MONROE SUR",
+    "date": "2026-04-23",
+    "reference": "80823",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-04-23T22:09:56.07714+00:00"
+  },
+  {
+    "id": "b73b7a3f-b8c6-4637-9e14-27e20c867a14",
+    "company": "MONROE SUR",
+    "date": "2026-06-11",
+    "reference": "56938",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-11T21:33:04.333942+00:00"
+  },
+  {
+    "id": "b861a26e-4b21-4690-b1f8-0f9f4447d10f",
+    "company": "MONROE SUR",
+    "date": "2026-06-01",
+    "reference": "81784",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-01T22:43:21.478413+00:00"
+  },
+  {
+    "id": "b93e66c4-9f94-4ffd-b46d-9c413564c78d",
+    "company": "KS",
+    "date": "2026-05-22",
+    "reference": "81567",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-22T20:35:10.981929+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "c17144ee-ddc2-436e-8137-4a689dd1719a",
+    "company": "MONROE",
+    "date": "2026-08-27",
+    "reference": "84341",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-27T21:17:10.804932+00:00"
+  },
+  {
+    "id": "c2250e72-11dc-4374-8bf8-f0e1552cb276",
+    "company": "MONROE SUR",
+    "date": "2026-08-14",
+    "reference": "83962",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-14T20:44:52.999368+00:00"
+  },
+  {
+    "id": "c35b07c5-2e2f-45ae-bbad-e565cc263a1d",
+    "company": "MONROE SUR",
+    "date": "2026-05-14",
+    "reference": "81349",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-14T23:09:40.86653+00:00"
+  },
+  {
+    "id": "cc7f435b-f7df-4a8a-be2d-b98d3a849397",
+    "company": "MONROE SUR",
+    "date": "2026-07-21",
+    "reference": "83186",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-21T15:29:21.474878+00:00"
+  },
+  {
+    "id": "d553d92c-6b19-470c-aed4-4a027e77ffac",
+    "company": "MONROE SUR",
+    "date": "2026-10-22",
+    "reference": "85741",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-22T20:31:40.75264+00:00"
+  },
+  {
+    "id": "d6045ff3-cd4d-4403-ae4b-27d8de1e8f42",
+    "company": "KS",
+    "date": "2026-08-07",
+    "reference": "83837",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-08-07T22:11:55.115466+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "d65fa93d-fce1-40de-a545-578ef306b68e",
+    "company": "MONROE SUR",
+    "date": "2026-09-14",
+    "reference": "84756",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-14T21:48:26.362807+00:00"
+  },
+  {
+    "id": "d8715af0-6561-46c9-8aea-24eaac93b009",
+    "company": "MONROE SUR",
+    "date": "2026-09-02",
+    "reference": "84439",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-02T22:25:00.226789+00:00"
+  },
+  {
+    "id": "e2b206be-a287-416f-bb4f-31b921fa8f6d",
+    "company": "KS",
+    "date": "2026-10-14",
+    "reference": "85511",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-10-14T17:00:03.022892+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "e70ae3ac-1ce2-4307-966d-d36aed936dc0",
+    "company": "KS",
+    "date": "2026-06-18",
+    "reference": "82140",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-18T21:37:02.127783+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "e7f0bc84-5d2e-4dee-b0da-5b4dfb9099d2",
+    "company": "MONROE SUR",
+    "date": "2026-07-06",
+    "reference": "82611",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-06T22:17:50.985743+00:00"
+  },
+  {
+    "id": "e957e2e5-01e8-4a80-ab02-2c07ca32f821",
+    "company": "MONROE SUR",
+    "date": "2026-09-10",
+    "reference": "84675",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-09-10T20:21:17.278451+00:00"
+  },
+  {
+    "id": "ef8c91bd-c4b5-4cd3-8c91-7b70351d95d5",
+    "company": "MONROE SUR",
+    "date": "2026-06-04",
+    "reference": "81883",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-04T22:14:05.220795+00:00"
+  },
+  {
+    "id": "f56a2bff-4f48-49d2-b77c-ec001ec5a114",
+    "company": "KS",
+    "date": "2026-05-14",
+    "reference": "81354",
+    "old_material": "ALUMINIO PISTON",
+    "new_material": "PESADO",
+    "old_material_id": "4994260d-01ec-4319-b3b8-0613b397045a",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-05-14T23:15:19.136321+00:00",
+    "additional_patch": {
+      "general_material_id": "4c7a25df-991f-4443-9269-4e853df6fed3"
+    }
+  },
+  {
+    "id": "f9f0087c-e341-4deb-9c93-85c18089149a",
+    "company": "MONROE SUR",
+    "date": "2026-07-13",
+    "reference": "82799",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-13T18:55:23.527091+00:00"
+  },
+  {
+    "id": "fa4e0e96-61ea-44d1-8573-923a3be29884",
+    "company": "MONROE SUR",
+    "date": "2026-07-27",
+    "reference": "83518",
+    "old_material": "EXCEDENTE TUBO",
+    "new_material": "PESADO",
+    "old_material_id": "ab9b7436-2c40-48dc-97a8-bbf9b66d8ee6",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-28T20:50:53.810397+00:00"
+  }
+]

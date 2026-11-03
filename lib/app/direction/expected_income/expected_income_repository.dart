@@ -314,6 +314,12 @@ ExpectedIncomeData assembleExpectedIncomeData({
               (snapshotPrice != null && snapshotPrice > 0
                   ? snapshotPrice
                   : null);
+    final approvedCents =
+        (approved || accountWeight != null && accountWeight > 0) &&
+            amount != null &&
+            ((incomeNumber(amount) ?? 0) > 0 || realPrice == 0)
+        ? incomeCents(incomeNumber(amount)!)
+        : null;
     sales.add(
       IncomeSale(
         id: row['id'] as String,
@@ -323,19 +329,20 @@ ExpectedIncomeData assembleExpectedIncomeData({
         date: incomeDate(row['sale_date'])!,
         weight: realWeight != null && realWeight > 0 ? realWeight : null,
         price: realPrice,
-        approvedCents:
-            (approved || accountWeight != null && accountWeight > 0) &&
-                amount != null &&
-                ((incomeNumber(amount) ?? 0) > 0 || realPrice == 0)
-            ? incomeCents(incomeNumber(amount)!)
-            : null,
+        approvedCents: approvedCents,
         paidCents: incomeCents(
-          mayoreoEffectivePaid(
-            accountId: row['id'] as String,
-            amount: incomeNumber(amount) ?? 0,
-            paid: incomeNumber(account?['paid_amount']) ?? 0,
-            bankCredits: bankCredits,
-          ),
+          // A not-yet-approved account can still have an advance. Clamp it
+          // against the projected amount in the engine, not the default zero.
+          approvedCents == null
+              ? bankCredits[row['id']] ??
+                    incomeNumber(account?['paid_amount']) ??
+                    0
+              : mayoreoEffectivePaid(
+                  accountId: row['id'] as String,
+                  amount: incomeNumber(amount) ?? 0,
+                  paid: incomeNumber(account?['paid_amount']) ?? 0,
+                  bankCredits: bankCredits,
+                ),
         ),
         dueDate: incomeDate(account?['estimated_payment_date']),
         settledDate: incomeDate(account?['settlement_date']),

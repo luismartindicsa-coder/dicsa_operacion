@@ -19,6 +19,7 @@ import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_delete_confirm_dialog.dart';
 import 'menudeo_filter_widgets.dart';
@@ -143,6 +144,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   bool _splitEnabled = false;
   bool _loadingCatalogPrices = false;
   bool _loadingTickets = false;
+  bool _openingTicketNumberFilter = false;
   bool _exportingCsv = false;
   bool _dragSelectingRows = false;
   bool _suppressNextRowTap = false;
@@ -1341,7 +1343,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     try {
       final existingRaw = await _supa
           .from('men_tickets')
-          .select('ticket_number')
+          .select(
+            'ticket_number,ticket_date,direction,counterparty_name_snapshot,status',
+          )
           .inFilter('ticket_number', candidateTicketNumbers);
       final existing = (existingRaw as List)
           .map((row) => (row as Map<String, dynamic>)['ticket_number'])
@@ -1349,9 +1353,13 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           .toSet();
       if (existing.isNotEmpty) {
         final duplicates = existing.toList()..sort();
+        final first = existingRaw.first;
+        final location = first['direction'] == 'sale' ? 'Ventas' : 'Compras';
         _toast(
           duplicates.length == 1
-              ? 'Ya existe el ticket ${duplicates.first}'
+              ? 'Ya existe el ticket ${duplicates.first} en $location: '
+                    '${_displayDate(first['ticket_date'])}, '
+                    '${first['counterparty_name_snapshot']} · ${first['status']}'
               : 'Ya existen los tickets ${duplicates.join(', ')}',
         );
         return null;
@@ -1577,6 +1585,37 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       _currentPage = 0;
     });
     await _loadTickets();
+  }
+
+  Future<void> _openTicketNumberFilter() async {
+    if (_openingTicketNumberFilter) return;
+    _openingTicketNumberFilter = true;
+    try {
+      // Filter options must include history beyond the current grid page.
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('vw_men_tickets_grid')
+            .select('ticket_number')
+            .eq('direction', _flowDirection)
+            .order('ticket_number', ascending: true)
+            .range(from, to),
+      );
+      if (!mounted) return;
+      await _openValueFilter(
+        label: 'TICKET',
+        current: _ticketNumberGridFilter,
+        options: rows
+            .map((row) => (row['ticket_number'] ?? '').toString())
+            .where((value) => value.trim().isNotEmpty)
+            .toSet()
+            .toList(),
+        onApply: (next) => _ticketNumberGridFilter = next,
+      );
+    } catch (_) {
+      _toast('No se pudo cargar el historial de tickets. Intenta de nuevo.');
+    } finally {
+      _openingTicketNumberFilter = false;
+    }
   }
 
   Future<void> _openValueFilter({
@@ -2242,18 +2281,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                       globalPosition: offset,
                     ),
                 onOpenDateFilter: _openTicketDateFilter,
-                onOpenTicketFilter: () => _openValueFilter(
-                  label: 'TICKET',
-                  current: _ticketNumberGridFilter,
-                  options:
-                      _ticketRows
-                          .map((row) => (row['ticket'] ?? '').toString())
-                          .where((value) => value.trim().isNotEmpty)
-                          .toSet()
-                          .toList()
-                        ..sort(),
-                  onApply: (next) => _ticketNumberGridFilter = next,
-                ),
+                onOpenTicketFilter: _openTicketNumberFilter,
                 onOpenProviderFilter: () => _openValueFilter(
                   label: _counterpartyLabelUpper,
                   current: _providerGridFilter,

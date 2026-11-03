@@ -316,8 +316,8 @@ DirectionAreaSummary summarizeDirectionAccounting(
         i.current.result,
         i.previous.result,
       ),
-      _money('Ventas de material cobradas', a.revenue, b.revenue),
-      _money('Compras de material pagadas', a.commercialCost, b.commercialCost),
+      _money('Ventas reconocidas', a.revenue, b.revenue),
+      _money('Costo de ventas reconocido', a.commercialCost, b.commercialCost),
       _money(
         'Utilidad bruta del estado de resultados',
         a.commercialResult,
@@ -328,11 +328,7 @@ DirectionAreaSummary summarizeDirectionAccounting(
         a.recognizedExpenses,
         b.recognizedExpenses,
       ),
-      _money(
-        'Utilidad neta del estado de resultados',
-        a.periodResult,
-        b.periodResult,
-      ),
+      _money(a.resultLabel, a.periodResult, b.periodResult),
     ],
     alerts: [
       ...source.currentStatement.warnings,
@@ -340,7 +336,7 @@ DirectionAreaSummary summarizeDirectionAccounting(
     ],
     notes: [
       'Resultado comercial = ventas menos compras registradas del periodo; no representa costo de ventas ni utilidad neta.',
-      'Estado de resultados sobre cobros y pagos de Bancos, Bóveda y Menudeo, con las reglas de la pantalla contable.',
+      'Estado económico con operaciones, documentos y liquidaciones conciliables; el resultado permanece provisional hasta revisar costos y cierre.',
     ],
   );
 }

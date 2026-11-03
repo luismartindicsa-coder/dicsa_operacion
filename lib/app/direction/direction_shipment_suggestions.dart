@@ -75,10 +75,13 @@ class DirectionShipmentSuggestionReport {
   final double intakeFactor;
   final int operationHistoryCount, directionHistoryCount, productionRecordCount;
   final String sourceKey;
+  final List<String> availableClients;
+  final List<String>? selectedClients;
   final int incomingRecordCount, dailyCapacity;
   final Map<String, int> openingFloorByMaterial, currentFloorByMaterial;
   final Set<String> estimatedFloorMaterials;
   final Set<String> missingFloorMaterials;
+  final Set<String> fridayOpeningMaterials;
   final Map<DateTime, Map<String, int>> productionForecast,
       dayProductionForecast;
   const DirectionShipmentSuggestionReport({
@@ -92,12 +95,15 @@ class DirectionShipmentSuggestionReport {
     required this.directionHistoryCount,
     required this.productionRecordCount,
     required this.sourceKey,
+    this.availableClients = const [],
+    this.selectedClients,
     this.incomingRecordCount = 0,
     this.dailyCapacity = 0,
     this.openingFloorByMaterial = const {},
     this.currentFloorByMaterial = const {},
     this.estimatedFloorMaterials = const {},
     this.missingFloorMaterials = const {},
+    this.fridayOpeningMaterials = const {},
     this.productionForecast = const {},
     this.dayProductionForecast = const {},
   });
@@ -168,6 +174,9 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   Map<String, dynamic>? savedProgramConditions,
   required List<DirectionShipmentMovement> movements,
   List<DirectionExecutionActual> executionActuals = const [],
+  List<String>? selectedClients,
+  Map<String, DirectionWeeklyYardOpening> weeklyOpeningCounts = const {},
+  Map<String, DateTime> floorCountedOn = const {},
 }) {
   final start = _weekStartMonday(weekStart);
   final today = _dateOnly(asOf);
@@ -177,7 +186,13 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
       ? start
       : _weekStartMonday(today);
   final historyStart = historyEnd.subtract(const Duration(days: 42));
-  final commercialStart = start.subtract(const Duration(days: 112));
+  final commercialStart = historyEnd.subtract(const Duration(days: 112));
+  final selectedClientKeys = selectedClients
+      ?.map(_suggestionClient)
+      .where((name) => name.isNotEmpty)
+      .toSet();
+  final selectedClientNames = selectedClientKeys?.toList()?..sort();
+  final firstPlanningDay = start.isAfter(today) ? start : today;
   production = directionProductionWithActuals(
     production,
     executionActuals,
@@ -251,8 +266,9 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
         a.kind != 'shipment' ||
         !_suggestionMaterials.contains(a.material) ||
         a.date.isAfter(today) ||
-        a.date.isBefore(commercialStart))
+        a.date.isBefore(commercialStart)) {
       continue;
+    }
     final event = _ObservedShipment(
       a.date,
       _suggestionClient(a.client),
@@ -286,19 +302,43 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
       history.putIfAbsent(clientKey, () => []).add(event);
     }
   }
+  final availableClients =
+      history.values.map((e) => e.first.client).toSet().toList()..sort();
+  if (selectedClientKeys != null) {
+    history.removeWhere(
+      (_, events) => !selectedClientKeys.contains(events.first.client),
+    );
+    observations.add(
+      selectedClientKeys.isEmpty
+          ? 'Selecciona las empresas a las que se venderá esta semana para generar la propuesta.'
+          : 'Empresas seleccionadas: ${selectedClientNames!.join(', ')}. La demanda y las cargas sugeridas se calculan solo con su historial.',
+    );
+    final withoutHistory = selectedClientKeys.difference(
+      availableClients.toSet(),
+    );
+    if (withoutHistory.isNotEmpty) {
+      observations.add(
+        'Sin historial de embarques utilizable: ${withoutHistory.join(', ')}. Sus embarques se pueden capturar manualmente.',
+      );
+    }
+  }
   final commitments =
       directionOutstandingShipmentPlans(shipments, executionActuals, today)
           .where(
             (s) =>
                 s.isActive &&
                 _suggestionMaterials.contains(s.materialCode) &&
-                inWeek(s.shipDate) &&
+                !s.shipDate.isBefore(
+                  start.isAfter(today) ? _weekStartMonday(today) : start,
+                ) &&
+                s.shipDate.isBefore(sunday) &&
                 s.quantityUnit == DirectionShipmentQuantityUnit.bales,
           )
           .toList()
         ..sort((a, b) => a.id.compareTo(b.id));
   final committedByType = <String, int>{};
   for (final row in commitments) {
+    if (!inWeek(row.shipDate)) continue;
     final type = _gerenciaBaleTypeKeyForMaterial(row.materialCode);
     if (type == null) continue;
     committedByType[type] = (committedByType[type] ?? 0) + row.plannedQuantity;
@@ -383,9 +423,30 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
     shipments: shipments,
     savedProgramConditions: savedProgramConditions,
     executionActuals: executionActuals,
+    weeklyOpeningCounts: weeklyOpeningCounts,
+    countedOn: floorCountedOn,
   );
   observations.addAll(inventory.observations);
-  final validFloor = inventory.current;
+  final validFloor = Map<String, int>.from(inventory.current);
+  final futureFloorShortages = <String>{};
+  if (start.isAfter(today)) {
+    for (final material in validFloor.keys) {
+      if (inventory.fridayOpeningMaterials.contains(material)) continue;
+      final reservedBeforeWeek = commitments
+          .where(
+            (s) => s.materialCode == material && s.shipDate.isBefore(start),
+          )
+          .fold(0, (sum, s) => sum + s.plannedQuantity);
+      final remaining = validFloor[material]! - reservedBeforeWeek;
+      if (remaining < 0) {
+        futureFloorShortages.add(material);
+        observations.add(
+          '${directionShipmentMaterialLabel(material)}: faltan ${-remaining} pacas para los compromisos anteriores a esta semana. Revisa ese faltante antes de sugerir nuevas cargas.',
+        );
+      }
+      validFloor[material] = math.max(0, remaining);
+    }
+  }
   final historyCapacity = directionHistoricalDailyCapacity(
     historyEnd,
     productionHistory,
@@ -425,7 +486,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   final forecast = <DateTime, Map<String, int>>{};
   final dayForecast = <DateTime, Map<String, int>>{};
   for (
-    var day = today;
+    var day = firstPlanningDay;
     !day.isAfter(friday);
     day = day.add(const Duration(days: 1))
   ) {
@@ -504,7 +565,10 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
         .reduce((a, b) => a.isBefore(b) ? a : b);
     final weeks = math.max(
       1,
-      math.min(16, start.difference(_weekStartMonday(earliest)).inDays ~/ 7),
+      math.min(
+        16,
+        historyEnd.difference(_weekStartMonday(earliest)).inDays ~/ 7,
+      ),
     );
     return math.max(
       sizes[(sizes.length - 1) ~/ 2],
@@ -531,7 +595,12 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   final suggestions = <DirectionSuggestedShipmentRecord>[];
   int available(String material, DateTime date) {
     final reserved = commitments
-        .where((s) => s.materialCode == material && !s.shipDate.isAfter(date))
+        .where(
+          (s) =>
+              s.materialCode == material &&
+              inWeek(s.shipDate) &&
+              !s.shipDate.isAfter(date),
+        )
         .fold(0, (n, s) => n + s.plannedQuantity);
     final proposed = suggestions
         .where(
@@ -544,21 +613,18 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
         proposed;
   }
 
-  final planningAllowed =
-      start == _weekStartMonday(today) && !friday.isBefore(today);
+  final planningAllowed = !friday.isBefore(today);
   if (!planningAllowed) {
     observations.add(
-      'La propuesta se genera para los días restantes de la semana actual, de lunes a viernes.',
+      'Esta semana ya terminó; selecciona la semana actual o una próxima para generar la propuesta.',
+    );
+  } else if (start.isAfter(today)) {
+    observations.add(
+      'Planeación anticipada: los materiales con cierre del viernes usan ese piso inicial del lunes. Para los demás se reservan los embarques pendientes desde la semana actual. Solo se proyecta producción de la semana elegida.',
     );
   }
   final coverage = <DirectionShipmentTargetCoverage>[];
   for (final target in orderedTargets) {
-    var need = math.max(
-      0,
-      target.shipmentTargetBales -
-          (actualByType[target.baleTypeKey] ?? 0) -
-          (committedByType[target.baleTypeKey] ?? 0),
-    );
     final candidates = history.values
         .where(
           (events) =>
@@ -567,6 +633,19 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
                   target.baleTypeKey,
         )
         .toList();
+    // Other customers still reserve stock, but do not fulfill this customer's
+    // historical demand. Apply deliveries/commitments per customer + material.
+    var need = candidates.fold(
+      0,
+      (sum, events) =>
+          sum +
+          math.max(
+            0,
+            weeklyLimit(events) -
+                (clientWeekQuantity['${events.first.client}|${events.first.material}'] ??
+                    0),
+          ),
+    );
     candidates.sort((a, b) {
       final priority = _priorityClientRank(
         a.first.client,
@@ -579,7 +658,10 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
       for (final events in candidates) {
         if (need <= 0) break;
         final material = events.first.material;
-        if (!validFloor.containsKey(material)) continue;
+        if (!validFloor.containsKey(material) ||
+            futureFloorShortages.contains(material)) {
+          continue;
+        }
         events.sort((a, b) => a.date.compareTo(b.date));
         final sizes = events.expand((e) => e.loads).toList()..sort();
         final typical = sizes[(sizes.length - 1) ~/ 2];
@@ -603,7 +685,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
           var bestQuantity = 0;
           double bestScore = -double.infinity;
           for (
-            var date = today;
+            var date = firstPlanningDay;
             !date.isAfter(friday);
             date = date.add(const Duration(days: 1))
           ) {
@@ -658,7 +740,11 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
               lastShipmentDate: events.last.date,
               risk: inventory.missingMaterials.contains(material)
                   ? DirectionShipmentRisk.unknown
-                  : inventory.estimatedMaterials.contains(material)
+                  : (start.isAfter(today) &&
+                            !inventory.fridayOpeningMaterials.contains(
+                              material,
+                            )) ||
+                        inventory.estimatedMaterials.contains(material)
                   ? DirectionShipmentRisk.estimated
                   : projected > 0 ||
                         before - bestQuantity <
@@ -715,6 +801,7 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
   // an otherwise identical proposal every twenty seconds.
   final sourceKey = jsonEncode([
     _fmtDate(start),
+    selectedClientNames,
     for (final s in commitments)
       [s.id, _fmtDate(s.shipDate), s.materialCode, s.plannedQuantity, s.status],
     savedProgramConditions,
@@ -735,11 +822,25 @@ DirectionShipmentSuggestionReport buildDirectionShipmentSuggestions({
     directionHistoryCount: directionOut.length,
     productionRecordCount: productionHistory.length,
     sourceKey: sourceKey,
+    availableClients: List.unmodifiable(availableClients),
+    selectedClients: selectedClientNames == null
+        ? null
+        : List.unmodifiable(selectedClientNames),
     incomingRecordCount: incomingCount,
     dailyCapacity: dailyCapacity,
-    openingFloorByMaterial: inventory.opening,
-    currentFloorByMaterial: inventory.current,
-    estimatedFloorMaterials: inventory.estimatedMaterials,
+    openingFloorByMaterial: start.isAfter(today)
+        ? Map.unmodifiable(validFloor)
+        : inventory.opening,
+    currentFloorByMaterial: Map.unmodifiable(validFloor),
+    estimatedFloorMaterials: start.isAfter(today)
+        ? Set.unmodifiable({
+            ...inventory.estimatedMaterials,
+            ...validFloor.keys.where(
+              (m) => !inventory.fridayOpeningMaterials.contains(m),
+            ),
+          })
+        : inventory.estimatedMaterials,
+    fridayOpeningMaterials: inventory.fridayOpeningMaterials,
     missingFloorMaterials: inventory.missingMaterials,
     productionForecast: forecast,
     dayProductionForecast: dayForecast,

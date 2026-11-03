@@ -53,18 +53,73 @@ Future<void> exportContabilidadFlowPdf({
 Future<void> exportContabilidadIncomeStatementPdf({
   required ContabilidadIncomeStatementDataset statement,
 }) async {
-  final bytes = await _buildPdf(
-    title: 'Estado de Resultados',
+  final bytes = await buildContabilidadIncomeStatementPdf(statement: statement);
+  await saveBytesAs(
+    bytes: bytes,
+    suggestedFileName: 'estado_resultados_${_dateStamp(DateTime.now())}.pdf',
+    dialogTitle: 'Guardar estado de resultados como PDF',
+  );
+}
+
+Future<Uint8List> buildContabilidadIncomeStatementPdf({
+  required ContabilidadIncomeStatementDataset statement,
+}) async {
+  return _buildPdf(
+    title: 'Estado de Resultados · ${statement.snapshot.statementStatus}',
+    notes: [
+      if (!statement.snapshot.isAccrual)
+        'Lectura de caja con las categorías registradas en Bancos, Bóveda y Menudeo. Otras entradas puede incluir financiamiento. Las revisiones del cierre contable se consultan por separado.',
+      ...statement.warnings,
+    ],
     range: statement.range,
     sections: <_PdfSectionData>[
       _PdfSectionData(
         'Resultado del periodo',
         statement.lines
-            .map((line) => _PdfMetric(line.label, line.amount))
+            .map(
+              (line) => _PdfMetric(line.label, line.amount, line.amountLabel),
+            )
             .toList(growable: false),
       ),
+      if (statement.recognition != null)
+        _PdfSectionData('Gastos incluidos por fuente · incluye estimaciones', [
+          for (final row in statement.sourceRows.where(
+            (r) =>
+                r.recognizedExpenses > .009 &&
+                r.label != 'Entradas y Salidas / Compras',
+          ))
+            _PdfMetric(row.label, row.recognizedExpenses),
+        ]),
+      if (statement.expenseCoverage.isNotEmpty)
+        _PdfSectionData('Capturado por categoría · no sumar al resultado', [
+          for (final row in statement.expenseCoverage) ...[
+            _PdfMetric(
+              '${row.source} · ${row.category} · Registrado (${row.count})',
+              row.recorded,
+            ),
+            _PdfMetric(
+              '${row.source} · ${row.category} · Gasto reconocido aquí',
+              row.recognizedHere,
+            ),
+            _PdfMetric(
+              '${row.source} · ${row.category} · Por aclarar',
+              row.pending,
+            ),
+            _PdfMetric(
+              '${row.source} · ${row.category} · Pagos vinculados',
+              row.linked,
+            ),
+            if (row.linkedPending > .009)
+              _PdfMetric(
+                'De esos pagos: documentos pendientes del periodo',
+                row.linkedPending,
+              ),
+          ],
+        ]),
       _PdfSectionData(
-        'Desglose de entradas por otros medios',
+        statement.snapshot.isAccrual
+            ? 'Otros ingresos reconocidos'
+            : 'Otras entradas registradas',
         statement.otherIncomeBreakdown
             .map(
               (row) => _PdfMetric(
@@ -86,18 +141,20 @@ Future<void> exportContabilidadIncomeStatementPdf({
             .toList(growable: false),
       ),
       if (statement.snapshot.internalExcluded > 0.009)
-        _PdfSectionData('Traspasos internos aislados', <_PdfMetric>[
-          _PdfMetric(
-            'Banco a Bóveda por cheque (no afecta resultado)',
-            statement.snapshot.internalExcluded,
-          ),
-        ]),
+        _PdfSectionData(
+          statement.snapshot.isAccrual
+              ? 'Registros de balance · sin efecto en resultado'
+              : 'Traspasos internos aislados',
+          <_PdfMetric>[
+            _PdfMetric(
+              statement.snapshot.isAccrual
+                  ? 'Importes clasificados en balance; no es un flujo neto'
+                  : 'Banco a Bóveda por cheque (no afecta resultado)',
+              statement.snapshot.internalExcluded,
+            ),
+          ],
+        ),
     ],
-  );
-  await saveBytesAs(
-    bytes: bytes,
-    suggestedFileName: 'estado_resultados_${_dateStamp(DateTime.now())}.pdf',
-    dialogTitle: 'Guardar estado de resultados como PDF',
   );
 }
 
@@ -114,11 +171,13 @@ Future<Uint8List> _buildPdf({
   required String title,
   required DateTimeRange? range,
   required List<_PdfSectionData> sections,
+  List<String> notes = const [],
 }) async {
   final document = pw.Document();
   document.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
+      maxPages: 20 + sections.fold<int>(0, (sum, s) => sum + s.metrics.length),
       margin: const pw.EdgeInsets.all(32),
       header: (_) => pw.Text(
         'DICSA | Contabilidad',
@@ -145,63 +204,78 @@ Future<Uint8List> _buildPdf({
         ),
         pw.SizedBox(height: 5),
         pw.Text(
-          'Periodo: ${_rangeLabel(range)} | Generado: ${_rangeLabel(DateTimeRange(start: DateTime.now(), end: DateTime.now()))}',
+          'Periodo: ${_rangeLabel(range)} | Generado: ${_rangeLabel(DateTimeRange(start: DateTime.now(), end: DateTime.now())).split(' - ').first}',
           style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
         ),
         pw.SizedBox(height: 20),
-        ...sections.map(_section),
+        for (final note in notes)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 8),
+            child: pw.Text(note, style: const pw.TextStyle(fontSize: 10)),
+          ),
+        for (final section in sections.where((s) => s.metrics.isNotEmpty)) ...[
+          if (section.metrics.length <= 3)
+            pw.Inseparable(child: _section(section))
+          else
+            _section(section),
+          pw.SizedBox(height: 14),
+        ],
       ],
     ),
   );
   return document.save();
 }
 
-pw.Widget _section(_PdfSectionData section) => pw.Container(
-  margin: const pw.EdgeInsets.only(bottom: 14),
-  padding: const pw.EdgeInsets.all(14),
-  decoration: pw.BoxDecoration(
-    border: pw.Border.all(color: PdfColor.fromHex('#D7E6E7')),
-    borderRadius: pw.BorderRadius.circular(8),
-  ),
-  child: pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: [
-      pw.Text(
-        section.title,
-        style: pw.TextStyle(
-          fontSize: 14,
-          fontWeight: pw.FontWeight.bold,
-          color: PdfColor.fromHex('#12373C'),
-        ),
-      ),
-      pw.SizedBox(height: 8),
-      pw.Table(
-        border: pw.TableBorder.all(color: PdfColor.fromHex('#E6EEEE')),
-        children: section.metrics
-            .map(
-              (metric) => pw.TableRow(
-                children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(6),
-                    child: pw.Text(metric.label),
-                  ),
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.all(6),
-                    child: pw.Align(
-                      alignment: pw.Alignment.centerRight,
-                      child: pw.Text(
-                        formatMoney(metric.value),
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
+// Keep the table directly under MultiPage so hundreds of recognized operations
+// can span pages. A Container/Column around it makes the section indivisible.
+pw.Widget _section(_PdfSectionData section) => pw.Table(
+  border: pw.TableBorder.all(color: PdfColor.fromHex('#D7E6E7')),
+  columnWidths: const {0: pw.FlexColumnWidth(4), 1: pw.FlexColumnWidth(1.3)},
+  children: [
+    pw.TableRow(
+      repeat: true,
+      decoration: pw.BoxDecoration(color: PdfColor.fromHex('#E6EEEE')),
+      children: [
+        for (final label in [section.title, 'Importe'])
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(8),
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColor.fromHex('#12373C'),
               ),
-            )
-            .toList(),
+            ),
+          ),
+      ],
+    ),
+    for (final metric in section.metrics)
+      pw.TableRow(
+        children: [
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(6),
+            child: pw.Text(
+              metric.label,
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+          ),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(6),
+            child: pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Text(
+                metric.valueLabel ?? formatMoney(metric.value),
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-    ],
-  ),
+  ],
 );
 
 String _rangeLabel(DateTimeRange? range) {
@@ -223,5 +297,6 @@ class _PdfSectionData {
 class _PdfMetric {
   final String label;
   final double value;
-  const _PdfMetric(this.label, this.value);
+  final String? valueLabel;
+  const _PdfMetric(this.label, this.value, [this.valueLabel]);
 }

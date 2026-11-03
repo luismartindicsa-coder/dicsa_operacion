@@ -1,16 +1,27 @@
 part of 'direction_shipments_store.dart';
 
+class DirectionWeeklyYardOpening {
+  final int quantity;
+  final DateTime countedAt;
+  const DirectionWeeklyYardOpening({
+    required this.quantity,
+    required this.countedAt,
+  });
+}
+
 class DirectionShipmentInventoryReference {
   final Map<String, int> opening, current;
   final Set<String> estimatedMaterials;
   final Set<String> missingMaterials;
   final List<String> observations;
+  final Set<String> fridayOpeningMaterials;
   const DirectionShipmentInventoryReference(
     this.opening,
     this.current,
     this.estimatedMaterials,
     this.observations, {
     this.missingMaterials = const {},
+    this.fridayOpeningMaterials = const {},
   });
 }
 
@@ -26,6 +37,8 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
   required List<DirectionShipmentPlanRecord> shipments,
   Map<String, dynamic>? savedProgramConditions,
   List<DirectionExecutionActual> executionActuals = const [],
+  Map<String, DirectionWeeklyYardOpening> weeklyOpeningCounts = const {},
+  Map<String, DateTime> countedOn = const {},
 }) {
   shipments = directionShipmentSourcePlans(shipments, executionActuals);
   final opening = <String, int>{}, current = <String, int>{};
@@ -33,6 +46,7 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
   final estimatedOpening = <String>{};
   final missing = <String>{};
   final observations = <String>[];
+  final fridayOpeningMaterials = <String>{};
   final savedYard = savedProgramConditions?['yard'] as Map?;
   final historyStart = weekStart.subtract(const Duration(days: 112));
   final today = _dateOnly(asOf);
@@ -133,8 +147,9 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
       if (m.flow == 'OUT' && included(m.date, m.recordedAt, false)) {
         if (confirmedOut.containsKey(
           directionExecutionKey('shipment', m.date, material, m.client),
-        ))
+        )) {
           continue;
+        }
         final key = _ObservedShipment(
           _dateOnly(m.date),
           _suggestionClient(m.client),
@@ -159,8 +174,9 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
       ).key;
       if (confirmedOut.containsKey(
         directionExecutionKey('shipment', s.shipDate, material, s.clientName),
-      ))
+      )) {
         continue;
+      }
       directionOut[key] = (directionOut[key] ?? 0) + s.plannedQuantity;
     }
     for (final a in confirmedOut.values) {
@@ -190,6 +206,26 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
         !stamp.isBefore(historyStart);
     final saved = savedYard?[m];
     if (saved is num && saved >= 0) opening[m] = saved.toInt();
+    final closing = weeklyOpeningCounts[m];
+    if (closing != null && !closing.countedAt.isAfter(asOf)) {
+      fridayOpeningMaterials.add(m);
+      opening[m] = math.max(0, closing.quantity);
+      // The Friday close is explicitly the next Monday's opening balance.
+      // Weekend records belong to the previous week. A later physical count
+      // may update current stock without replacing this weekly opening.
+      final countDay = countedOn[m] ?? stamp?.toLocal();
+      final hasLaterCount =
+          hasCount && countDay != null && !countDay.isBefore(weekStart);
+      final balance = hasLaterCount
+          ? math.max(0, counts[m]!) + delta(m, stamp, asOf)
+          : opening[m]! + delta(m, weekStart, asOf);
+      current[m] = math.max(0, balance);
+      if (balance < 0) estimated.add(m);
+      observations.add(
+        '${directionShipmentMaterialLabel(m)}: cierre del viernes después de las 17:00 (hora de Celaya), ${opening[m]} pacas de piso inicial para el lunes ${_fmtDate(weekStart)}. Piso disponible ${current[m]}.',
+      );
+      continue;
+    }
     if (hasCount) {
       final count = math.max(0, counts[m]!);
       final balance = count + delta(m, stamp, asOf);
@@ -238,6 +274,7 @@ DirectionShipmentInventoryReference reconcileDirectionShipmentInventory({
     Set.unmodifiable(estimated),
     List.unmodifiable(observations),
     missingMaterials: Set.unmodifiable(missing),
+    fridayOpeningMaterials: Set.unmodifiable(fridayOpeningMaterials),
   );
 }
 

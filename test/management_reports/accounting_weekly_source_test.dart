@@ -1,4 +1,4 @@
-import 'dart:convert';
+import '../contabilidad/statement_fixture.dart';
 
 import 'package:dicsa_operacion/app/contabilidad/contabilidad_dashboard_page.dart';
 import 'package:dicsa_operacion/app/management_reports/accounting_weekly_analysis.dart';
@@ -18,50 +18,6 @@ void main() {
   final requests = <http.Request>[];
   var failTable = '';
   var dense = false;
-  Map<String, dynamic> bank(
-    String id,
-    String category,
-    num credit,
-    num debit, {
-    String date = '2026-09-15',
-    String counterparty = '',
-  }) => {
-    'id': id,
-    'movement_date': date,
-    'category': category,
-    'credit_amount': credit,
-    'debit_amount': debit,
-    'counterparty_name_snapshot': counterparty,
-  };
-  Map<String, dynamic> voucher(
-    String id,
-    String type,
-    String rubric,
-    num amount, {
-    String date = '2026-09-15',
-  }) => {
-    'id': id,
-    'voucher_date': date,
-    'voucher_type': type,
-    'rubric': rubric,
-    'total_amount': amount,
-  };
-  Map<String, dynamic> market(
-    String id,
-    String flow,
-    num amount, {
-    String date = '2026-09-15',
-  }) => {
-    'source_event_id': id,
-    'source_area': 'menudeo',
-    'channel': 'menudeo',
-    'event_at': date,
-    'flow': flow,
-    'general_material_key': 'CARTON',
-    'general_material_label': 'Cartón',
-    'volume_kg': 100,
-    'amount_total': amount,
-  };
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
@@ -89,154 +45,7 @@ void main() {
             request: r,
           );
         }
-        List<Map<String, dynamic>> rows;
-        switch (table) {
-          case 'v_commercial_market_events':
-            rows = dense
-                ? [for (var i = 0; i < 505; i++) market('e$i', 'purchase', 1)]
-                : [
-                    market('buy', 'purchase', 500),
-                    market('sell', 'sale', 900),
-                    market('oldbuy', 'purchase', 300, date: '2026-09-08'),
-                    market('oldsell', 'sale', 700, date: '2026-09-08'),
-                  ];
-          case 'finanzas_bank_movements':
-            rows = dense
-                ? [for (var i = 0; i < 505; i++) bank('b$i', 'VENTAS', 2, 0)]
-                : [
-                    bank('sales', 'VENTAS', 1000, 0),
-                    bank('buys', 'COMPRA DE MATERIAL', 0, 300),
-                    bank('expense', 'GASTOS OPERATIVOS', 0, 100),
-                    bank('internal', 'MOVIMIENTOS INTERNOS', 500, 0),
-                    bank(
-                      'transfer',
-                      'OTROS',
-                      0,
-                      75,
-                      counterparty: 'CHEQUE A BOVEDA',
-                    ),
-                    bank('prior-sale', 'VENTAS', 800, 0, date: '2026-09-08'),
-                    bank(
-                      'prior-buy',
-                      'COMPRA DE MATERIAL',
-                      0,
-                      250,
-                      date: '2026-09-08',
-                    ),
-                    bank(
-                      'prior-expense',
-                      'GASTOS OPERATIVOS',
-                      0,
-                      40,
-                      date: '2026-09-08',
-                    ),
-                    bank('weekend', 'VENTAS', 99999, 0, date: '2026-09-12'),
-                  ];
-          case 'direction_vault_vouchers':
-            rows = dense
-                ? [
-                    for (var i = 0; i < 505; i++)
-                      voucher('v$i', 'deposit', 'Venta de material', 1),
-                  ]
-                : [
-                    voucher('v1', 'deposit', 'Venta de material', 20),
-                    voucher('v2', 'expense', 'Gastos operativos', 10),
-                    voucher('v3', 'deposit', 'Cheque', 75),
-                    voucher(
-                      'v4',
-                      'deposit',
-                      'Venta de material',
-                      10,
-                      date: '2026-09-08',
-                    ),
-                  ];
-          case 'direction_vault_voucher_lines':
-            final ids = r.url.queryParameters['voucher_id']!
-                .substring(3)
-                .replaceAll(RegExp(r'[()"]'), '')
-                .split(',');
-            rows = dense
-                ? [
-                    for (final id in ids)
-                      for (var i = 0; i < (id == 'v0' ? 501 : 1); i++)
-                        {'id': '$id-line-$i', 'voucher_id': id, 'amount': 1},
-                  ]
-                : [
-                    for (final entry in {
-                      'v1': 20,
-                      'v2': 10,
-                      'v3': 75,
-                      'v4': 10,
-                    }.entries)
-                      if (ids.contains(entry.key))
-                        {
-                          'id': '${entry.key}-line',
-                          'voucher_id': entry.key,
-                          'amount': entry.value,
-                        },
-                  ];
-          case 'cash_taxonomy_configs':
-            rows = [
-              {
-                'payload': {
-                  'rows': dense
-                      ? []
-                      : [
-                          {
-                            'id': 'v1',
-                            'date': '2026-09-15',
-                            'type': 'deposit',
-                            'rubric': 'Venta de material',
-                            'lines': [
-                              {'amount': 99999},
-                            ],
-                          },
-                          {
-                            'id': 'legacy',
-                            'date': '2026-09-15',
-                            'type': 'deposit',
-                            'rubric': 'Venta de material',
-                            'lines': [
-                              {'amount': 30},
-                            ],
-                          },
-                        ],
-                },
-              },
-            ];
-          case 'vw_men_cash_vouchers_grid':
-            rows = dense
-                ? []
-                : [
-                    voucher('m1', 'deposit', 'Venta de material', 150),
-                    voucher('m2', 'expense', 'Compra de material', 50),
-                    voucher('m3', 'expense', 'Gastos operativos', 20),
-                    voucher('m4', 'deposit', 'Otros', 10),
-                    voucher('m5', 'deposit', 'Reposición de fondo', 9999),
-                    voucher(
-                      'm6',
-                      'deposit',
-                      'Venta de material',
-                      100,
-                      date: '2026-09-08',
-                    ),
-                  ];
-          case 'vw_men_cash_cuts_grid':
-          case 'men_cash_voucher_lines':
-          case 'profiles':
-            rows = [];
-          default:
-            throw StateError('Unexpected source: $table');
-        }
-        final offset = int.tryParse(r.url.queryParameters['offset'] ?? '') ?? 0;
-        final limit =
-            int.tryParse(r.url.queryParameters['limit'] ?? '') ?? rows.length;
-        return http.Response(
-          jsonEncode(rows.skip(offset).take(limit).toList()),
-          200,
-          headers: {'content-type': 'application/json'},
-          request: r,
-        );
+        return accountingResponse(r, accountingFixture(dense: dense));
       }),
     );
   });
@@ -248,23 +57,21 @@ void main() {
   tearDownAll(() => Supabase.instance.dispose());
 
   test(
-    'reads both weeks from real accounting rules with no duplicate legacy or internal transfers',
+    'reads both weeks from canonical sales without duplicating bank collections',
     () async {
       final source = await loadAccountingWeeklySource(DateTime(2026, 9, 18));
       final report = AccountingWeeklyAnalysis(source);
       expect(report.current.result, 400);
       expect(report.previous.result, 400);
       final now = source.currentStatement.snapshot;
-      expect(
-        now.revenue,
-        1200,
-      ); // Bank 1000 + vault 20 + legacy 30 + menudeo 150.
+      expect(now.revenue, 1200); // Mayoreo 1000 + ticket Menudeo 200.
       expect(now.otherIncome, 10);
       expect(now.commercialCost, 350);
       expect(now.recognizedExpenses, 130);
-      expect(now.commercialResult, 860);
+      expect(now.commercialResult, 850);
       expect(now.periodResult, 730);
-      expect(now.internalExcluded, 75);
+      expect(now.isComplete, isFalse);
+      expect(now.resultLabel, contains('provisional'));
       expect(source.previousStatement.snapshot.revenue, 910);
       expect(source.previousStatement.snapshot.periodResult, 620);
       final query = requests
@@ -286,11 +93,11 @@ void main() {
     () async {
       dense = true;
       final source = await loadAccountingWeeklySource(DateTime(2026, 9, 18));
-      expect(source.events, hasLength(505));
+      expect(source.events, hasLength(1005));
       expect(
         source.currentStatement.snapshot.revenue,
-        2015,
-      ); // Bank 1010 + vault 1005.
+        2010,
+      ); // Canonical sales only; cash remains pending.
       expect(source.previousStatement.snapshot.revenue, 0);
       for (final table in [
         'v_commercial_market_events',
@@ -302,7 +109,8 @@ void main() {
           requests.any(
             (r) =>
                 r.url.pathSegments.last == table &&
-                r.url.queryParameters['offset'] == '500',
+                r.url.queryParameters['offset'] ==
+                    (table == 'v_commercial_market_events' ? '500' : '1000'),
           ),
           isTrue,
           reason: table,
@@ -311,24 +119,21 @@ void main() {
     },
   );
 
-  test(
-    'source failure, including legacy cash, prevents a false zero report',
-    () async {
-      for (final table in [
-        'v_commercial_market_events',
-        'finanzas_bank_movements',
-        'direction_vault_vouchers',
-        'cash_taxonomy_configs',
-        'vw_men_cash_vouchers_grid',
-      ]) {
-        failTable = table;
-        await expectLater(
-          loadAccountingWeeklySource(DateTime(2026, 9, 18)),
-          throwsA(isA<PostgrestException>()),
-        );
-      }
-    },
-  );
+  test('any source failure prevents a false zero report', () async {
+    for (final table in [
+      'v_commercial_market_events',
+      'finanzas_bank_movements',
+      'direction_vault_vouchers',
+      'men_tickets',
+      'inventory_movements_v2',
+    ]) {
+      failTable = table;
+      await expectLater(
+        loadAccountingWeeklySource(DateTime(2026, 9, 18)),
+        throwsA(anyOf(isA<PostgrestException>(), isA<StateError>())),
+      );
+    }
+  });
 
   test(
     'central Friday generator dispatches the two agreed accounting reports',

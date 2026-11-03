@@ -577,8 +577,11 @@ class DirectionShipmentsStore {
   ) async {
     final weekStart = _weekStartMonday(weekStartDate);
     final weekEnd = weekStart.add(const Duration(days: 5));
-    final historyStart = weekStart.subtract(const Duration(days: 112));
     final asOf = DateTime.now();
+    final historyStart =
+        (weekStart.isAfter(asOf) ? _weekStartMonday(asOf) : weekStart).subtract(
+          const Duration(days: 112),
+        );
     try {
       final results = await Future.wait<dynamic>([
         _loadShipmentRows(weekStart, weekEnd),
@@ -587,15 +590,11 @@ class DirectionShipmentsStore {
         _loadProductionEvents(historyStart, weekEnd),
         _loadMaintenanceAlerts(weekStart),
         _loadSavedProgramConditions(weekStart),
-        _loadSuggestionMovements(
-          weekStart.subtract(const Duration(days: 112)),
-          weekEnd,
-        ),
-        _loadShipmentRows(
-          weekStart.subtract(const Duration(days: 112)),
-          weekEnd,
-        ),
+        _loadSuggestionMovements(historyStart, weekEnd),
+        _loadShipmentRows(historyStart, weekEnd),
         loadExecutionActuals(historyStart, weekEnd),
+        loadSuggestionClients(weekStart),
+        _loadWeeklyOpeningCounts(weekStart),
       ]);
 
       final shipments = results[0] as List<DirectionShipmentPlanRecord>;
@@ -659,11 +658,15 @@ class DirectionShipmentsStore {
         shipments: directionHistory,
         floorCounts: floorData.countsByMaterial,
         floorCountedAt: floorData.countedAtByMaterial,
+        floorCountedOn: floorData.countedOnByMaterial,
         production: learnedProduction,
         executionActuals: executionActuals,
         impacts: impacts,
         savedProgramConditions: savedConditions,
         movements: movements,
+        selectedClients: results[9] as List<String>,
+        weeklyOpeningCounts:
+            results[10] as Map<String, DirectionWeeklyYardOpening>,
       );
 
       final projections = buildProjections(
@@ -891,13 +894,71 @@ class DirectionShipmentsStore {
     return Map<String, dynamic>.from(rows.first['conditions'] as Map);
   }
 
+  static Future<List<String>> loadSuggestionClients(DateTime week) async {
+    final rows = await _supa
+        .from('direction_shipment_week_clients')
+        .select('client_names')
+        .eq('week_start', _fmtDate(_weekStartMonday(week)));
+    return rows.isEmpty
+        ? []
+        : List<String>.from(rows.first['client_names'] as List);
+  }
+
+  static Future<Map<String, DirectionWeeklyYardOpening>>
+  _loadWeeklyOpeningCounts(DateTime week) async {
+    final rows = await _supa
+        .from('dashboard_yard_week_openings')
+        .select('commercial_material_code,count_units,counted_at')
+        .eq('site', 'DICSA_CELAYA')
+        .eq('week_start', _fmtDate(week))
+        .eq('source_kind', 'commercial_material');
+    final result = <String, DirectionWeeklyYardOpening>{};
+    for (final row in rows) {
+      final material = _normalizePlanningMaterialCode(
+        row['commercial_material_code']?.toString(),
+      );
+      final countedAt = _tryParseDateTime(row['counted_at']);
+      if (material == null ||
+          !_suggestionMaterials.contains(material) ||
+          countedAt == null) {
+        continue;
+      }
+      final old = result[material];
+      result[material] = DirectionWeeklyYardOpening(
+        quantity:
+            (old?.quantity ?? 0) + ((row['count_units'] as num?)?.toInt() ?? 0),
+        countedAt: old != null && old.countedAt.isAfter(countedAt)
+            ? old.countedAt
+            : countedAt,
+      );
+    }
+    return result;
+  }
+
+  static Future<void> saveSuggestionClients(
+    DateTime week,
+    Iterable<String> clients,
+  ) async {
+    final names =
+        clients
+            .map(_suggestionClient)
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    await _supa.from('direction_shipment_week_clients').upsert({
+      'week_start': _fmtDate(_weekStartMonday(week)),
+      'client_names': names,
+    }, onConflict: 'week_start');
+  }
+
   static Future<_FloorCountLoad> _loadFloorCounts() async {
     final responses = await Future.wait<dynamic>([
       _supa
           .from('dashboard_yard_manual_counts')
           .select(
             'source_kind,material,commercial_material_code,count_units,weight_kg,'
-            'counted_at,updated_at',
+            'counted_at,updated_at,counted_on',
           )
           .eq('site', 'DICSA_CELAYA')
           .inFilter('source_kind', const [
@@ -928,6 +989,7 @@ class DirectionShipmentsStore {
 
     final countsByMaterial = <String, int>{};
     final countedAtByMaterial = <String, DateTime>{};
+    final countedOnByMaterial = <String, DateTime>{};
     final undatedMaterials = <String>{};
     DateTime? latestUpdatedAt;
     for (final row in rows.cast<Map<String, dynamic>>()) {
@@ -988,6 +1050,8 @@ class DirectionShipmentsStore {
       } else if (!countedAtByMaterial.containsKey(materialCode) ||
           countedAt.isBefore(countedAtByMaterial[materialCode]!)) {
         countedAtByMaterial[materialCode] = countedAt;
+        final day = _tryParseDateTime(row['counted_on']);
+        if (day != null) countedOnByMaterial[materialCode] = day;
       }
       final updatedAt = _tryParseDateTime(row['updated_at']);
       final candidate = updatedAt == null
@@ -1005,6 +1069,7 @@ class DirectionShipmentsStore {
       latestUpdatedAt: latestUpdatedAt,
       countedAtByMaterial: countedAtByMaterial
         ..removeWhere((key, _) => undatedMaterials.contains(key)),
+      countedOnByMaterial: countedOnByMaterial,
     );
   }
 
@@ -1618,11 +1683,13 @@ class _FloorCountLoad {
   final Map<String, int> countsByMaterial;
   final DateTime? latestUpdatedAt;
   final Map<String, DateTime> countedAtByMaterial;
+  final Map<String, DateTime> countedOnByMaterial;
 
   const _FloorCountLoad({
     required this.countsByMaterial,
     required this.latestUpdatedAt,
     required this.countedAtByMaterial,
+    required this.countedOnByMaterial,
   });
 }
 

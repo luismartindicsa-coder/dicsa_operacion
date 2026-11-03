@@ -53,6 +53,24 @@ DirectionShipmentPlanningBundle fixture({
   suggestionReport: suggestionReport,
 );
 
+DirectionShipmentPlanningBundle currentYardFixture(int current) => fixture(
+  suggestionReport: DirectionShipmentSuggestionReport(
+    weekStart: week,
+    generatedAt: week.add(const Duration(days: 1)),
+    suggestions: [],
+    coverage: [],
+    observations: [],
+    intakeFactor: 1,
+    operationHistoryCount: 0,
+    directionHistoryCount: 0,
+    productionRecordCount: 0,
+    sourceKey: '$current',
+    dailyCapacity: 80,
+    openingFloorByMaterial: {for (final m in programMaterials) m: 5},
+    currentFloorByMaterial: {for (final m in programMaterials) m: current},
+  ),
+);
+
 class TestPrograms extends OperatingProgramRepository {
   List<OperatingProgram> saved = [];
   bool fail = false;
@@ -159,6 +177,204 @@ void main() {
       await loader.load();
     }
   });
+  for (final editYard in [false, true]) {
+    testWidgets(
+      'new draft uses Friday closing and preserves stored version; manual yard: $editYard',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1440, 1050));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        DirectionShipmentSuggestionReport reference(
+          int national, {
+          bool closing = false,
+        }) => DirectionShipmentSuggestionReport(
+          weekStart: week,
+          generatedAt: week,
+          suggestions: [],
+          coverage: [],
+          observations: [],
+          intakeFactor: 1,
+          operationHistoryCount: 0,
+          directionHistoryCount: 0,
+          productionRecordCount: 0,
+          sourceKey: '$national',
+          dailyCapacity: 80,
+          openingFloorByMaterial: {
+            for (final m in programMaterials)
+              m: m == programMaterials.first ? national : 5,
+          },
+          fridayOpeningMaterials: closing ? {programMaterials.first} : {},
+        );
+        final repo = TestPrograms();
+        var fresh = fixture(suggestionReport: reference(5));
+        await tester.pumpWidget(
+          harness(repo, bundle: fresh, refreshReference: () async => fresh),
+        );
+        await tester.pumpAndSettle();
+        final button = find.byKey(const ValueKey('generate-operating-program'));
+        await tester.ensureVisible(button);
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(repo.saved.single.conditions.yard[programMaterials.first], 5);
+        fresh = fixture(suggestionReport: reference(35, closing: true));
+        await tester.pumpWidget(
+          harness(repo, bundle: fresh, refreshReference: () async => fresh),
+        );
+        await tester.pumpAndSettle();
+        expect(repo.saved.single.conditions.yard[programMaterials.first], 5);
+        final newDraft = find.text('Crear nuevo borrador');
+        await tester.ensureVisible(newDraft);
+        await tester.tap(newDraft);
+        await tester.pumpAndSettle();
+        if (editYard) {
+          final yard = find.widgetWithText(TextFormField, 'Patio Nacional');
+          await tester.ensureVisible(yard);
+          await tester.enterText(yard, '20');
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pumpAndSettle();
+        }
+        fresh = fixture(suggestionReport: reference(40, closing: true));
+        await tester.ensureVisible(button);
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(repo.saved.length, 2);
+        expect(
+          repo.saved.first.conditions.yard[programMaterials.first],
+          editYard ? 20 : 40,
+        );
+        expect(repo.saved.last.conditions.yard[programMaterials.first], 5);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+  testWidgets(
+    'live yard refresh updates visible inputs and defers while typing',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1050));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = TestPrograms();
+      var fresh = currentYardFixture(5);
+      Future<void> refresh(int current) async {
+        fresh = currentYardFixture(current);
+        await tester.pumpWidget(
+          harness(repo, bundle: fresh, refreshReference: () async => fresh),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      EditableText nationalInput() => tester.widget<EditableText>(
+        find.descendant(
+          of: find.widgetWithText(TextFormField, 'Patio Nacional'),
+          matching: find.byType(EditableText),
+        ),
+      );
+      await refresh(5);
+      expect(nationalInput().controller.text, '5');
+      await refresh(15);
+      expect(nationalInput().controller.text, '15');
+      final yard = find.widgetWithText(TextFormField, 'Patio Nacional');
+      await tester.ensureVisible(yard);
+      await tester.tap(yard);
+      await tester.pumpAndSettle();
+      final focus = nationalInput().focusNode;
+      expect(focus.hasFocus, isTrue);
+      await refresh(18);
+      expect(nationalInput().controller.text, '15');
+      expect(nationalInput().focusNode, same(focus));
+      expect(focus.hasFocus, isTrue);
+      await tester.enterText(yard, '20');
+      await refresh(25);
+      expect(nationalInput().controller.text, '20');
+      expect(focus.hasFocus, isTrue);
+      final button = find.byKey(const ValueKey('generate-operating-program'));
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.conditions.yard, {
+        'PACA_NACIONAL': 20,
+        'PACA_LIMPIA': 25,
+        'PACA_AMERICANA': 25,
+      });
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  for (final newDraft in [false, true]) {
+    for (final manualYard in [false, true]) {
+      testWidgets(
+        'generation uses current yard without a Friday close; new draft: $newDraft, manual yard: $manualYard',
+        (tester) async {
+          await tester.binding.setSurfaceSize(const Size(1440, 1050));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          final repo = TestPrograms();
+          var fresh = currentYardFixture(5);
+          await tester.pumpWidget(
+            harness(repo, bundle: fresh, refreshReference: () async => fresh),
+          );
+          await tester.pumpAndSettle();
+          final button = find.byKey(
+            const ValueKey('generate-operating-program'),
+          );
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          final original = repo.saved.single;
+          fresh = currentYardFixture(15);
+          await tester.pumpWidget(
+            harness(repo, bundle: fresh, refreshReference: () async => fresh),
+          );
+          await tester.pumpAndSettle();
+          String displayedYard(String label) => tester
+              .widget<EditableText>(
+                find.descendant(
+                  of: find.widgetWithText(TextFormField, label),
+                  matching: find.byType(EditableText),
+                ),
+              )
+              .controller
+              .text;
+          expect(displayedYard('Patio Nacional'), '5');
+          if (newDraft) {
+            await tester.ensureVisible(find.text('Crear nuevo borrador'));
+            await tester.tap(find.text('Crear nuevo borrador'));
+            await tester.pumpAndSettle();
+            expect(displayedYard('Patio Nacional'), '15');
+          }
+          // Editing capacity must not freeze the automatic yard reference.
+          final capacity = find.widgetWithText(
+            TextFormField,
+            'Capacidad máxima diaria',
+          );
+          await tester.ensureVisible(capacity);
+          await tester.enterText(capacity, '90');
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          if (manualYard) {
+            final yard = find.widgetWithText(TextFormField, 'Patio Nacional');
+            await tester.ensureVisible(yard);
+            await tester.enterText(yard, '20');
+            await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          }
+          fresh = currentYardFixture(25);
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(repo.saved.length, 2);
+          expect(repo.saved.last, same(original));
+          expect(original.conditions.yard.values, everyElement(5));
+          final saved = repo.saved.first;
+          expect(saved.conditions.dailyCapacity, 90);
+          expect(saved.conditions.yard, {
+            'PACA_NACIONAL': manualYard ? 20 : 25,
+            'PACA_LIMPIA': 25,
+            'PACA_AMERICANA': 25,
+          });
+          expect(programQuantity(saved.lines), manualYard ? 80 : 75);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
   testWidgets(
     'generates a persisted draft, restores it and fixes an approved version',
     (tester) async {

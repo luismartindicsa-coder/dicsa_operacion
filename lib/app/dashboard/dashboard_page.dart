@@ -25,6 +25,8 @@ import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/utils/number_formatters.dart';
 import '../shared/utils/manual_yard_count_time.dart';
+import 'dashboard_scrap_entries.dart';
+import 'dashboard_yard_stock.dart';
 
 const double _kDashboardTitleMinWidth = 430;
 const double _kWidgetSmallHeight = 132;
@@ -369,6 +371,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     Expanded(
                       flex: 7,
                       child: _InventoryYardPanel(
+                        onOpenInventoryMovements: _openInventoryMovements,
                         onOpenInventoryStock: _openInventoryStock,
                         onOpenInventoryProduction: _openInventoryProduction,
                       ),
@@ -402,6 +405,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _InventoryYardPanel(
+                      onOpenInventoryMovements: _openInventoryMovements,
                       onOpenInventoryStock: _openInventoryStock,
                       onOpenInventoryProduction: _openInventoryProduction,
                     ),
@@ -2427,9 +2431,6 @@ class _DashboardManualYardCount {
     required this.updatedAt,
   });
 
-  bool get hasValue =>
-      countUnits > 0 || weightKg > 0 || notes.trim().isNotEmpty;
-
   static _DashboardManualYardCount fromMap(Map<String, dynamic> row) {
     return _DashboardManualYardCount(
       widgetKey: (row['widget_key'] ?? '').toString(),
@@ -2449,10 +2450,12 @@ class _DashboardManualYardCount {
 }
 
 class _InventoryYardPanel extends StatefulWidget {
+  final Future<void> Function()? onOpenInventoryMovements;
   final Future<void> Function()? onOpenInventoryStock;
   final Future<void> Function()? onOpenInventoryProduction;
 
   const _InventoryYardPanel({
+    this.onOpenInventoryMovements,
     this.onOpenInventoryStock,
     this.onOpenInventoryProduction,
   });
@@ -2493,8 +2496,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   _commercialOptionsByCode = <String, _DashboardCommercialMaterialOption>{};
   final Map<String, _DashboardManualYardCount> _manualYardCounts =
       <String, _DashboardManualYardCount>{};
+  Map<String, DashboardYardStock> _yardStockByCode = const {};
   List<_ProductionLineSeries> _pacaProductionSeries = const [];
-  List<_ProductionLineSeries> _separationSeries = const [];
+  List<_ProductionLineSeries> _scrapEntrySeries = const [];
   List<_InventoryCommercialBreakdownItem> _scrapBreakdown = const [];
   List<_InventoryCommercialBreakdownItem> _paperBreakdown = const [];
 
@@ -2852,7 +2856,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _supa
             .from('material_commercial_catalog_v2')
             .select(
-              'code,name,classification_kind,tracks_patio_stock,'
+              'id,code,name,classification_kind,tracks_patio_stock,'
               'general_material:general_material_id(code)',
             )
             .eq('is_active', true),
@@ -2917,8 +2921,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       final paperByCommercial = <String, double>{};
       final dailyProductionByMaterialAndDate =
           <String, Map<DateTime, double>>{};
-      final dailySeparationByCommercialAndDate =
-          <String, Map<DateTime, double>>{};
       final allowedTransformationRunIds = transformationRuns
           .map((row) => (row['id'] ?? '').toString())
           .where((id) => id.isNotEmpty)
@@ -2928,9 +2930,21 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           if ((row['id'] ?? '').toString().isNotEmpty)
             (row['id'] ?? '').toString(): row,
       };
-      final transformationOutputs = await _loadTransformationOutputs(
-        allowedTransformationRunIds,
-      );
+      final (transformationOutputs, yardStockByCode, scrapEntries) = await (
+        _loadTransformationOutputs(allowedTransformationRunIds),
+        loadDashboardYardStock(
+          _supa,
+          commercialCatalog: catalogRows,
+          asOf: asOfDate,
+          site: _kDashboardInventorySite,
+        ),
+        loadDashboardScrapEntries(
+          _supa,
+          from: trendStart,
+          asOf: asOfDate,
+          site: _kDashboardInventorySite,
+        ),
+      ).wait;
 
       for (final row in commercialBalanceRows) {
         final code = (row['code'] ?? '').toString().trim();
@@ -3010,13 +3024,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           );
           perDay[opDate] = (perDay[opDate] ?? 0) + producedBales;
         }
-        if (generalCode == 'CHATARRA' || generalCode == 'PAPEL') {
-          final perDay = dailySeparationByCommercialAndDate.putIfAbsent(
-            commercialCode,
-            () => <DateTime, double>{},
-          );
-          perDay[opDate] = (perDay[opDate] ?? 0) + outputKg;
-        }
       }
 
       final scrap = <_InventoryCommercialBreakdownItem>[
@@ -3059,22 +3066,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         );
       }
 
-      _ProductionLineSeries buildSeparationSeries(
-        String commercialCode,
-        Color color,
-      ) {
-        final perDay = dailySeparationByCommercialAndDate[commercialCode]!;
-        final points = dayAxis
-            .map((d) => _DailyPoint(day: d, value: perDay[d] ?? 0))
-            .toList();
-        return _ProductionLineSeries(
-          label: commercialNames[commercialCode] ?? commercialCode,
-          color: color,
-          points: points,
-          unitLabel: 'kg',
-        );
-      }
-
       final productionMaterials = dailyProductionByMaterialAndDate.keys.toList()
         ..sort((a, b) {
           final byOrder = _materialSortOrder(
@@ -3090,28 +3081,21 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             _kProductionSeriesPalette[i % _kProductionSeriesPalette.length],
           ),
       ];
-      final separationMaterials =
-          dailySeparationByCommercialAndDate.keys.toList()..sort((a, b) {
-            final totalA = dailySeparationByCommercialAndDate[a]!.values.fold(
-              0.0,
-              (sum, value) => sum + value,
-            );
-            final totalB = dailySeparationByCommercialAndDate[b]!.values.fold(
-              0.0,
-              (sum, value) => sum + value,
-            );
-            final byWeight = totalB.compareTo(totalA);
-            if (byWeight != 0) return byWeight;
-            final labelA = commercialNames[a] ?? a;
-            final labelB = commercialNames[b] ?? b;
-            return labelA.compareTo(labelB);
-          });
-      final separationSeries = <_ProductionLineSeries>[
-        for (var i = 0; i < separationMaterials.length; i++)
-          buildSeparationSeries(
-            separationMaterials[i],
-            _kProductionSeriesPalette[(i + pacaProductionSeries.length) %
-                _kProductionSeriesPalette.length],
+      final scrapEntrySeries = <_ProductionLineSeries>[
+        for (var i = 0; i < scrapEntries.length; i++)
+          _ProductionLineSeries(
+            label: _tileLabelForCommercialMaterial(
+              code: scrapEntries[i].code,
+              fallbackName: scrapEntries[i].name,
+            ),
+            color: _kProductionSeriesPalette[
+                (i + pacaProductionSeries.length) %
+                    _kProductionSeriesPalette.length],
+            points: [
+              for (final day in dayAxis)
+                _DailyPoint(day: day, value: scrapEntries[i].kgByDay[day] ?? 0),
+            ],
+            unitLabel: 'kg',
           ),
       ];
       final manualCounts = <String, _DashboardManualYardCount>{};
@@ -3146,8 +3130,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _manualYardCounts
           ..clear()
           ..addAll(manualCounts);
+        _yardStockByCode = yardStockByCode;
         _pacaProductionSeries = pacaProductionSeries;
-        _separationSeries = separationSeries;
+        _scrapEntrySeries = scrapEntrySeries;
         _scrapBreakdown = scrap;
         _paperBreakdown = paper;
         _loading = false;
@@ -3193,7 +3178,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     _DashboardInventoryWidgetPref pref,
   ) {
     final manual = _manualYardCounts[pref.widgetKey];
-    final hasManual = manual?.hasValue == true;
+    final hasManual = manual != null; // A saved zero is also a physical count.
 
     _DashboardInventoryTileModel buildManualTile({
       required String label,
@@ -3201,15 +3186,15 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       required Color color,
     }) {
       final value = hasManual
-          ? (isBale ? '${manual!.countUnits} pacas' : _fmtKg(manual!.weightKg))
+          ? (isBale ? '${manual.countUnits} pacas' : _fmtKg(manual.weightKg))
           : 'Sin conteo';
       final secondary = hasManual
           ? (isBale
-                ? (manual!.weightKg > 0 ? _fmtKg(manual.weightKg) : null)
+                ? (manual.weightKg > 0 ? _fmtKg(manual.weightKg) : null)
                 : null)
           : 'Toca para capturar';
       final helper = hasManual
-          ? 'Conteo manual · ${_fmtCountedAt(manual!.countedAt)}'
+          ? 'Conteo manual · ${_fmtCountedAt(manual.countedAt)}'
           : 'Conteo manual pendiente';
       return _DashboardInventoryTileModel(
         pref: pref,
@@ -3242,6 +3227,27 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final code = (pref.commercialMaterialCode ?? '').trim();
         if (code.isEmpty) return null;
         final option = _commercialOptionsByCode[code];
+        if (dashboardScrapMaterialCodes.contains(code)) {
+          final stock = _yardStockByCode[code];
+          final cut = stock?.lastExitDate;
+          final cutLabel = cut == null
+              ? 'Sin salida registrada'
+              : 'Última salida · ${cut.day.toString().padLeft(2, '0')}/${cut.month.toString().padLeft(2, '0')}/${cut.year}';
+          return _DashboardInventoryTileModel(
+            pref: pref,
+            label: _tileLabelForCommercialMaterial(
+              code: code,
+              fallbackName: option?.name.isNotEmpty == true
+                  ? option!.name
+                  : code,
+            ),
+            value: cut == null ? 'Sin referencia' : _fmtKg(stock!.weightKg),
+            secondaryValue: 'Entradas y Salidas',
+            helperLabel: cutLabel,
+            isManualEmpty: false,
+            color: _tileColorForMaterial(option?.inventoryMaterial),
+          );
+        }
         final inventoryMaterial = _normalizeOperational(
           option?.inventoryMaterial ?? '',
         );
@@ -3306,7 +3312,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _toast('Los kg del conteo manual no son validos.');
         return;
       }
-      if (isBale && units == 0 && kg == 0) {
+      if (isBale && unitsRaw.isEmpty && kg == 0) {
         _toast('Captura al menos pacas o kg para guardar este conteo.');
         return;
       }
@@ -3371,6 +3377,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                   const Text(
                     'Este card ya no usa formula automatica. Guarda aqui el conteo manual real de patio.',
                   ),
+                  if (isBale) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'El conteo por material guardado el viernes desde las 5:00 p. m., hora de Celaya, será el piso inicial del lunes para Embarques y Programa operativo.',
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (isBale) ...[
                     TextField(
@@ -3470,7 +3482,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                         width: smallW,
                         editMode: false,
                         isSelected: false,
-                        onTap: () => _openManualTileEditor(tile),
+                        onTap:
+                            dashboardScrapMaterialCodes.contains(
+                              tile.pref.commercialMaterialCode,
+                            )
+                            ? widget.onOpenInventoryMovements
+                            : () => _openManualTileEditor(tile),
                       ),
                     )
                     .toList(),
@@ -3482,11 +3499,11 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                 onTap: widget.onOpenInventoryProduction,
                 child: _ProductionBarChart(seriesList: _pacaProductionSeries),
               );
-              final separationChart = _ChartCard(
-                title: 'Transformación diaria de patio',
-                subtitle: 'Kg clasificados por día en chatarra y papel',
-                onTap: widget.onOpenInventoryProduction,
-                child: _ProductionBarChart(seriesList: _separationSeries),
+              final scrapEntriesChart = _ChartCard(
+                title: 'Entradas diarias de chatarra',
+                subtitle: 'Kg recibidos por día y tipo · Entradas y Salidas',
+                onTap: widget.onOpenInventoryMovements,
+                child: _ProductionBarChart(seriesList: _scrapEntrySeries),
               );
 
               return Column(
@@ -3496,7 +3513,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                   const SizedBox(height: 10),
                   SizedBox(height: _kWidgetLargeHeight, child: chart),
                   const SizedBox(height: 10),
-                  SizedBox(height: _kWidgetLargeHeight, child: separationChart),
+                  SizedBox(height: _kWidgetLargeHeight, child: scrapEntriesChart),
                   const SizedBox(height: 10),
                   _OperationalBreakdownCard(
                     scrap: _scrapBreakdown,
@@ -3675,7 +3692,11 @@ class _SquareTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Icon(
-                      Icons.edit_note_rounded,
+                      dashboardScrapMaterialCodes.contains(
+                            tile.pref.commercialMaterialCode,
+                          )
+                          ? Icons.arrow_forward_rounded
+                          : Icons.edit_note_rounded,
                       size: 18,
                       color: const Color(0xFF244846).withValues(alpha: 0.82),
                     ),

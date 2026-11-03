@@ -20,6 +20,7 @@ import '../expected_income/expected_income_models.dart';
 import '../expected_income/expected_income_repository.dart';
 import '../operating_program/operating_program_models.dart';
 import 'weekly_projection_models.dart';
+import 'weekly_cash_flow_income.dart';
 import 'weekly_payment_schedule.dart';
 import 'weekly_projection_payment_catalog.dart';
 import 'weekly_expenses_pdf.dart';
@@ -237,9 +238,9 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
             'por ${_money(recommended.fold<int>(0, (s, r) => s + r.total))}.\n\n'
             'Se reemplazarán los importes, fechas, clasificaciones, notas, '
             'exclusiones y borrados de los pagos vinculados a Finanzas por '
-            'la selección actual de Generar viernes. Los pagos recomendados '
+            'la selección actual de pendientes de Finanzas de esta semana. Los pagos recomendados '
             'volverán a aparecer incluidos.\n\n'
-            'Se conservan tus egresos manuales, saldos iniciales y ajustes '
+            'Se conservan tus egresos manuales, nóminas semanales, saldos iniciales y ajustes '
             'de Menudeo. Solo cambia esta semana; no se ejecutan pagos.',
         confirmText: 'Restablecer propuesta',
       );
@@ -249,9 +250,12 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
         return;
       }
     }
-    final selected = resetFinance
-        ? resetFinanceProposal(plan.payments, current)
-        : incorporateFinanceProposal(plan.payments, current);
+    final selected = includeWeeklyPayroll(
+      resetFinance
+          ? resetFinanceProposal(plan.payments, current)
+          : incorporateFinanceProposal(plan.payments, current),
+      plan.week,
+    );
     final schedule = distributePaymentsByIncome(
       plan: plan.copyWith(
         payments: selected,
@@ -737,6 +741,9 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
     final plan = _effective;
     final disabled = _busy || _loading || _error != null;
     final week = widget.bundle.weekStartDate;
+    final flowIncome = _income == null
+        ? null
+        : WeeklyCashFlowIncome(_income!, week);
     return incomeThemed(
       context,
       SingleChildScrollView(
@@ -845,8 +852,8 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
               ),
             if (plan != null) ...[
               const SizedBox(height: 14),
-              if (widget.flow && _income != null)
-                _flow(WeeklyCashFlow(_income!.current, plan))
+              if (widget.flow && flowIncome != null)
+                _flow(WeeklyCashFlow(flowIncome.totals, plan), flowIncome)
               else if (widget.flow)
                 const Center(child: Text('Cargando ingresos de la semana…'))
               else
@@ -912,7 +919,7 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _text(
-                'Propuesta de Generar viernes · tope de referencia ${_money(FinanceWeeklyBudgetAnalysis.weeklyLimit)}. Puedes ajustar importes, fechas y tipo de salida. Cada cambio se guarda en esta semana.',
+                'Propuesta de pendientes semanales de Finanzas · tope de referencia ${_money(FinanceWeeklyBudgetAnalysis.weeklyLimit)}. Puedes ajustar importes, fechas y tipo de salida. Cada cambio se guarda en esta semana.',
               ),
               _text(
                 'Programar aquí no ejecuta pagos. Los saldos pendientes se actualizan desde Finanzas.',
@@ -921,7 +928,7 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                 'Al generar, distribuye los pagos automáticos por liquidez diaria en Efectivo/Fiscal. Si no alcanza antes del vencimiento, busca un día posterior y marca el atraso. Conserva tus fechas e importes editados.',
               ),
               _text(
-                'Generar propuesta de pagos calcula la propuesta de Finanzas. Si ya existe, actualiza los pendientes automáticos y agrega los nuevos. Conserva tus ajustes, exclusiones y borrados.',
+                'Generar y restablecer toman los pendientes de lunes a domingo de la semana consultada, como en Pendientes Dirección y Pendientes Finanzas. Generar conserva tus ajustes, exclusiones y borrados.',
               ),
               if (plan.generated)
                 _text(
@@ -1251,7 +1258,7 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
     ),
   );
 
-  Widget _flow(WeeklyCashFlow flow) => Column(
+  Widget _flow(WeeklyCashFlow flow, WeeklyCashFlowIncome income) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Wrap(
@@ -1315,6 +1322,13 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                     _money(flow.income.financingByType[t] ?? 0),
                   _money(flow.income.financingTotal),
                 ]),
+                if (income.carryover.total > 0)
+                  _tableRow([
+                    'De los cobros: vencidos de semanas anteriores',
+                    for (final t in ['EFECTIVO', 'FISCAL', 'MIXTO'])
+                      _money(income.carryover.byType[t] ?? 0),
+                    _money(income.carryover.total),
+                  ]),
                 _tableRow([
                   'Egresos programados',
                   for (final t in ['EFECTIVO', 'FISCAL', 'SIN_CLASIFICAR'])
@@ -1390,8 +1404,43 @@ class _WeeklyProjectionViewState extends State<WeeklyProjectionView> {
                   'Faltante en ${projectionPaymentTypes[t]}: ${_money(-flow.closingFor(t)!)}',
                   color: kDirectionDanger,
                 ),
+            if (income.excludedPalomar.total > 0)
+              _text(
+                'El Palomar: ${_money(income.excludedPalomar.total)} programados para el domingo o fuera de la semana quedan fuera de este flujo.',
+                color: kDirectionWarning,
+              ),
+            if (income.carryover.total > 0)
+              ExpansionTile(
+                key: const ValueKey('flow-overdue-receipts'),
+                tilePadding: EdgeInsets.zero,
+                title: _text(
+                  'Cobros vencidos incluidos · ${_money(income.carryover.total)}',
+                  bold: true,
+                ),
+                subtitle: _text(
+                  'Pendientes de cobro; sin nueva fecha acordada.',
+                ),
+                children: [
+                  for (final row in income.incomes.where((r) => r.carriedOver))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _text('${row.client}\n${row.reference}'),
+                          ),
+                          const SizedBox(width: 12),
+                          _text(
+                            '${projectionPaymentTypes[row.type] ?? row.type}\n${_money(row.amount)}',
+                            bold: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             _text(
-              'Los ingresos sin fecha y la cobranza vencida de otras semanas se consultan en Ingresos; no se suman automáticamente a esta semana.',
+              'Los cobros vencidos pendientes se incluyen en el total semanal; requieren una nueva fecha para financiar pagos de un día específico.',
             ),
             if (_income!.warnings.isNotEmpty)
               _text(

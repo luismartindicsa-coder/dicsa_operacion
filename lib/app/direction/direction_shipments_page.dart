@@ -238,10 +238,6 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   bool get _isViewingCurrentWeek =>
       _visibleWeekStartDate == DirectionShipmentsStore.currentWeekStartDate();
 
-  bool get _canGoToNextWeek => _visibleWeekStartDate.isBefore(
-    DirectionShipmentsStore.currentWeekStartDate(),
-  );
-
   Future<void> _changeVisibleWeek(DateTime nextWeekStartDate) async {
     if (_runningMutation) return;
     final normalized = DirectionShipmentsStore.normalizeWeekStartDate(
@@ -268,7 +264,6 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   }
 
   Future<void> _openNextWeek() async {
-    if (!_canGoToNextWeek) return;
     await _changeVisibleWeek(
       _visibleWeekStartDate.add(const Duration(days: 7)),
     );
@@ -348,17 +343,39 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
     if (_runningMutation) return;
     setState(() => _runningMutation = true);
     try {
-      final bundle = await DirectionShipmentsStore.loadWeek(
+      var bundle = await DirectionShipmentsStore.loadWeek(
         _visibleWeekStartDate,
       );
       if (!mounted) return;
       setState(() => _bundle = bundle);
-      final selection = await showDialog<DirectionShipmentSuggestionSelection>(
-        context: context,
-        barrierColor: Colors.black.withValues(alpha: 0.30),
-        builder: (_) => DirectionSuggestedShipmentsDialog(bundle: bundle),
-      );
-      if (selection == null || !mounted) return;
+      DirectionShipmentSuggestionSelection? selection;
+      do {
+        final report = bundle.suggestionReport;
+        if (report == null) return;
+        final clients = await showDialog<List<String>>(
+          context: context,
+          barrierColor: Colors.black.withValues(alpha: 0.30),
+          builder: (_) => DirectionShipmentClientsDialog(
+            weekStart: bundle.weekStartDate,
+            availableClients: report.availableClients,
+            selectedClients: report.selectedClients ?? const [],
+          ),
+        );
+        if (clients == null || !mounted) return;
+        await DirectionShipmentsStore.saveSuggestionClients(
+          bundle.weekStartDate,
+          clients,
+        );
+        bundle = await DirectionShipmentsStore.loadWeek(bundle.weekStartDate);
+        if (!mounted) return;
+        setState(() => _bundle = bundle);
+        selection = await showDialog<DirectionShipmentSuggestionSelection>(
+          context: context,
+          barrierColor: Colors.black.withValues(alpha: 0.30),
+          builder: (_) => DirectionSuggestedShipmentsDialog(bundle: bundle),
+        );
+        if (selection == null || !mounted) return;
+      } while (selection.changeClients);
       if (selection.adjustSingle) {
         final draft = await _showShipmentDialog(
           weekStart: bundle.weekStartDate,
@@ -1219,11 +1236,11 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                     _WeekNavButton(
                       icon: Icons.chevron_left_rounded,
                       tooltip: 'Semana anterior',
-                      onPressed: _openPreviousWeek,
+                      onPressed: _runningMutation ? null : _openPreviousWeek,
                     ),
                     OutlinedButton.icon(
                       style: _secondaryActionButtonStyle(context),
-                      onPressed: _isViewingCurrentWeek
+                      onPressed: _runningMutation || _isViewingCurrentWeek
                           ? null
                           : _openCurrentWeek,
                       icon: const Icon(Icons.today_rounded, size: 18),
@@ -1234,7 +1251,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                     _WeekNavButton(
                       icon: Icons.chevron_right_rounded,
                       tooltip: 'Semana siguiente',
-                      onPressed: _canGoToNextWeek ? _openNextWeek : null,
+                      onPressed: _runningMutation ? null : _openNextWeek,
                     ),
                     OutlinedButton.icon(
                       style: _secondaryActionButtonStyle(context),
@@ -1424,12 +1441,139 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
 
 class DirectionShipmentSuggestionSelection {
   final List<DirectionSuggestedShipmentRecord> shipments;
-  final bool confirmForProgram, adjustSingle;
+  final bool confirmForProgram, adjustSingle, changeClients;
   const DirectionShipmentSuggestionSelection(
     this.shipments, {
     this.confirmForProgram = false,
     this.adjustSingle = false,
+    this.changeClients = false,
   });
+}
+
+class DirectionShipmentClientsDialog extends StatefulWidget {
+  final DateTime weekStart;
+  final List<String> availableClients, selectedClients;
+
+  const DirectionShipmentClientsDialog({
+    super.key,
+    required this.weekStart,
+    required this.availableClients,
+    required this.selectedClients,
+  });
+
+  @override
+  State<DirectionShipmentClientsDialog> createState() =>
+      _DirectionShipmentClientsDialogState();
+}
+
+class _DirectionShipmentClientsDialogState
+    extends State<DirectionShipmentClientsDialog> {
+  late final _selected = widget.selectedClients.toSet();
+  late final _clients = {
+    ...widget.availableClients,
+    ...widget.selectedClients,
+  }.toList()..sort();
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = directionExecutionClient(_search.text);
+    final visible = _clients
+        .where((name) => directionExecutionClient(name).contains(query))
+        .toList();
+    return _DirectionFormDialog(
+      icon: Icons.business_rounded,
+      title: 'Empresas de la semana',
+      subtitle:
+          '${_shortDate(widget.weekStart)} - ${_shortDate(widget.weekStart.add(const Duration(days: 5)))} · Marca a quiénes se venderá para calcular sus embarques con el historial y el material disponible.',
+      onClose: () => Navigator.of(context).pop(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _DirectionDialogField(
+            label: 'Buscar empresa',
+            child: TextField(
+              key: const ValueKey('shipment-client-search'),
+              controller: _search,
+              autofocus: true,
+              style: _dialogInputTextStyle(),
+              decoration: InputDecoration.collapsed(
+                hintText: 'Nombre de la empresa',
+                hintStyle: _dialogHintTextStyle(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_selected.length} empresas seleccionadas',
+            style: const TextStyle(color: kDirectionMutedText),
+          ),
+          if (_clients.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'No hay empresas con historial de embarques de cartón. Puedes capturar un Nuevo embarque.',
+                style: TextStyle(color: kDirectionSurfaceText),
+              ),
+            )
+          else if (visible.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'Sin coincidencias',
+                style: TextStyle(color: kDirectionMutedText),
+              ),
+            ),
+          for (final client in visible)
+            CheckboxListTile(
+              key: ValueKey('shipment-client-$client'),
+              value: _selected.contains(client),
+              controlAffinity: ListTileControlAffinity.leading,
+              activeColor: kDirectionOliveGlow,
+              checkColor: kDirectionBg,
+              title: Text(
+                client,
+                style: const TextStyle(color: kDirectionSurfaceText),
+              ),
+              subtitle: widget.availableClients.contains(client)
+                  ? null
+                  : const Text('Sin historial reciente; captura manual'),
+              onChanged: (value) => setState(() {
+                if (value == true) {
+                  _selected.add(client);
+                } else {
+                  _selected.remove(client);
+                }
+              }),
+            ),
+        ],
+      ),
+      actions: [
+        OutlinedButton(
+          style: _secondaryActionButtonStyle(context),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          style: _primaryActionButtonStyle(context),
+          key: const ValueKey('generate-selected-clients'),
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(_selected.toList()..sort()),
+          icon: const Icon(Icons.auto_awesome_rounded),
+          label: const Text('Generar sugeridos'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Auxiliary review dialog: reuses the existing Dirección dialog and cards.
@@ -1467,7 +1611,7 @@ class _DirectionSuggestedShipmentsDialogState
       icon: Icons.auto_awesome_rounded,
       title: 'Embarques sugeridos',
       subtitle:
-          'Propuesta semanal de cartón a partir del piso inicial, Entradas y Salidas, Producción e historial de embarques.',
+          'Propuesta semanal de cartón para las empresas elegidas, a partir del piso, Entradas y Salidas, Producción e historial de embarques.',
       maxWidth: 980,
       onClose: () => Navigator.of(context).pop(),
       body: Column(
@@ -1492,6 +1636,12 @@ class _DirectionSuggestedShipmentsDialogState
                   accent: kDirectionGoldAccent,
                 ),
                 if (report != null) ...[
+                  if (report.selectedClients != null)
+                    _InfoChip(
+                      label:
+                          '${report.selectedClients!.length} empresas elegidas',
+                      accent: kDirectionOliveGlow,
+                    ),
                   _InfoChip(
                     label: '${report.incomingRecordCount} entradas de cartón',
                     accent: kDirectionSuccess,
@@ -1646,6 +1796,13 @@ class _DirectionSuggestedShipmentsDialogState
           style: _secondaryActionButtonStyle(context),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cerrar'),
+        ),
+        OutlinedButton(
+          style: _secondaryActionButtonStyle(context),
+          onPressed: () => Navigator.of(context).pop(
+            const DirectionShipmentSuggestionSelection([], changeClients: true),
+          ),
+          child: const Text('Cambiar empresas'),
         ),
         OutlinedButton(
           style: _secondaryActionButtonStyle(context),
@@ -2174,9 +2331,9 @@ class _ShipmentsGridPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Planeación semanal',
-            style: TextStyle(
+          Text(
+            'Planeación semanal · ${_shortDate(bundle.weekStartDate)} - ${_shortDate(bundle.weekEndDate)}',
+            style: const TextStyle(
               color: kDirectionSurfaceText,
               fontWeight: FontWeight.w900,
               fontSize: 18,

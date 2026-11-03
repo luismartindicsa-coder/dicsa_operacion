@@ -30,6 +30,7 @@ class WeeklyProjectionRepository {
     await loadFinanceWeeklyBudgetSource(includeUninvoiced: true),
     now,
     targetWeek: week,
+    onlyWeekPending: true,
   );
 
   Future<MenudeoExpenseHistory> menudeoHistory(

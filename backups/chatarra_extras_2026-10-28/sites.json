@@ -1,0 +1,42 @@
+[
+  {
+    "id": "39b9fac2-eb7f-4bde-a639-82951c0c44df",
+    "name": "SETEX",
+    "type": "cliente",
+    "address": null,
+    "created_at": "2026-03-18T00:15:16.694153+00:00",
+    "is_active": true
+  },
+  {
+    "id": "464fc02a-6cca-4cba-a1b9-8180422c2664",
+    "name": "JUAN SOLIS",
+    "type": "cliente",
+    "address": null,
+    "created_at": "2026-03-18T00:15:16.694153+00:00",
+    "is_active": true
+  },
+  {
+    "id": "7e3861d0-3c1d-44db-940b-03f1de2a5836",
+    "name": "MONROE SUR",
+    "type": "cliente",
+    "address": null,
+    "created_at": "2026-03-18T00:15:16.694153+00:00",
+    "is_active": true
+  },
+  {
+    "id": "bb325824-38ba-4775-99b3-aaf90b945978",
+    "name": "MONROE",
+    "type": "cliente",
+    "address": null,
+    "created_at": "2026-03-18T00:15:16.694153+00:00",
+    "is_active": true
+  },
+  {
+    "id": "dce8a08e-035e-4a4d-b9fc-df19b19a8e0b",
+    "name": "KS",
+    "type": "cliente",
+    "address": null,
+    "created_at": "2026-03-18T00:15:16.694153+00:00",
+    "is_active": true
+  }
+]

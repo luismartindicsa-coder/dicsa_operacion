@@ -8,11 +8,225 @@ import '../direction/direction_cash_taxonomy_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../shared/direction_vault/direction_vault_repository.dart';
 import 'contabilidad_income_statement_rules.dart';
+import 'statement/statement_engine.dart';
+import 'statement/statement_expense_coverage.dart';
+import 'statement/statement_models.dart';
+import 'statement/statement_repository.dart';
 
 const String _kMenCashVouchersView = 'vw_men_cash_vouchers_grid';
 const String _kMenCashVoucherLinesTable = 'men_cash_voucher_lines';
 
+ContabilidadIncomeStatementDataset statementDatasetFromAnalysis(
+  StatementAnalysis a,
+) {
+  double total(StatementAccount account) => a.total(account);
+  final revenue = total(StatementAccount.sales),
+      other = total(StatementAccount.otherIncome);
+  final cost = total(StatementAccount.cost), gross = revenue - cost;
+  final expense = StatementAccount.values
+      .where((v) => v.expense && v != StatementAccount.cost)
+      .fold<double>(0, (s, v) => s + total(v));
+  final tax = total(StatementAccount.incomeTax);
+  final snapshot = ContabilidadIncomeStatementSnapshot(
+    isAccrual: true,
+    isComplete: a.complete,
+    resultLabel: a.resultLabel,
+    statementStatus: a.status,
+    revenue: revenue,
+    otherIncome: other,
+    commercialCost: cost,
+    commercialResult: gross,
+    operatingExpense: total(StatementAccount.operating),
+    administrativeExpense: total(StatementAccount.administrative),
+    payrollExpense: total(StatementAccount.payroll),
+    financialExpense: total(StatementAccount.financial),
+    recognizedExpenses: expense,
+    periodResult: a.result,
+    internalExcluded: a.total(StatementAccount.balance),
+    reviewPending: a.pendingAmount,
+  );
+  bool estimated(StatementAccount account) =>
+      a.entries.any((e) => e.account == account && e.estimated);
+  bool undetermined(StatementAccount account) =>
+      !a.closingCurrent && !a.entries.any((e) => e.account == account);
+  ContabilidadIncomeStatementLine line(
+    String label,
+    double amount, {
+    bool emphasis = false,
+    StatementAccount? account,
+  }) => ContabilidadIncomeStatementLine(
+    label: label,
+    amount: amount,
+    amountLabel: account != null && undetermined(account)
+        ? 'Por determinar'
+        : null,
+    emphasis: emphasis,
+    tone: amount < 0 ? ColorTone.negative : ColorTone.neutral,
+  );
+  List<ContabilidadIncomeStatementBreakdownRow> breakdown(bool income) => [
+    for (final e in a.entries.where(
+      (e) => income
+          ? e.account == StatementAccount.otherIncome
+          : e.account.expense && e.account != StatementAccount.cost,
+    ))
+      ContabilidadIncomeStatementBreakdownRow(
+        label: '${e.fact.label}${e.estimated ? ' · estimado' : ''}',
+        sourceLabel: e.fact.source,
+        amount: e.amount,
+        count: 1,
+      ),
+  ];
+  final sourceNames = a.entries.map((e) => e.fact.source).toSet().toList()
+    ..sort();
+  final expenseCoverage = statementExpenseCoverage(a);
+  return ContabilidadIncomeStatementDataset(
+    recognition: a,
+    range: DateTimeRange(
+      start: a.bundle.period.start,
+      end: a.bundle.period.end,
+    ),
+    snapshot: snapshot,
+    expenseCoverage: expenseCoverage,
+    lines: [
+      line('Ventas netas reconocidas', revenue),
+      line(
+        'Costo de ventas${estimated(StatementAccount.cost) ? ' · incluye estimaciones' : ''}',
+        -cost,
+      ),
+      line(
+        'Utilidad bruta${a.complete ? '' : ' provisional'}',
+        gross,
+        emphasis: true,
+      ),
+      line(
+        'Gastos operativos reconocidos${estimated(StatementAccount.operating) ? ' · incluye estimaciones' : ''}',
+        -total(StatementAccount.operating),
+      ),
+      line(
+        'Gastos administrativos reconocidos${estimated(StatementAccount.administrative) ? ' · incluye estimaciones' : ''}',
+        -total(StatementAccount.administrative),
+        account: StatementAccount.administrative,
+      ),
+      line(
+        'Costo laboral${estimated(StatementAccount.payroll) ? ' · base parcial' : ''}',
+        -total(StatementAccount.payroll),
+        account: StatementAccount.payroll,
+      ),
+      line(
+        'Depreciación y amortización',
+        -total(StatementAccount.depreciation),
+        account: StatementAccount.depreciation,
+      ),
+      line('Otros ingresos reales', other),
+      line('Resultado financiero', -total(StatementAccount.financial)),
+      line(
+        'Resultado antes de impuestos${a.complete ? '' : ' provisional'}',
+        a.result + tax,
+        emphasis: true,
+      ),
+      line(
+        'Impuesto a la utilidad reconocido',
+        -tax,
+        account: StatementAccount.incomeTax,
+      ),
+      line(a.resultLabel, a.result, emphasis: true),
+    ],
+    sourceRows: [
+      for (final name in sourceNames)
+        ContabilidadIncomeStatementSourceRow(
+          label: name,
+          detail:
+              '${a.entries.where((e) => e.fact.source == name).length} registros con trazabilidad',
+          recognizedExpenses: a.entries
+              .where((e) => e.fact.source == name && e.account.expense)
+              .fold(0, (s, e) => s + e.amount),
+          internalExcluded: a.entries
+              .where(
+                (e) =>
+                    e.fact.source == name &&
+                    !e.pending &&
+                    !e.account.affectsResult,
+              )
+              .fold(0, (s, e) => s + e.amount.abs()),
+          reviewPending: a.entries
+              .where((e) => e.fact.source == name && e.pending)
+              .fold(0, (s, e) => s + e.fact.amount.abs()),
+        ),
+    ],
+    familyExpenseRows: const [],
+    expenseBreakdown: breakdown(false),
+    otherIncomeBreakdown: breakdown(true),
+    reviewRows: [
+      for (final e in a.entries.where(
+        (e) => e.pending || (e.estimated && e.account.affectsResult),
+      ))
+        ContabilidadIncomeStatementReviewRow(
+          label: e.fact.label,
+          sourceLabel: e.fact.source,
+          amount: e.fact.amount,
+          count: 1,
+          reason:
+              '${e.includedPending ? 'YA DESCONTADO DEL RESULTADO PROVISIONAL. ' : ''}${e.issue ?? e.fact.detail}',
+          suggestedTreatment: e.estimated
+              ? e.account == StatementAccount.payroll
+                    ? 'Completar bruto fiscal, cuotas patronales, prestaciones y días faltantes.'
+                    : 'Validar costo y sustituir la estimación.'
+              : 'Clasificar o vincular la operación económica.',
+          movements: [
+            ContabilidadIncomeStatementReviewMovement(
+              id: e.fact.id,
+              date: e.fact.date,
+              title: e.fact.label,
+              subtitle: e.fact.source,
+              amount: e.fact.amount,
+              detail: e.fact.detail,
+            ),
+          ],
+        ),
+    ],
+    familyRows: const [],
+    insights: [
+      a.status,
+      'Base física: Entradas y Salidas. No se usa el saldo de Inventario.',
+    ],
+    warnings: [
+      ...a.warnings,
+      if (expenseCoverage.any(
+        (r) => r.pending > .009 || r.linkedPending > .009,
+      ))
+        'Gastos incompletos: existen egresos de Bancos, Bóveda o Menudeo clasificados como gastos o servicios que aún no se reconocen. Consulta en Gastos la comparación entre registrado y reconocido. Un pago vinculado no significa que su factura ya esté reconocida.',
+      if (a.pending.any((e) => e.includedPending))
+        'Los gastos identificados como incluidos provisionalmente ya se descuentan aunque sigan pendientes de conciliación. Corregir su clasificación o importe sustituye la estimación; no debe sumarse otro gasto.',
+      if (!a.complete)
+        'Resultado provisional: ${a.pending.length} operaciones pendientes. Los importes por conciliar pueden representar documentos de una misma operación. Un renglón en cero no confirma ausencia de gastos o impuestos.',
+      if (estimated(StatementAccount.cost))
+        'El costo usa estimaciones. Validar apertura, rendimientos y transformación antes de cerrar.',
+      if (a.entries.any(
+        (e) =>
+            e.estimated &&
+            e.account.affectsResult &&
+            e.fact.automaticRule == 'supplier_expense_gross_v1',
+      ))
+        'Gastos de facturas incluidos por el total con impuestos registrado en Finanzas: la app no desglosa IVA ni retenciones. Son estimaciones, no bases fiscales validadas. Se usa el periodo descrito en la factura; cuando falta, su fecha de emisión de forma provisional.',
+      if (estimated(StatementAccount.payroll))
+        'Costo laboral parcial: incluye remuneración publicada en RH y retenciones capturadas. Faltan el bruto fiscal completo, cuotas patronales y provisiones. Los pagos de nómina no son gastos adicionales.',
+      for (final e in a.pending.where(
+        (e) => e.fact.id.startsWith('payroll-coverage:'),
+      ))
+        e.fact.detail,
+      if (undetermined(StatementAccount.depreciation))
+        'Depreciación por determinar: faltan costo, fecha de puesta en uso, vida útil y valor residual de los activos.',
+      if (undetermined(StatementAccount.incomeTax))
+        'Impuesto a la utilidad por determinar: los pagos de impuestos no desglosados no determinan el ISR del periodo. Falta la base fiscal y su cálculo.',
+      if (!a.closingCurrent)
+        'Falta un cierre vigente de bases fiscales, nómina, depreciación, provisiones, entidades y conciliaciones.',
+    ],
+  );
+}
+
 class ContabilidadIncomeStatementSnapshot {
+  final bool isAccrual, isComplete;
+  final String resultLabel, statementStatus;
   final double revenue;
   final double otherIncome;
   final double commercialCost;
@@ -27,6 +241,10 @@ class ContabilidadIncomeStatementSnapshot {
   final double reviewPending;
 
   const ContabilidadIncomeStatementSnapshot({
+    this.isAccrual = false,
+    this.isComplete = false,
+    this.resultLabel = 'Saldo de movimientos · lectura heredada',
+    this.statementStatus = 'Sin cierre contable',
     required this.revenue,
     required this.otherIncome,
     required this.commercialCost,
@@ -44,11 +262,13 @@ class ContabilidadIncomeStatementSnapshot {
 
 class ContabilidadIncomeStatementLine {
   final String label;
+  final String? amountLabel;
   final double amount;
   final bool emphasis;
   final ColorTone tone;
 
   const ContabilidadIncomeStatementLine({
+    this.amountLabel,
     required this.label,
     required this.amount,
     required this.emphasis,
@@ -143,6 +363,8 @@ class ContabilidadIncomeStatementFamilyRow {
 }
 
 class ContabilidadIncomeStatementDataset {
+  final StatementAnalysis? recognition;
+  final List<StatementExpenseCoverage> expenseCoverage;
   final DateTimeRange range;
   final ContabilidadIncomeStatementSnapshot snapshot;
   final List<ContabilidadIncomeStatementLine> lines;
@@ -156,6 +378,8 @@ class ContabilidadIncomeStatementDataset {
   final List<String> warnings;
 
   const ContabilidadIncomeStatementDataset({
+    this.recognition,
+    this.expenseCoverage = const [],
     required this.range,
     required this.snapshot,
     required this.lines,
@@ -173,13 +397,26 @@ class ContabilidadIncomeStatementDataset {
 class ContabilidadIncomeStatementStore {
   const ContabilidadIncomeStatementStore();
 
+  /// Shared economic recognition for the screen, exports and management reports.
+  /// All reads are strict and paginated; missing sources never become zeroes.
+  Future<ContabilidadIncomeStatementDataset> loadAccrual({
+    required int windowDays,
+    required DateTimeRange? dateRange,
+  }) async {
+    final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
+    final bundle = await const StatementRepository().load(
+      StatementPeriod(range.start, range.end),
+    );
+    return statementDatasetFromAnalysis(analyzeStatement(bundle));
+  }
+
   /// Simple cash-result reading based only on categories already captured in
   /// Bancos, Boveda and Menudeo. It never rewrites or infers source data.
   Future<ContabilidadIncomeStatementDataset> loadSimplified({
     required int windowDays,
     required DateTimeRange? dateRange,
-    bool migrateLegacyVouchers = true,
-    bool strictLegacyVouchers = false,
+    bool migrateLegacyVouchers = false,
+    bool strictLegacyVouchers = true,
   }) async {
     final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
     final results = await Future.wait<dynamic>([
@@ -196,6 +433,24 @@ class ContabilidadIncomeStatementStore {
     final bankRows = results[0] as List<FinanzasBankMovementRecord>;
     final vaultRows = results[1] as List<DirectionVaultVoucherRecord>;
     final menudeo = results[2] as MenudeoCashDataset;
+    return buildSimplified(
+      range: range,
+      bankRows: bankRows,
+      vaultRows: vaultRows,
+      menudeoDeposits: menudeo.depositRubricRows,
+      menudeoExpenses: menudeo.expenseRubricRows,
+    );
+  }
+
+  /// The original management/cash reading, independently of closing reviews.
+  /// Kept pure so every total can be checked against the same captured rows.
+  ContabilidadIncomeStatementDataset buildSimplified({
+    required DateTimeRange range,
+    required List<FinanzasBankMovementRecord> bankRows,
+    required List<DirectionVaultVoucherRecord> vaultRows,
+    required List<MenudeoCashBreakdownRow> menudeoDeposits,
+    required List<MenudeoCashBreakdownRow> menudeoExpenses,
+  }) {
     final reconciledTransfers = _matchBankToVaultChequeTransfers(
       bankRows: bankRows,
       vaultRows: vaultRows,
@@ -214,21 +469,34 @@ class ContabilidadIncomeStatementStore {
     final totals = <String, ({double amount, int count})>{};
     final otherIncomeTotals = <String, ({double amount, int count})>{};
 
-    void addExpense(String label, String source, double amount) {
+    void addExpense(
+      String label,
+      String source,
+      double amount, [
+      int count = 1,
+    ]) {
       if (amount <= 0.009) return;
       final key = '$label|$source';
       final current = totals[key] ?? (amount: 0.0, count: 0);
-      totals[key] = (amount: current.amount + amount, count: current.count + 1);
+      totals[key] = (
+        amount: current.amount + amount,
+        count: current.count + count,
+      );
       expenses += amount;
     }
 
-    void addOtherIncome(String label, String source, double amount) {
+    void addOtherIncome(
+      String label,
+      String source,
+      double amount, [
+      int count = 1,
+    ]) {
       if (amount <= 0.009) return;
       final key = '$label|$source';
       final current = otherIncomeTotals[key] ?? (amount: 0.0, count: 0);
       otherIncomeTotals[key] = (
         amount: current.amount + amount,
-        count: current.count + 1,
+        count: current.count + count,
       );
       otherIncome += amount;
     }
@@ -281,7 +549,7 @@ class ContabilidadIncomeStatementStore {
       }
     }
 
-    for (final row in menudeo.depositRubricRows) {
+    for (final row in menudeoDeposits) {
       final normalized = _normalizeFinanceText(row.label);
       if (normalized == 'REPOSICION DE FONDO' ||
           normalized == 'MOVIMIENTOS INTERNOS') {
@@ -294,10 +562,11 @@ class ContabilidadIncomeStatementStore {
           row.label.trim().isEmpty ? 'Sin rubro' : row.label,
           'Menudeo',
           row.total,
+          row.count,
         );
       }
     }
-    for (final row in menudeo.expenseRubricRows) {
+    for (final row in menudeoExpenses) {
       final normalized = _normalizeFinanceText(row.label);
       if (normalized == 'REPOSICION DE FONDO' ||
           normalized == 'MOVIMIENTOS INTERNOS') {
@@ -310,6 +579,7 @@ class ContabilidadIncomeStatementStore {
           row.label.trim().isEmpty ? 'Sin rubro' : row.label,
           'Menudeo',
           row.total,
+          row.count,
         );
       }
     }
@@ -343,6 +613,9 @@ class ContabilidadIncomeStatementStore {
             .toList(growable: false)
           ..sort((a, b) => b.amount.compareTo(a.amount));
     final snapshot = ContabilidadIncomeStatementSnapshot(
+      isComplete: false,
+      resultLabel: 'Resultado base',
+      statementStatus: 'Base registrada',
       revenue: materialSales,
       otherIncome: otherIncome,
       commercialCost: materialPurchases,
@@ -364,37 +637,32 @@ class ContabilidadIncomeStatementStore {
       snapshot: snapshot,
       lines: <ContabilidadIncomeStatementLine>[
         ContabilidadIncomeStatementLine(
-          label: 'Ventas de material',
+          label: 'Ventas cobradas',
           amount: materialSales,
           emphasis: false,
           tone: ColorTone.positive,
         ),
+        if (otherIncome.abs() > .009)
+          ContabilidadIncomeStatementLine(
+            label: 'Otras entradas registradas',
+            amount: otherIncome,
+            emphasis: false,
+            tone: ColorTone.positive,
+          ),
         ContabilidadIncomeStatementLine(
-          label: 'Entradas por otros medios',
-          amount: otherIncome,
-          emphasis: false,
-          tone: ColorTone.positive,
-        ),
-        ContabilidadIncomeStatementLine(
-          label: 'Compra de material',
+          label: 'Compras pagadas',
           amount: -materialPurchases,
           emphasis: false,
           tone: ColorTone.caution,
         ),
         ContabilidadIncomeStatementLine(
-          label: 'Utilidad bruta',
-          amount: grossProfit,
-          emphasis: true,
-          tone: grossProfit >= 0 ? ColorTone.positive : ColorTone.negative,
-        ),
-        ContabilidadIncomeStatementLine(
-          label: 'Gastos',
+          label: 'Gastos pagados',
           amount: -expenses,
           emphasis: false,
           tone: ColorTone.neutral,
         ),
         ContabilidadIncomeStatementLine(
-          label: 'Utilidad neta',
+          label: 'Resultado base',
           amount: netProfit,
           emphasis: true,
           tone: netProfit >= 0 ? ColorTone.positive : ColorTone.negative,

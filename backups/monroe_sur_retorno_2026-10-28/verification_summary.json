@@ -1,0 +1,49 @@
+{
+  "as_of": "2026-10-28",
+  "changed": 43,
+  "unchanged": 64,
+  "monroe_sur_material_counts": {
+    "REBABA": 51,
+    "RETORNO_INDUSTRIAL": 51,
+    "CARTON_NACIONAL": 2,
+    "TUBO": 2,
+    "BASURA": 1
+  },
+  "dashboard": {
+    "MIXTO": {
+      "last_exit_date": "2026-10-09",
+      "weight_kg": 4127.0,
+      "entry_count": 23
+    },
+    "PESADO": {
+      "last_exit_date": "2026-10-23",
+      "weight_kg": 8090.0,
+      "entry_count": 2
+    },
+    "PLACA_Y_ESTRUCTURA_CORTA": {
+      "last_exit_date": "2026-09-29",
+      "weight_kg": 0,
+      "entry_count": 0
+    },
+    "PLACA_Y_ESTRUCTURA_LARGA": {
+      "last_exit_date": "2026-05-14",
+      "weight_kg": 0,
+      "entry_count": 0
+    },
+    "REBABA": {
+      "last_exit_date": "2026-10-27",
+      "weight_kg": 0,
+      "entry_count": 0
+    },
+    "RETORNO_INDUSTRIAL": {
+      "last_exit_date": "2026-10-23",
+      "weight_kg": 3330.0,
+      "entry_count": 1
+    },
+    "RETORNO_INDUSTRIAL_ALTO_RES": {
+      "last_exit_date": null,
+      "weight_kg": 0,
+      "entry_count": 0
+    }
+  }
+}

@@ -12,8 +12,11 @@ cargas adicionales; la referencia original se conserva para comparar. Ver [Resul
 
 ## Flujo
 
-1. **Embarques sugeridos** lee las fuentes actuales y presenta clientes, fechas,
-   cantidades, disponibilidad, reservas y condiciones de la propuesta.
+1. **Embarques sugeridos** abre **Empresas de la semana**, con búsqueda y casillas
+   para elegir los clientes con historial a los que sí se venderá. Una semana nueva
+   empieza sin empresas marcadas. **Generar sugeridos** guarda esa elección para
+   esa semana y presenta fechas, cantidades, disponibilidad, reservas y condiciones.
+   **Cambiar empresas** permite ajustar la elección y recalcular la propuesta.
 2. La selección muestra las metas resultantes por material: embarques realizados
    + compromisos + selección, y producción ya realizada + producción adicional
    necesaria para cubrir compromisos y selección con el piso disponible.
@@ -28,8 +31,9 @@ cargas adicionales; la referencia original se conserva para comparar. Ver [Resul
    crea otro borrador y se genera de nuevo. Una versión con embarques modificados
    no puede aprobarse ni iniciar ejecución con esa copia anterior.
 
-La propuesta y sus metas resultantes son una revisión; cerrar o Escape no escribe
-registros. No se publican ni sobrescriben automáticamente las metas de Gerencia.
+Cerrar o Escape no guarda embarques. La elección de empresas se guarda al pulsar
+**Generar sugeridos**, aunque después se cierre la revisión. No se publican ni
+sobrescriben automáticamente las metas de Gerencia.
 
 ## Fuentes y reglas
 
@@ -43,12 +47,33 @@ registros. No se publican ni sobrescriben automáticamente las metas de Gerencia
 | Afectaciones de maquinaria | Reducción de capacidad por compactadora. |
 
 - Alcance: nacional, limpia y americana, días restantes de lunes a viernes de la
-  semana actual. Materiales fuera del Programa Operativo no consumen esta demanda.
+  semana actual o lunes a viernes de una semana futura. Materiales fuera del
+  Programa Operativo no consumen esta demanda.
 - Los clientes proceden de salidas o embarques realizados; no se inventan pedidos.
+  Solo las empresas marcadas participan en el cálculo de demanda y en el reparto
+  del material, normalizando nombres y alias. Las empresas desmarcadas no reciben
+  nuevas sugerencias; sus compromisos existentes siguen reservando inventario.
   La carga habitual es la mediana inferior de las cargas conciliadas. La demanda
   semanal por cliente/material usa el mayor entre esa carga y el promedio semanal
   desde el primer registro dentro de la ventana de dieciséis semanas. Se descuentan
-  realizados y compromisos de esta semana.
+  realizados y compromisos de esta semana del mismo cliente/material, sin descontar
+  ventas a otras empresas de su demanda. Una selección sin historial reciente se
+  señala para captura manual, sin inventar cantidades.
+- **Cierre del viernes:** el último conteo de pacas por material guardado desde
+  las 17:00 del viernes, hora `America/Mexico_City` (Celaya), se conserva como
+  piso inicial exacto del lunes siguiente. Está disponible desde el viernes para
+  planear Embarques y Programa operativo. Incluye conteos explícitos de cero.
+  Las salidas, producción y compromisos anteriores al lunes no vuelven a ajustar
+  ese cierre. Desde el lunes, producción y salidas modifican el saldo disponible
+  normalmente; un conteo físico posterior actualiza el saldo actual pero conserva
+  el cierre semanal. Cada material y semana se guardan por separado.
+- Al planear una semana futura se usa el historial disponible hoy. Para materiales
+  **sin cierre del viernes**, se descuenta
+  del piso actual el material comprometido antes del lunes elegido y solo se
+  anticipa producción de la semana elegida. Si el piso no cubre compromisos previos
+  de un material, se avisa y no se proponen nuevas cargas de ese material hasta
+  resolverlo. El patio resultante se marca estimado y debe revisarse al iniciar
+  la semana. No se atribuye producción aún no realizada a las semanas intermedias.
 - No se sugieren cargas menores a ocho pacas ni al 80% de la carga habitual.
   Se conservan cinco pacas por material y se protegen todos los compromisos
   posteriores hasta sábado. El inventario se comparte entre clientes.
@@ -95,14 +120,29 @@ registros. No se publican ni sobrescriben automáticamente las metas de Gerencia
 ## Guardado y verificación
 
 Antes de aceptar se releen las fuentes. Cambios de inventario, calendario,
-compromisos o propuesta invalidan la selección anterior. Se guarda el lote en
+compromisos, empresas elegidas o propuesta invalidan la selección anterior. Se guarda el lote en
 una operación con identificadores estables por revisión/carga; cargas iguales
 conservan identificadores distintos y reintentos idénticos no duplican registros.
 La comprobación previa no bloquea capturas concurrentes de otros usuarios.
 
-Se reutilizan `direction_shipment_plans` y `direction_operating_programs.conditions`;
-no se requiere migración. Las pruebas cubren metas ausentes o arbitrarias, consumo
+Se reutilizan `direction_shipment_plans` y `direction_operating_programs.conditions`.
+La migración `20261016160000_create_direction_shipment_week_clients.sql` agrega
+`direction_shipment_week_clients` para recordar las empresas por lunes de semana.
+Aplicada al proyecto Supabase vinculado el 16 de octubre de 2026.
+Reutiliza los permisos de Programa Operativo (perfiles activos `direccion`, `admin`
+y `ops_manager`). Las pruebas cubren selección y persistencia por semana, reservas
+de empresas excluidas, planeación futura, metas ausentes o arbitrarias, consumo
 por transformación, conteos anteriores, conciliación sin duplicados, reservas,
 turnos, maquinaria, capacidad compartida, generación con patio automático y
 conservación de ajustes manuales. El diálogo se verifica a 1440 y 390 px, además
 del flujo de aceptar, editar y generar con la versión final de los embarques.
+
+`20261016170000_capture_friday_yard_openings.sql` agrega el cierre persistente
+`dashboard_yard_week_openings`, capturado por trigger al guardar el conteo de
+Operación, y la fecha de captura en Celaya (`counted_on`). Aplicada al proyecto
+Supabase vinculado el 16 de octubre de 2026. El corte se calcula en
+el servidor; no depende de la zona horaria del dispositivo. Reutiliza el último
+conteo existente si cumple el horario. Cambiar el conteo durante la semana no
+sobrescribe cierres anteriores. Borrar el conteo retira solo su cierre coincidente,
+si todavía corresponde al mismo instante de captura. La tabla solo admite lectura
+directa; las escrituras pasan por el guardado habitual de Operación.

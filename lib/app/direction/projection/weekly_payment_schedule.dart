@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../management_reports/finance_weekly_budget_analysis.dart';
 import '../expected_income/expected_income_models.dart';
+import 'weekly_cash_flow_income.dart';
 import 'weekly_projection_models.dart';
 
 const _channels = ['EFECTIVO', 'FISCAL'];
@@ -53,6 +54,7 @@ class WeeklyPaymentPressure {
 class _LiquidityCalendar {
   final WeeklyExpensePlan plan;
   final ExpectedIncomeProjection income;
+  late final WeeklyCashFlowIncome flowIncome;
   final DateTime start;
   final int firstDay;
   final receipts = {
@@ -69,7 +71,8 @@ class _LiquidityCalendar {
       firstDay = incomeDay(
         now,
       ).difference(incomeDay(plan.week)).inDays.clamp(0, 7) {
-    for (final entry in income.timeline.entries) {
+    flowIncome = WeeklyCashFlowIncome(income, plan.week);
+    for (final entry in flowIncome.timeline.entries) {
       final offset = incomeDay(entry.key).difference(start).inDays;
       if (offset < 0 || offset > 6) continue;
       if (offset < firstDay) {
@@ -140,10 +143,14 @@ class _LiquidityCalendar {
       warnings: [
         if (!openingComplete)
           'Falta capturar el saldo inicial de Efectivo o Fiscal. La distribución usa solo el saldo conocido y los ingresos fechados; la presión queda por validar.',
-        if (income.current.financingByType.entries.any(
+        if (flowIncome.totals.financingByType.entries.any(
           (part) => part.value > 0 && income.palomar.dateFor(part.key) == null,
         ))
           'Parte de la disposición de El Palomar sigue sin fecha de recepción: aparece en el flujo semanal, pero solo los importes con fecha financian un día específico.',
+        if (flowIncome.excludedPalomar.total > 0)
+          'La recepción de El Palomar programada para el domingo o fuera de la semana no se incluye en este flujo ni financia sus pagos.',
+        if (flowIncome.carryover.total > 0)
+          'Los cobros vencidos de semanas anteriores se incluyen en el total semanal. Falta acordar una nueva fecha para usarlos en la distribución diaria.',
         if (income.undated.total > 0)
           'Hay ingresos sin fecha de cobro; no se usan para asignar los pagos a un día.',
         if (earlierPendingIncome > 0)

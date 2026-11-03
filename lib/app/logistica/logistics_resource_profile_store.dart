@@ -6,6 +6,18 @@ const String _kLogisticsDriverProfilesTable = 'logistics_driver_profiles';
 const String _kLogisticsVehicleProfilesTable = 'logistics_vehicle_profiles';
 
 const _unchangedTankCapacity = Object();
+const _unchangedAssignedDriver = Object();
+
+String logisticsAssignedDriverLabel(
+  String? employeeId,
+  List<LogisticsDriverProfileRecord> drivers,
+) {
+  if (employeeId == null) return 'Sin chofer asignado';
+  for (final driver in drivers) {
+    if (driver.employeeId == employeeId) return driver.driverName;
+  }
+  return 'Chofer no disponible';
+}
 
 String logisticsTankCapacityInput(double? liters) => liters == null
     ? ''
@@ -297,6 +309,7 @@ class LogisticsVehicleProfileRecord {
   final String planningStatus;
   final String capacityNote;
   final double? tankCapacityLiters;
+  final String? assignedDriverEmployeeId;
   final String notes;
   final bool active;
   final DateTime? updatedAt;
@@ -312,6 +325,7 @@ class LogisticsVehicleProfileRecord {
     required this.planningStatus,
     required this.capacityNote,
     this.tankCapacityLiters,
+    this.assignedDriverEmployeeId,
     required this.notes,
     required this.active,
     required this.updatedAt,
@@ -328,6 +342,7 @@ class LogisticsVehicleProfileRecord {
     String? planningStatus,
     String? capacityNote,
     Object? tankCapacityLiters = _unchangedTankCapacity,
+    Object? assignedDriverEmployeeId = _unchangedAssignedDriver,
     String? notes,
     bool? active,
     DateTime? updatedAt,
@@ -345,6 +360,10 @@ class LogisticsVehicleProfileRecord {
       tankCapacityLiters: identical(tankCapacityLiters, _unchangedTankCapacity)
           ? this.tankCapacityLiters
           : tankCapacityLiters as double?,
+      assignedDriverEmployeeId:
+          identical(assignedDriverEmployeeId, _unchangedAssignedDriver)
+          ? this.assignedDriverEmployeeId
+          : assignedDriverEmployeeId as String?,
       notes: notes ?? this.notes,
       active: active ?? this.active,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -364,6 +383,7 @@ class LogisticsVehicleProfileRecord {
     'planning_status': planningStatus,
     'capacity_note': capacityNote.trim().isEmpty ? null : capacityNote.trim(),
     'tank_capacity_liters': tankCapacityLiters,
+    'assigned_driver_employee_id': assignedDriverEmployeeId,
     'notes': notes.trim().isEmpty ? null : notes.trim(),
   };
 
@@ -385,6 +405,7 @@ class LogisticsVehicleProfileRecord {
       tankCapacityLiters: double.tryParse(
         '${row['tank_capacity_liters'] ?? ''}',
       ),
+      assignedDriverEmployeeId: row['assigned_driver_employee_id'] as String?,
       notes: (row['notes'] ?? '').toString(),
       active: active,
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
@@ -430,6 +451,7 @@ class LogisticsVehicleProfileStore {
             planningStatus: remote?.planningStatus ?? 'ACTIVO',
             capacityNote: remote?.capacityNote ?? '',
             tankCapacityLiters: remote?.tankCapacityLiters,
+            assignedDriverEmployeeId: remote?.assignedDriverEmployeeId,
             notes: remote?.notes ?? '',
             active: active,
             updatedAt: remote?.updatedAt,
@@ -444,14 +466,16 @@ class LogisticsVehicleProfileStore {
 
     if (rowsToSync.isNotEmpty) {
       try {
-        // Master-data synchronization must not clear a tank value if the
-        // optional profile read failed or another user just updated it.
+        // Master-data synchronization must preserve manually captured tank
+        // capacity and driver assignments, including concurrent changes.
         await client
             .from(_kLogisticsVehicleProfilesTable)
             .upsert(
               rowsToSync
                   .map(
-                    (row) => row.toUpsertJson()..remove('tank_capacity_liters'),
+                    (row) => row.toUpsertJson()
+                      ..remove('tank_capacity_liters')
+                      ..remove('assigned_driver_employee_id'),
                   )
                   .toList(),
               onConflict: 'vehicle_id',

@@ -10,6 +10,12 @@ const projectionPaymentTypes = {
   'SIN_CLASIFICAR': 'Sin clasificar',
 };
 
+const _weeklyPayrollIds = {
+  'fixed:projection-payroll:dicsa-fiscal',
+  'fixed:projection-payroll:dicsa-cash',
+  'fixed:projection-payroll:companies-cash',
+};
+
 /// Amounts are cents. These are estimates, never ledger movements.
 class ProjectedPayment {
   final String id, source, payee, reference, account, paymentType, notes;
@@ -21,7 +27,7 @@ class ProjectedPayment {
   final bool removed;
   final bool paymentTypeAutomatic;
 
-  /// Only an explicit edit, exclusion or deletion overrides Friday selection.
+  /// Only an explicit edit, exclusion or deletion overrides Finance selection.
   final bool selectionAutomatic;
   final String? warning;
   const ProjectedPayment({
@@ -42,6 +48,8 @@ class ProjectedPayment {
     this.warning,
   });
   int get total => included && !removed ? amount : 0;
+  bool get isWeeklyPayroll =>
+      source == 'fixed' && _weeklyPayrollIds.contains(id);
   ProjectedPayment copyWith({
     DateTime? date,
     int? amount,
@@ -113,6 +121,49 @@ class ProjectedPayment {
             (j['notes'] as String).trim().isEmpty),
     notes: j['notes'] as String,
   );
+}
+
+/// Recurring projection defaults, separate from Finance's Friday budget.
+/// Stable IDs are scoped by the saved week's plan. They also let refresh/reset
+/// preserve any explicit adjustment, exclusion or removal for that week.
+List<ProjectedPayment> weeklyPayrollPayments(DateTime week) => [
+  for (final row in const [
+    ('dicsa-fiscal', 'NOMINA DICSA FISCAL', 'DICSA', 'FISCAL', 12000000, 3),
+    ('dicsa-cash', 'NOMINA DICSA EFECTIVO', 'DICSA', 'EFECTIVO', 5500000, 4),
+    (
+      'companies-cash',
+      'NOMINA EMPRESAS EFECTIVO',
+      'EMPRESAS',
+      'EFECTIVO',
+      3000000,
+      3,
+    ),
+  ])
+    ProjectedPayment(
+      id: 'fixed:projection-payroll:${row.$1}',
+      source: 'fixed',
+      payee: row.$2,
+      reference: 'Nómina semanal · ${row.$6 == 3 ? 'Jueves' : 'Viernes'}',
+      account: row.$3,
+      paymentType: row.$4,
+      date: incomeDay(week).add(Duration(days: row.$6)),
+      amount: row.$5,
+      available: row.$5,
+      // These days are fixed, not candidates for automatic redistribution.
+      selectionAutomatic: false,
+    ),
+];
+
+List<ProjectedPayment> includeWeeklyPayroll(
+  List<ProjectedPayment> saved,
+  DateTime week,
+) {
+  final ids = saved.map((r) => r.id).toSet();
+  return [
+    ...saved,
+    for (final row in weeklyPayrollPayments(week))
+      if (!ids.contains(row.id)) row,
+  ];
 }
 
 class MenudeoExpenseSettings {
@@ -203,7 +254,7 @@ class WeeklyExpensePlan {
       );
 }
 
-/// Reuses exactly the Friday selection rules, anchored to the displayed week.
+/// Uses Finance's selection rules and the scope chosen by the analysis.
 List<ProjectedPayment> paymentProposal(FinanceWeeklyBudgetAnalysis analysis) {
   final week = analysis.period.start;
   DateTime date(DateTime? due) => due == null || due.isBefore(week)
@@ -351,7 +402,7 @@ List<ProjectedPayment> reconcilePayments(
   final byId = {for (final r in current) r.id: r};
   return [
     for (final r in saved)
-      if (r.source == 'manual' || r.removed)
+      if (r.source == 'manual' || r.isWeeklyPayroll || r.removed)
         r
       else if (byId[r.id] case final live?)
         ProjectedPayment(
@@ -386,7 +437,7 @@ List<ProjectedPayment> reconcilePayments(
   ];
 }
 
-/// Re-run Friday selection for automatic candidates, including existing zero
+/// Re-run Finance selection for automatic candidates, including existing zero
 /// rows. Explicit decisions always stay intact.
 List<ProjectedPayment> incorporateFinanceProposal(
   List<ProjectedPayment> saved,
@@ -416,7 +467,7 @@ List<ProjectedPayment> resetFinanceProposal(
 ) => [
   ...current,
   for (final r in saved)
-    if (r.source == 'manual') r,
+    if (r.source == 'manual' || r.isWeeklyPayroll) r,
 ];
 
 class WeeklyCashFlow {

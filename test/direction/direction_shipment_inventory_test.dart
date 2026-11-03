@@ -7,6 +7,250 @@ import 'package:flutter_test/flutter_test.dart';
 import 'direction_shipment_suggestions_test.dart' as f;
 
 void main() {
+  for (final day in [-1, 0, 2, 6, 7]) {
+    for (final current in [0, 22]) {
+      test(
+        'program uses current yard only within its week: day $day, stock $current',
+        () {
+          final report = DirectionShipmentSuggestionReport(
+            weekStart: f.week,
+            generatedAt: f.week.add(Duration(days: day)),
+            suggestions: [],
+            coverage: [],
+            observations: [],
+            intakeFactor: 1,
+            operationHistoryCount: 0,
+            directionHistoryCount: 0,
+            productionRecordCount: 0,
+            sourceKey: 'current-yard',
+            dailyCapacity: 80,
+            openingFloorByMaterial: {f.national: 35},
+            currentFloorByMaterial: {f.national: current},
+            fridayOpeningMaterials: {f.national},
+          );
+          final bundle = DirectionShipmentPlanningBundle(
+            weekStartDate: f.week,
+            weekEndDate: f.week.add(const Duration(days: 5)),
+            shipments: [
+              f.shipment(
+                'pending',
+                f.week.add(const Duration(days: 4)),
+                50,
+                status: 'confirmado',
+              ),
+              f.shipment('already-shipped', f.week, 12),
+            ],
+            projections: [],
+            suggestedShipments: [],
+            floorCountByMaterial: {},
+            floorCountUpdatedAt: report.generatedAt,
+            expectedDays: [],
+            activeCapacityImpacts: [],
+            impactSummaries: [],
+            maintenanceAlerts: [],
+            suggestionReport: report,
+            savedProgramConditions: {
+              'yard': {f.national: 999},
+            },
+          );
+          final expected = day >= 0 && day < 7 ? current : 35;
+          final conditions = ProgramConditions.fromReference(bundle);
+          expect(conditions.yard[f.national], expected);
+          final demands = ProgramDemand.fromShipments(f.week, bundle.shipments);
+          expect(demands.single.id, 'pending');
+          final lines = generateOperatingProgram(f.week, conditions, demands);
+          expect(programQuantity(lines), 50 - expected);
+        },
+      );
+    }
+  }
+  final fridayClosingTime = DateTime.parse('2026-09-18T23:01:00Z');
+  final weeklyOpening = {
+    f.national: DirectionWeeklyYardOpening(
+      quantity: 35,
+      countedAt: fridayClosingTime,
+    ),
+  };
+
+  test(
+    'Friday close is exact Monday floor in advance, without prior-week reservations',
+    () {
+      final report = f.propose(
+        asOf: fridayClosingTime.add(const Duration(minutes: 1)),
+        floor: 35,
+        stamps: {f.national: fridayClosingTime},
+        weeklyOpeningCounts: weeklyOpening,
+        production: [],
+        movements: [],
+        shipments: [
+          f.shipment('history', f.week.subtract(const Duration(days: 7)), 30),
+          f.shipment(
+            'previous',
+            f.week.subtract(const Duration(days: 1)),
+            60,
+            status: 'confirmado',
+            client: 'SEMANA ANTERIOR',
+          ),
+        ],
+        conditions: {
+          'yard': {f.national: 999},
+        },
+      );
+      expect(report.openingFloorByMaterial[f.national], 35);
+      expect(report.currentFloorByMaterial[f.national], 35);
+      expect(report.fridayOpeningMaterials, {f.national});
+      expect(report.estimatedFloorMaterials, isNot(contains(f.national)));
+      expect(report.suggestions.single.suggestedDate, f.week);
+      expect(report.suggestions.single.suggestedQuantity, 30);
+      final accepted = [
+        f.shipment('accepted', f.week, 30, status: 'confirmado'),
+      ];
+      final projection = DirectionShipmentsStore.buildProjections(
+        shipments: accepted,
+        floorCounts: report.currentFloorByMaterial,
+        expectedDays: [],
+        suggestionReport: report,
+        asOf: fridayClosingTime,
+      );
+      expect(projection.single.projectedRemainingAfterQuantity, 5);
+      final conditions = ProgramConditions.fromReference(
+        DirectionShipmentPlanningBundle(
+          weekStartDate: f.week,
+          weekEndDate: f.week.add(const Duration(days: 5)),
+          shipments: accepted,
+          projections: projection,
+          suggestedShipments: [],
+          floorCountByMaterial: {},
+          floorCountUpdatedAt: fridayClosingTime,
+          expectedDays: [],
+          activeCapacityImpacts: [],
+          impactSummaries: [],
+          maintenanceAlerts: [],
+          suggestionReport: report,
+        ),
+      );
+      expect(conditions.yard[f.national], 35);
+      final demands = ProgramDemand.fromShipments(f.week, accepted);
+      final lines = generateOperatingProgram(f.week, conditions, demands);
+      expect(programQuantity(lines), 0);
+      expect(
+        evaluateOperatingProgram(f.week, conditions, demands, lines).valid,
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'weekend movements do not alter Monday close; Monday movements apply once',
+    () {
+      final result = reconcileDirectionShipmentInventory(
+        weekStart: f.week,
+        asOf: f.week.add(const Duration(hours: 12)),
+        counts: {f.national: 35},
+        countedAt: {f.national: fridayClosingTime},
+        weeklyOpeningCounts: weeklyOpening,
+        savedProgramConditions: {
+          'yard': {f.national: 999},
+        },
+        production: [
+          for (final offset in [-2, 0])
+            DirectionProductionHistoryRecord(
+              date: f.week.add(Duration(days: offset)),
+              materialCode: f.national,
+              quantity: 10,
+              shiftKey: 'DAY',
+            ),
+        ],
+        movements: [
+          for (final offset in [-2, 0])
+            DirectionShipmentMovement(
+              date: f.week.add(Duration(days: offset)),
+              flow: 'OUT',
+              level: 'COMMERCIAL',
+              material: f.national,
+              bales: 7,
+              client: 'CLIENTE NUEVO',
+            ),
+          DirectionShipmentMovement(
+            date: f.week,
+            flow: 'IN',
+            level: 'COMMERCIAL',
+            origin: 'TRANSFORMATION',
+            material: f.national,
+            bales: 10,
+          ),
+        ],
+        shipments: [f.shipment('same-output', f.week, 7)],
+      );
+      expect(result.opening[f.national], 35);
+      expect(result.current[f.national], 38);
+    },
+  );
+
+  test(
+    'later physical count updates current stock and preserves Friday opening',
+    () {
+      final tuesday = f.week.add(const Duration(days: 1));
+      final stamp = tuesday.add(const Duration(hours: 10));
+      final result = reconcileDirectionShipmentInventory(
+        weekStart: f.week,
+        asOf: stamp.add(const Duration(hours: 2)),
+        counts: {f.national: 20},
+        countedAt: {f.national: stamp},
+        weeklyOpeningCounts: weeklyOpening,
+        production: [
+          DirectionProductionHistoryRecord(
+            date: tuesday,
+            recordedAt: stamp.add(const Duration(hours: 1)),
+            materialCode: f.national,
+            quantity: 2,
+            shiftKey: 'DAY',
+          ),
+        ],
+        movements: [],
+        shipments: [],
+      );
+      expect(result.opening[f.national], 35);
+      expect(result.current[f.national], 22);
+      final empty = f.propose(
+        asOf: f.now,
+        weeklyOpeningCounts: {
+          f.national: DirectionWeeklyYardOpening(
+            quantity: 0,
+            countedAt: fridayClosingTime,
+          ),
+        },
+        floor: 100,
+        stamps: {f.national: fridayClosingTime},
+        production: [],
+        movements: [],
+      );
+      expect(empty.currentFloorByMaterial[f.national], 0);
+      expect(empty.openingFloorByMaterial[f.national], 0);
+      expect(empty.missingFloorMaterials, isNot(contains(f.national)));
+      expect(empty.suggestions, isEmpty);
+    },
+  );
+
+  test(
+    'late Sunday UTC count is still Sunday in Celaya, not a Monday recount',
+    () {
+      final result = reconcileDirectionShipmentInventory(
+        weekStart: f.week,
+        asOf: f.week.add(const Duration(hours: 12)),
+        counts: {f.national: 999},
+        countedAt: {f.national: DateTime.parse('2026-09-21T04:30:00Z')},
+        countedOn: {f.national: DateTime(2026, 9, 20)},
+        weeklyOpeningCounts: weeklyOpening,
+        production: [],
+        movements: [],
+        shipments: [],
+      );
+      expect(result.opening[f.national], 35);
+      expect(result.current[f.national], 35);
+    },
+  );
+
   test(
     'manual counts use the server save instant, including legacy offsetless captures',
     () {

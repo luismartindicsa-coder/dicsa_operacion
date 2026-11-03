@@ -119,7 +119,6 @@ class _DirectionAccountingDashboardCardState
   ) => const ContabilidadIncomeStatementStore().loadSimplified(
     windowDays: range.duration.inDays + 1,
     dateRange: range,
-    migrateLegacyVouchers: false,
   );
 
   Future<void> _selectPeriod(int days) async {
@@ -403,7 +402,7 @@ class _DirectionAccountingDashboardCardState
             ),
           );
           final amount = Text(
-            formatMoney(line.amount),
+            line.amountLabel ?? formatMoney(line.amount),
             key: finalResult
                 ? const ValueKey('direction-accounting-net-result')
                 : null,

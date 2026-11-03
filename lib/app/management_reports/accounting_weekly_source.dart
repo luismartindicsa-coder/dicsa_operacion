@@ -13,18 +13,8 @@ Future<AccountingWeeklySource> loadAccountingWeeklySource(
   const statements = ContabilidadIncomeStatementStore();
   final results = await Future.wait<dynamic>([
     marketEvents ?? loadAccountingMarketEvents(cut),
-    statements.loadSimplified(
-      windowDays: 5,
-      dateRange: cut.current,
-      migrateLegacyVouchers: false,
-      strictLegacyVouchers: true,
-    ),
-    statements.loadSimplified(
-      windowDays: 5,
-      dateRange: cut.previous,
-      migrateLegacyVouchers: false,
-      strictLegacyVouchers: true,
-    ),
+    statements.loadAccrual(windowDays: 5, dateRange: cut.current),
+    statements.loadAccrual(windowDays: 5, dateRange: cut.previous),
   ]);
   return AccountingWeeklySource(
     cut: cut,

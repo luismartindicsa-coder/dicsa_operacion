@@ -199,6 +199,101 @@ void main() {
     },
   );
   testWidgets(
+    'generate uses weekly pending Finance while retaining explicit previous-debt payments',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = fixtures.MemoryProjectionRepository();
+      repo.sourceOverride = finance.budgetSource(
+        invoices: [
+          finance.invoice('old-auto', 500, '2026-09-20'),
+          finance.invoice('old-manual', 600, '2026-09-20', provider: 'B'),
+          finance.invoice('weekly', 700, '2026-09-24'),
+        ],
+      );
+      final oldManual = payment(
+        'invoice:old-manual',
+        amount: 12345,
+        automatic: false,
+        notes: 'Ajuste explícito',
+      );
+      repo.saved[f.incomeWeek] = WeeklyExpensePlan(
+        week: f.incomeWeek,
+        generated: true,
+        openingCash: 40000000,
+        openingFiscal: 40000000,
+        payments: [payment('invoice:old-auto', amount: 50000), oldManual],
+      );
+      await tester.pumpWidget(
+        income.app(
+          WeeklyProjectionView(
+            bundle: f.incomeBundle(),
+            repository: repo,
+            incomeRepository: income.MemoryIncomeRepository(),
+            flow: false,
+            active: true,
+            clock: () => f.incomeWeek,
+            onWeekChanged: (_) async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // A read alone preserves the saved selection; the action rereads Finance.
+      expect(repo.writes, 0);
+      repo.sourceOverride = finance.budgetSource(
+        invoices: [
+          ...repo.sourceOverride!.invoices,
+          finance.invoice('fresh', 800, '2026-09-27', provider: 'C'),
+          finance.invoice('future', 900, '2026-09-28', provider: 'D'),
+        ],
+      );
+      final generate = find.byKey(
+        const ValueKey('generate-projected-payments'),
+      );
+      await tester.ensureVisible(generate);
+      await tester.tap(generate);
+      await tester.pumpAndSettle();
+      var rows = {for (final p in repo.saved[f.incomeWeek]!.payments) p.id: p};
+      expect(rows['invoice:old-auto']!.total, 0);
+      expect(rows['invoice:old-manual']!.total, 12345);
+      expect(rows['invoice:old-manual']!.notes, 'Ajuste explícito');
+      expect(rows['invoice:weekly']!.total, 70000);
+      expect(rows['invoice:fresh']!.total, 80000);
+      expect(rows['invoice:future']!.total, 0);
+      expect(rows.values.where((r) => r.isWeeklyPayroll).length, 3);
+      // Reset restores the weekly recommendation, including replacing a
+      // previous-debt payment explicitly selected in Finance rows.
+      repo.sourceOverride = finance.budgetSource(
+        invoices: [
+          ...repo.sourceOverride!.invoices,
+          finance.invoice('fresh-reset', 300, '2026-09-25', provider: 'E'),
+        ],
+      );
+      final reset = find.byKey(const ValueKey('reset-projected-payments'));
+      await tester.ensureVisible(reset);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('3 pagos incluidos por \$1,800.00'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Restablecer propuesta'));
+      await tester.pumpAndSettle();
+      rows = {for (final p in repo.saved[f.incomeWeek]!.payments) p.id: p};
+      expect(rows['invoice:old-auto']!.total, 0);
+      expect(rows['invoice:old-manual']!.total, 0);
+      expect(rows['invoice:weekly']!.total, 70000);
+      expect(rows['invoice:fresh']!.total, 80000);
+      expect(rows['invoice:fresh-reset']!.total, 30000);
+      expect(rows['invoice:future']!.total, 0);
+      expect(rows.values.where((r) => r.isWeeklyPayroll).length, 3);
+      expect(repo.saved[f.incomeWeek]!.openingCash, 40000000);
+      expect(repo.saved[f.incomeWeek]!.openingFiscal, 40000000);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
     'button consults fresh Finance source, updates existing zeros and preserves settings',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1440, 1100));
@@ -245,7 +340,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final saved = repo.saved[f.incomeWeek]!;
-      expect(saved.payments.length, 3);
+      expect(saved.payments.length, 6);
       expect(
         saved.payments.singleWhere((r) => r.id == 'invoice:invoice-1').total,
         1000000,
@@ -255,7 +350,7 @@ void main() {
         30000,
       );
       expect(
-        saved.payments.singleWhere((r) => r.source == 'fixed').amount,
+        saved.payments.singleWhere((r) => r.id == 'fixed:fixed-1').amount,
         10000,
       );
       expect(saved.openingCash, 12345);
@@ -270,7 +365,7 @@ void main() {
         find.byKey(const ValueKey('generate-projected-payments')),
       );
       await tester.pumpAndSettle();
-      expect(repo.saved[f.incomeWeek]!.payments.length, 3);
+      expect(repo.saved[f.incomeWeek]!.payments.length, 6);
       expect(find.text('Generar propuesta de pagos'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -393,7 +488,7 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.tap(generate);
         await tester.pumpAndSettle();
-        expect(repo.saved[f.incomeWeek]!.total, 0);
+        expect(repo.saved[f.incomeWeek]!.total, 20500000);
       }
       // New source information must be used at reset, not the earlier snapshot.
       repo.invoices = [
@@ -411,13 +506,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('egresos manuales, saldos iniciales'),
+        find.textContaining(
+          'egresos manuales, nóminas semanales, saldos iniciales',
+        ),
         findsOneWidget,
       );
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(repo.writes, writesBefore);
-      expect(repo.saved[f.incomeWeek]!.total, 0);
+      expect(repo.saved[f.incomeWeek]!.total, 20500000);
       // A failed write must leave removals intact and allow retry.
       repo.failSave = true;
       await tester.tap(restore);
@@ -426,17 +523,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('No se pudo guardar'), findsOneWidget);
       expect(repo.writes, writesBefore);
-      expect(repo.saved[f.incomeWeek]!.total, 0);
+      expect(repo.saved[f.incomeWeek]!.total, 20500000);
       repo.failSave = false;
       await tester.tap(restore);
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       final saved = repo.saved[f.incomeWeek]!;
-      expect(saved.payments.length, 5);
-      expect(saved.payments.where((r) => r.included).length, 3);
+      expect(saved.payments.length, 8);
+      expect(saved.payments.where((r) => r.included).length, 6);
       expect(saved.payments.any((r) => r.removed), false);
-      expect(saved.total, 1080000);
+      expect(saved.total, 21580000);
       expect(
         saved.payments.singleWhere((r) => r.id == 'invoice:future').total,
         0,
@@ -452,7 +549,7 @@ void main() {
       expect(identical(repo.saved[otherWeek], otherPlan), true);
       expect(
         find.textContaining(
-          'Propuesta de Finanzas restablecida · 3 pagos incluidos',
+          'Propuesta de Finanzas restablecida · 6 pagos incluidos',
         ),
         findsOneWidget,
       );
@@ -463,8 +560,8 @@ void main() {
       await tester.ensureVisible(generate);
       await tester.tap(generate);
       await tester.pumpAndSettle();
-      expect(repo.saved[f.incomeWeek]!.total, 1080000);
-      expect(repo.saved[f.incomeWeek]!.payments.length, 5);
+      expect(repo.saved[f.incomeWeek]!.total, 21580000);
+      expect(repo.saved[f.incomeWeek]!.payments.length, 8);
       await tester.binding.setSurfaceSize(const Size(780, 1000));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

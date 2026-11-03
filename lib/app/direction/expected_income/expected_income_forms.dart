@@ -463,7 +463,7 @@ Future<bool?> editPalomarSchedule(
   title: 'Fecha de recepción · El Palomar',
   description:
       'Semana ${programDate(schedule.week)} al ${programDate(schedule.week.add(const Duration(days: 6)))}. '
-      'El importe disponible se toma de Configurar disposición y supone que se cumplen las condiciones de la cuenta. El flujo y la propuesta de pagos lo consideran desde la fecha elegida; Sin fecha lo conserva solo en el total semanal.',
+      'El importe disponible se toma de Configurar disposición y supone que se cumplen las condiciones de la cuenta. El flujo y la propuesta de pagos lo consideran desde la fecha elegida; el domingo queda fuera del flujo semanal. Sin fecha lo conserva solo en el total semanal.',
   fields: [
     for (final field in [
       ('cash', 'Efectivo', schedule.cashDate),

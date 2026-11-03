@@ -1,0 +1,26 @@
+[
+  {
+    "id": "8b272028-aee3-4f9e-80fa-91a935ddbaff",
+    "company": "KS",
+    "date": "2026-07-03",
+    "reference": "82591",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-07-03T23:29:17.197446+00:00",
+    "reason": "Notas identifican CABLE; no pistón"
+  },
+  {
+    "id": "c9fd8607-259f-49bf-b40a-7e7ff4a2d36d",
+    "company": "KS",
+    "date": "2026-06-11",
+    "reference": "0314",
+    "old_material": "CHATARRA MIXTA",
+    "new_material": "PESADO",
+    "old_material_id": "0fcc4367-1e03-4745-8164-de5a765f9673",
+    "new_material_id": "47193986-3a6a-467e-8616-656ae4cae977",
+    "expected_updated_at": "2026-06-11T22:57:40.536706+00:00",
+    "reason": "Notas identifican CABLE; no pistón"
+  }
+]
