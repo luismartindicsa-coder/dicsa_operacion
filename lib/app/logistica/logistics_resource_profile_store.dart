@@ -7,6 +7,22 @@ const String _kLogisticsVehicleProfilesTable = 'logistics_vehicle_profiles';
 
 const _unchangedTankCapacity = Object();
 const _unchangedAssignedDriver = Object();
+const _unchangedModelYear = Object();
+
+int? parseLogisticsModelYear(String input) {
+  final value = input.trim();
+  if (value.isEmpty) return null;
+  final year = int.tryParse(value);
+  if (!RegExp(r'^\d{4}$').hasMatch(value) ||
+      year == null ||
+      year < 1900 ||
+      year > 2100) {
+    throw const FormatException(
+      'Captura un año de 4 dígitos entre 1900 y 2100.',
+    );
+  }
+  return year;
+}
 
 String logisticsAssignedDriverLabel(
   String? employeeId,
@@ -137,12 +153,35 @@ List<String> suggestedLoadTypesForUnitType(String value) {
   }
 }
 
+class LogisticsDriverCompany {
+  final String siteId;
+  final String siteName;
+  final bool active;
+
+  const LogisticsDriverCompany({
+    required this.siteId,
+    required this.siteName,
+    this.active = true,
+  });
+
+  factory LogisticsDriverCompany.fromRemoteRow(Map<String, dynamic> row) {
+    final site = row['sites'] as Map?;
+    return LogisticsDriverCompany(
+      siteId: row['site_id'].toString(),
+      siteName: site?['name']?.toString() ?? 'Empresa no disponible',
+      active: site?['is_active'] as bool? ?? false,
+    );
+  }
+}
+
 class LogisticsDriverProfileRecord {
   final String employeeId;
   final String driverName;
   final List<String> compatibleUnitTypes;
   final String planningStatus;
   final String coverageNote;
+  final List<LogisticsDriverCompany> assignedCompanies;
+  final List<String> coverageImportPending;
   final String notes;
   final bool active;
   final DateTime? updatedAt;
@@ -153,6 +192,8 @@ class LogisticsDriverProfileRecord {
     required this.compatibleUnitTypes,
     required this.planningStatus,
     required this.coverageNote,
+    this.assignedCompanies = const [],
+    this.coverageImportPending = const [],
     required this.notes,
     required this.active,
     required this.updatedAt,
@@ -164,6 +205,7 @@ class LogisticsDriverProfileRecord {
     List<String>? compatibleUnitTypes,
     String? planningStatus,
     String? coverageNote,
+    List<LogisticsDriverCompany>? assignedCompanies,
     String? notes,
     bool? active,
     DateTime? updatedAt,
@@ -174,6 +216,8 @@ class LogisticsDriverProfileRecord {
       compatibleUnitTypes: compatibleUnitTypes ?? this.compatibleUnitTypes,
       planningStatus: planningStatus ?? this.planningStatus,
       coverageNote: coverageNote ?? this.coverageNote,
+      assignedCompanies: assignedCompanies ?? this.assignedCompanies,
+      coverageImportPending: coverageImportPending,
       notes: notes ?? this.notes,
       active: active ?? this.active,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -185,7 +229,7 @@ class LogisticsDriverProfileRecord {
     'driver_name': driverName.trim(),
     'compatible_unit_types': compatibleUnitTypes,
     'planning_status': planningStatus,
-    'coverage_note': coverageNote.trim().isEmpty ? null : coverageNote.trim(),
+    'coverage_note': coverageNote.isEmpty ? null : coverageNote,
     'notes': notes.trim().isEmpty ? null : notes.trim(),
   };
 
@@ -199,6 +243,22 @@ class LogisticsDriverProfileRecord {
       compatibleUnitTypes: _normalizeStringList(row['compatible_unit_types']),
       planningStatus: (row['planning_status'] ?? 'ACTIVO').toString(),
       coverageNote: (row['coverage_note'] ?? '').toString(),
+      assignedCompanies:
+          ((row['logistics_driver_companies'] as List?) ?? const [])
+              .map(
+                (raw) => LogisticsDriverCompany.fromRemoteRow(
+                  Map<String, dynamic>.from(raw as Map),
+                ),
+              )
+              .toList()
+            ..sort(
+              (a, b) =>
+                  a.siteName.toLowerCase().compareTo(b.siteName.toLowerCase()),
+            ),
+      coverageImportPending:
+          ((row['coverage_import_pending'] as List?) ?? const [])
+              .map((value) => value.toString())
+              .toList(),
       notes: (row['notes'] ?? '').toString(),
       active: active,
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
@@ -235,6 +295,8 @@ class LogisticsDriverProfileStore {
             compatibleUnitTypes: remote?.compatibleUnitTypes ?? const [],
             planningStatus: remote?.planningStatus ?? 'ACTIVO',
             coverageNote: remote?.coverageNote ?? '',
+            assignedCompanies: remote?.assignedCompanies ?? const [],
+            coverageImportPending: remote?.coverageImportPending ?? const [],
             notes: remote?.notes ?? '',
             active: active,
             updatedAt: remote?.updatedAt,
@@ -257,11 +319,18 @@ class LogisticsDriverProfileStore {
   }
 
   static Future<void> saveProfileRow(
-    LogisticsDriverProfileRecord record,
-  ) async {
-    await Supabase.instance.client.from(_kLogisticsDriverProfilesTable).upsert(
-      <Map<String, dynamic>>[record.toUpsertJson()],
-      onConflict: 'employee_id',
+    LogisticsDriverProfileRecord record, {
+    required List<String> expectedCompanyIds,
+  }) async {
+    await Supabase.instance.client.rpc(
+      'save_logistics_driver_with_companies',
+      params: {
+        'p_profile': record.toUpsertJson(),
+        'p_site_ids': record.assignedCompanies
+            .map((company) => company.siteId)
+            .toList(),
+        'p_expected_site_ids': expectedCompanyIds,
+      },
     );
   }
 
@@ -272,29 +341,32 @@ class LogisticsDriverProfileStore {
     await Supabase.instance.client
         .from(_kLogisticsDriverProfilesTable)
         .upsert(
-          records.map((row) => row.toUpsertJson()).toList(growable: false),
+          records
+              .map(
+                (row) => <String, dynamic>{
+                  'employee_id': row.employeeId,
+                  'driver_name': row.driverName,
+                },
+              )
+              .toList(growable: false),
           onConflict: 'employee_id',
         );
   }
 
   static Future<Map<String, LogisticsDriverProfileRecord>>
   _loadRemoteByEmployeeId() async {
-    try {
-      final rows = await Supabase.instance.client
-          .from(_kLogisticsDriverProfilesTable)
-          .select()
-          .order('driver_name');
-      final records = <String, LogisticsDriverProfileRecord>{};
-      for (final raw in rows as List) {
-        final record = LogisticsDriverProfileRecord.fromRemoteRow(
-          Map<String, dynamic>.from(raw as Map),
-        );
-        records[record.employeeId] = record;
-      }
-      return records;
-    } catch (_) {
-      return <String, LogisticsDriverProfileRecord>{};
+    final rows = await Supabase.instance.client
+        .from(_kLogisticsDriverProfilesTable)
+        .select('*,logistics_driver_companies(site_id,sites(name,is_active))')
+        .order('driver_name');
+    final records = <String, LogisticsDriverProfileRecord>{};
+    for (final raw in rows as List) {
+      final record = LogisticsDriverProfileRecord.fromRemoteRow(
+        Map<String, dynamic>.from(raw as Map),
+      );
+      records[record.employeeId] = record;
     }
+    return records;
   }
 }
 
@@ -302,6 +374,8 @@ class LogisticsVehicleProfileRecord {
   final String vehicleId;
   final String vehicleCode;
   final String serialNumber;
+  final int? modelYear;
+  final String modelName;
   final String sourceVehicleType;
   final String sourceStatus;
   final String logisticsUnitType;
@@ -318,6 +392,8 @@ class LogisticsVehicleProfileRecord {
     required this.vehicleId,
     required this.vehicleCode,
     required this.serialNumber,
+    this.modelYear,
+    this.modelName = '',
     required this.sourceVehicleType,
     required this.sourceStatus,
     required this.logisticsUnitType,
@@ -335,6 +411,8 @@ class LogisticsVehicleProfileRecord {
     String? vehicleId,
     String? vehicleCode,
     String? serialNumber,
+    Object? modelYear = _unchangedModelYear,
+    String? modelName,
     String? sourceVehicleType,
     String? sourceStatus,
     String? logisticsUnitType,
@@ -351,6 +429,10 @@ class LogisticsVehicleProfileRecord {
       vehicleId: vehicleId ?? this.vehicleId,
       vehicleCode: vehicleCode ?? this.vehicleCode,
       serialNumber: serialNumber ?? this.serialNumber,
+      modelYear: identical(modelYear, _unchangedModelYear)
+          ? this.modelYear
+          : modelYear as int?,
+      modelName: modelName ?? this.modelName,
       sourceVehicleType: sourceVehicleType ?? this.sourceVehicleType,
       sourceStatus: sourceStatus ?? this.sourceStatus,
       logisticsUnitType: logisticsUnitType ?? this.logisticsUnitType,
@@ -374,6 +456,8 @@ class LogisticsVehicleProfileRecord {
     'vehicle_id': vehicleId,
     'vehicle_code': vehicleCode.trim(),
     'serial_number': serialNumber.trim().isEmpty ? null : serialNumber.trim(),
+    'model_year': modelYear,
+    'model_name': modelName.trim().isEmpty ? null : modelName.trim(),
     'source_vehicle_type': sourceVehicleType.trim().isEmpty
         ? null
         : sourceVehicleType.trim(),
@@ -395,6 +479,8 @@ class LogisticsVehicleProfileRecord {
       vehicleId: (row['vehicle_id'] ?? '').toString(),
       vehicleCode: (row['vehicle_code'] ?? '').toString(),
       serialNumber: (row['serial_number'] ?? '').toString(),
+      modelYear: int.tryParse('${row['model_year'] ?? ''}'),
+      modelName: (row['model_name'] ?? '').toString(),
       sourceVehicleType: (row['source_vehicle_type'] ?? '').toString(),
       sourceStatus: (row['source_status'] ?? 'activo').toString(),
       logisticsUnitType: (row['logistics_unit_type'] ?? 'POR_DEFINIR')
@@ -442,6 +528,8 @@ class LogisticsVehicleProfileStore {
             vehicleId: vehicleId,
             vehicleCode: vehicleCode,
             serialNumber: serialNumber,
+            modelYear: remote?.modelYear,
+            modelName: remote?.modelName ?? '',
             sourceVehicleType: sourceType,
             sourceStatus: sourceStatus,
             logisticsUnitType:
@@ -466,14 +554,16 @@ class LogisticsVehicleProfileStore {
 
     if (rowsToSync.isNotEmpty) {
       try {
-        // Master-data synchronization must preserve manually captured tank
-        // capacity and driver assignments, including concurrent changes.
+        // Master-data synchronization must preserve manually captured details,
+        // including concurrent changes to year, model, tank and driver.
         await client
             .from(_kLogisticsVehicleProfilesTable)
             .upsert(
               rowsToSync
                   .map(
                     (row) => row.toUpsertJson()
+                      ..remove('model_year')
+                      ..remove('model_name')
                       ..remove('tank_capacity_liters')
                       ..remove('assigned_driver_employee_id'),
                   )
@@ -489,7 +579,7 @@ class LogisticsVehicleProfileStore {
   static Future<void> saveProfileRow(
     LogisticsVehicleProfileRecord record,
   ) async {
-    _validateTankCapacity(record);
+    _validateProfile(record);
     await Supabase.instance.client.from(_kLogisticsVehicleProfilesTable).upsert(
       <Map<String, dynamic>>[record.toUpsertJson()],
       onConflict: 'vehicle_id',
@@ -501,7 +591,7 @@ class LogisticsVehicleProfileStore {
   ) async {
     if (records.isEmpty) return;
     for (final record in records) {
-      _validateTankCapacity(record);
+      _validateProfile(record);
     }
     await Supabase.instance.client
         .from(_kLogisticsVehicleProfilesTable)
@@ -511,7 +601,10 @@ class LogisticsVehicleProfileStore {
         );
   }
 
-  static void _validateTankCapacity(LogisticsVehicleProfileRecord record) {
+  static void _validateProfile(LogisticsVehicleProfileRecord record) {
+    if (record.modelYear != null) {
+      parseLogisticsModelYear(record.modelYear.toString());
+    }
     final liters = record.tankCapacityLiters;
     if (liters != null &&
         (!liters.isFinite || liters <= 0 || liters > 999999.99)) {
@@ -537,22 +630,20 @@ class LogisticsVehicleProfileStore {
 
   static Future<Map<String, LogisticsVehicleProfileRecord>>
   _loadRemoteByVehicleId() async {
-    try {
-      final rows = await Supabase.instance.client
-          .from(_kLogisticsVehicleProfilesTable)
-          .select()
-          .order('vehicle_code');
-      final records = <String, LogisticsVehicleProfileRecord>{};
-      for (final raw in rows as List) {
-        final record = LogisticsVehicleProfileRecord.fromRemoteRow(
-          Map<String, dynamic>.from(raw as Map),
-        );
-        records[record.vehicleId] = record;
-      }
-      return records;
-    } catch (_) {
-      return <String, LogisticsVehicleProfileRecord>{};
+    // A failed read is not an empty profile: showing editable defaults could
+    // overwrite captured details on the next save.
+    final rows = await Supabase.instance.client
+        .from(_kLogisticsVehicleProfilesTable)
+        .select()
+        .order('vehicle_code');
+    final records = <String, LogisticsVehicleProfileRecord>{};
+    for (final raw in rows as List) {
+      final record = LogisticsVehicleProfileRecord.fromRemoteRow(
+        Map<String, dynamic>.from(raw as Map),
+      );
+      records[record.vehicleId] = record;
     }
+    return records;
   }
 }
 

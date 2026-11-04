@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'logistics_fuel_load_origin.dart';
+import 'logistics_fuel_import_source.dart';
 
 const String _kLogisticsDieselConsumptionTable = 'logistics_diesel_consumption';
 
@@ -18,6 +19,9 @@ class LogisticsDieselConsumptionRecord {
   final String loadOrigin;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final LogisticsFuelImportSource importSource;
+
+  bool get litersEstimated => importSource.isEstimatedAt(litersRequested);
 
   const LogisticsDieselConsumptionRecord({
     required this.id,
@@ -32,6 +36,7 @@ class LogisticsDieselConsumptionRecord {
     required this.loadOrigin,
     required this.createdAt,
     required this.updatedAt,
+    this.importSource = const LogisticsFuelImportSource(),
   });
 
   LogisticsDieselConsumptionRecord copyWith({
@@ -66,6 +71,7 @@ class LogisticsDieselConsumptionRecord {
       loadOrigin: loadOrigin ?? this.loadOrigin,
       createdAt: createdAt == _unset ? this.createdAt : createdAt as DateTime?,
       updatedAt: updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
+      importSource: importSource,
     );
   }
 
@@ -101,6 +107,7 @@ class LogisticsDieselConsumptionRecord {
           .toString(),
       createdAt: _tryParseDateTime(row['created_at']?.toString()),
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
+      importSource: LogisticsFuelImportSource.fromJson(row['source_metadata']),
     );
   }
 }

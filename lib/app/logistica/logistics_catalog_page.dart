@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,9 +15,15 @@ import '../services/services_shell.dart';
 import '../services/services_visual_mode.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
+import '../shared/archetypes/grid_editable/filters/grid_filter_dialog.dart';
+import '../shared/archetypes/grid_editable/filters/grid_filter_state.dart';
+import '../mayoreo/mayoreo_sorting.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/utils/file_download_save.dart';
 import 'logistics_area_chrome.dart';
+import 'logistics_catalog_pdf.dart';
+import 'logistics_catalog_report_data.dart';
 import 'logistics_operations_pages.dart';
 import 'logistics_company_profile_store.dart';
 import 'logistics_container_store.dart';
@@ -659,6 +666,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
 
   bool _loading = true;
   bool _canReturnToDirection = false;
+  bool _exportingPdf = false;
   String? _loadError;
 
   List<LogisticsCompanyProfileRecord> _companyProfiles = const [];
@@ -867,6 +875,9 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
             row.contactPhone,
             row.addressLine,
             row.pickupWindow,
+            ..._companyContainers(
+              row,
+            ).map((container) => container.containerLabel),
           ]),
         )
         .toList(growable: false);
@@ -895,6 +906,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
             row.driverName,
             row.employeeId,
             row.coverageNote,
+            ...row.assignedCompanies.map((company) => company.siteName),
             row.notes,
             ...row.compatibleUnitTypes.map(logisticsUnitTypeLabel),
           ]),
@@ -908,6 +920,8 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
           (row) => _matchesSearch(_vehicleSearch, [
             row.vehicleCode,
             row.serialNumber,
+            row.modelYear?.toString() ?? '',
+            row.modelName,
             row.sourceVehicleType,
             row.sourceStatus,
             row.capacityNote,
@@ -1096,6 +1110,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
           builder: (_) => _LogisticsCompanyProfileEditorDialog(
             record: record,
             zones: _filteredZones,
+            assignedContainers: _companyContainers(record),
           ),
         );
     if (updated == null) return;
@@ -1268,18 +1283,31 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     final updated =
         await showLogisticsContractDialog<LogisticsDriverProfileRecord>(
           context: context,
-          builder: (_) => _LogisticsDriverProfileEditorDialog(record: record),
+          builder: (_) => _LogisticsDriverProfileEditorDialog(
+            record: record,
+            companies: _companyProfiles,
+          ),
         );
     if (updated == null) return;
 
     try {
-      await LogisticsDriverProfileStore.saveProfileRow(updated);
+      await LogisticsDriverProfileStore.saveProfileRow(
+        updated,
+        expectedCompanyIds: record.assignedCompanies
+            .map((company) => company.siteId)
+            .toList(),
+      );
       await _reloadCatalogMasters();
       if (!mounted) return;
       _showPhaseSnack(
         'Perfil logístico actualizado para ${updated.driverName}.',
       );
     } on PostgrestException catch (error) {
+      if (error.code == '40001') {
+        try {
+          await _reloadCatalogMasters();
+        } catch (_) {}
+      }
       if (!mounted) return;
       _showPhaseSnack(
         'No se pudo guardar el perfil del chofer: ${error.message}',
@@ -1505,15 +1533,42 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     return parts.join(' · ');
   }
 
+  List<LogisticsContainerRecord> _companyContainers(
+    LogisticsCompanyProfileRecord row,
+  ) {
+    return _containers
+        .where(
+          (container) => container.active && container.siteId == row.siteId,
+        )
+        .toList()
+      ..sort(
+        (a, b) => a.containerLabel.toLowerCase().compareTo(
+          b.containerLabel.toLowerCase(),
+        ),
+      );
+  }
+
+  String _companyAssignedDriversLabel(LogisticsCompanyProfileRecord company) {
+    final names =
+        _drivers
+            .where(
+              (driver) => driver.assignedCompanies.any(
+                (assigned) => assigned.siteId == company.siteId,
+              ),
+            )
+            .map((driver) => driver.driverName)
+            .toList()
+          ..sort(compareMayoreoAlpha);
+    return names.isEmpty ? 'Sin choferes asignados.' : names.join(', ');
+  }
+
   String _companyContainersLabel(LogisticsCompanyProfileRecord row) {
-    if (!row.hasContainers) {
-      return 'Sin contenedores registrados todavía.';
+    final containers = _companyContainers(row);
+    final summary = _assignedCompanyContainersLabel(containers);
+    if (containers.isEmpty || row.containerCapacityNote.trim().isEmpty) {
+      return summary;
     }
-    final parts = <String>['${row.containerCount} contenedor(es)'];
-    if (row.containerCapacityNote.trim().isNotEmpty) {
-      parts.add(row.containerCapacityNote.trim());
-    }
-    return parts.join(' · ');
+    return '$summary · ${row.containerCapacityNote.trim()}';
   }
 
   String _companyPriorityLabel(LogisticsCompanyProfileRecord row) {
@@ -1568,7 +1623,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     if (row.earlyPickupRequired) {
       tags.add('Temprano');
     }
-    if (row.hasContainers) {
+    if (_companyContainers(row).isNotEmpty) {
       tags.add('Contenedores');
     }
     final zoneId = (row.zoneId ?? '').trim();
@@ -1770,6 +1825,163 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     return 'Pendiente';
   }
 
+  LogisticsCatalogPdfSection _catalogPdfSection(
+    LogisticsCatalogKind kind, {
+    required bool filtered,
+  }) {
+    final ids = !filtered
+        ? null
+        : switch (kind) {
+            LogisticsCatalogKind.companies =>
+              _filteredCompanies.map((r) => r.siteId).toSet(),
+            LogisticsCatalogKind.zones =>
+              _filteredZones.map((r) => r.id).toSet(),
+            LogisticsCatalogKind.drivers =>
+              _filteredDrivers.map((r) => r.employeeId).toSet(),
+            LogisticsCatalogKind.vehicles =>
+              _filteredVehicles.map((r) => r.vehicleId).toSet(),
+            LogisticsCatalogKind.containers =>
+              _filteredContainers.map((r) => r.id ?? r.containerLabel).toSet(),
+          };
+    final search = !filtered
+        ? ''
+        : switch (kind) {
+            LogisticsCatalogKind.companies => _companySearch,
+            LogisticsCatalogKind.zones => _zoneSearch,
+            LogisticsCatalogKind.drivers => _driverSearch,
+            LogisticsCatalogKind.vehicles => _vehicleSearch,
+            LogisticsCatalogKind.containers => _containerSearch,
+          };
+    return buildLogisticsCatalogPdfSection(
+      kind: kind,
+      companies: _companyProfiles,
+      zones: _zones,
+      drivers: _drivers,
+      vehicles: _vehicles,
+      containers: _containers,
+      includedIds: ids,
+      search: search,
+    );
+  }
+
+  Future<void> _downloadCatalogPdf(BuildContext hostContext) async {
+    if (_exportingPdf || _loading || _loadError != null) return;
+    final kind =
+        LogisticsCatalogKind.values[DefaultTabController.of(hostContext).index];
+    final current = _catalogPdfSection(kind, filtered: true);
+    final all = await showLogisticsContractDialog<bool>(
+      context: hostContext,
+      builder: (dialogContext) => AreaThemeScope(
+        tokens: logisticsAreaTokens,
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: _CatalogSurface(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Descargar PDF',
+                    style: TextStyle(
+                      color: kLogisticsSilverTextPrimary,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.picture_as_pdf_outlined,
+                      color: kLogisticsSilverTextPrimary,
+                    ),
+                    title: Text(
+                      'Catálogo actual: ${kind.label}',
+                      style: const TextStyle(
+                        color: kLogisticsSilverTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${current.records.length} de ${current.totalCount} registros. Respeta la búsqueda actual.',
+                      style: const TextStyle(
+                        color: kLogisticsSilverTextSecondary,
+                      ),
+                    ),
+                    onTap: () => Navigator.of(dialogContext).pop(false),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.library_books_outlined,
+                      color: kLogisticsSilverTextPrimary,
+                    ),
+                    title: const Text(
+                      'PDF general: todos los catálogos',
+                      style: TextStyle(
+                        color: kLogisticsSilverTextPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Empresas, zonas, choferes, unidades y contenedores completos, sin filtros.',
+                      style: TextStyle(color: kLogisticsSilverTextSecondary),
+                    ),
+                    onTap: () => Navigator.of(dialogContext).pop(true),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kLogisticsSilverTextPrimary,
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (all == null || !mounted) return;
+    if (kIsWeb) {
+      _showPhaseSnack(
+        'La descarga de PDF está disponible en la aplicación de escritorio.',
+      );
+      return;
+    }
+    setState(() => _exportingPdf = true);
+    try {
+      final sections = all
+          ? LogisticsCatalogKind.values
+                .map((kind) => _catalogPdfSection(kind, filtered: false))
+                .toList()
+          : [current];
+      final generatedAt = DateTime.now();
+      final bytes = await buildLogisticsCatalogPdf(
+        sections: sections,
+        generatedAt: generatedAt,
+      );
+      if (!mounted) return;
+      final savedPath = await saveBytesAs(
+        bytes: bytes,
+        suggestedFileName: logisticsCatalogPdfFileName(sections, generatedAt),
+        dialogTitle: 'Guardar reporte de catálogos operativos',
+        throwOnPickerError: true,
+      );
+      if (mounted && savedPath != null) {
+        _showPhaseSnack('Reporte PDF guardado: $savedPath');
+      }
+    } catch (error) {
+      if (mounted) _showPhaseSnack('No se pudo descargar el PDF: $error');
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
+
   Widget _buildTopContent(BuildContext context) {
     final palette = ServicesVisualPalette.of(context);
     final topMetrics = <MapEntry<String, String>>[
@@ -1827,12 +2039,30 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
           final metrics = Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: topMetrics
-                .map(
-                  (item) =>
-                      _CompactMetricPill(label: item.key, value: item.value),
-                )
-                .toList(growable: false),
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final item in topMetrics)
+                _CompactMetricPill(label: item.key, value: item.value),
+              OutlinedButton.icon(
+                key: const ValueKey('logistics-catalog-download-pdf'),
+                onPressed: _loading || _loadError != null || _exportingPdf
+                    ? null
+                    : () => _downloadCatalogPdf(context),
+                icon: Icon(
+                  _exportingPdf
+                      ? Icons.hourglass_top_rounded
+                      : Icons.picture_as_pdf_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  _exportingPdf ? 'Generando PDF...' : 'Descargar PDF',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: palette.textPrimary,
+                  side: BorderSide(color: palette.borderStrong),
+                ),
+              ),
+            ],
           );
 
           if (compact) {
@@ -2072,7 +2302,11 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           value: _companyScheduleLabel(row),
                         ),
                         _CatalogField(
-                          label: 'Contenedor',
+                          label: 'Choferes asignados',
+                          value: _companyAssignedDriversLabel(row),
+                        ),
+                        _CatalogField(
+                          label: 'Contenedores',
                           value: _companyContainersLabel(row),
                         ),
                         _CatalogField(
@@ -2580,7 +2814,7 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (compact)
+                if (compact || sideWidth < 600)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -2866,6 +3100,18 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           ),
                         ),
                         _CatalogField(
+                          label: 'Empresas asignadas',
+                          value: _driverAssignedCompaniesLabel(
+                            row.assignedCompanies,
+                          ),
+                        ),
+                        if (row.coverageImportPending.isNotEmpty)
+                          _CatalogField(
+                            label: 'Por revisar',
+                            value:
+                                'Sin coincidencia automática: ${row.coverageImportPending.join(', ')}',
+                          ),
+                        _CatalogField(
                           label: 'Cobertura base',
                           value: _driverCoverageLabel(row),
                         ),
@@ -2942,6 +3188,16 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
                           : 'Serie: $serial',
                       tags: _vehicleTags(row),
                       fields: [
+                        _CatalogField(
+                          label: 'Año',
+                          value: row.modelYear?.toString() ?? 'Sin capturar',
+                        ),
+                        _CatalogField(
+                          label: 'Modelo',
+                          value: row.modelName.trim().isEmpty
+                              ? 'Sin capturar'
+                              : row.modelName,
+                        ),
                         _CatalogField(
                           label: 'Chofer asignado',
                           value: logisticsAssignedDriverLabel(
@@ -3807,12 +4063,14 @@ class _ZoneLegendChip extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
-          Text(
-            '$code · $label',
-            style: const TextStyle(
-              fontSize: 11.2,
-              fontWeight: FontWeight.w800,
-              color: kLogisticsSilverTextPrimary,
+          Flexible(
+            child: Text(
+              '$code · $label',
+              style: const TextStyle(
+                fontSize: 11.2,
+                fontWeight: FontWeight.w800,
+                color: kLogisticsSilverTextPrimary,
+              ),
             ),
           ),
         ],
@@ -4121,10 +4379,25 @@ class _LogisticsSelectionChip extends StatelessWidget {
   }
 }
 
+String _driverAssignedCompaniesLabel(List<LogisticsDriverCompany> companies) {
+  if (companies.isEmpty) return 'Sin empresas asignadas.';
+  return companies
+      .map(
+        (company) =>
+            '${company.siteName}${company.active ? '' : ' (inactiva)'}',
+      )
+      .join(', ');
+}
+
 class _LogisticsDriverProfileEditorDialog extends StatefulWidget {
   final LogisticsDriverProfileRecord record;
 
-  const _LogisticsDriverProfileEditorDialog({required this.record});
+  final List<LogisticsCompanyProfileRecord> companies;
+
+  const _LogisticsDriverProfileEditorDialog({
+    required this.record,
+    required this.companies,
+  });
 
   @override
   State<_LogisticsDriverProfileEditorDialog> createState() =>
@@ -4133,6 +4406,8 @@ class _LogisticsDriverProfileEditorDialog extends StatefulWidget {
 
 class _LogisticsDriverProfileEditorDialogState
     extends State<_LogisticsDriverProfileEditorDialog> {
+  late final Set<String> _selectedCompanyIds;
+  late final List<LogisticsDriverCompany> _companyOptions;
   late final TextEditingController _coverageController;
   late final TextEditingController _notesController;
   late final Set<String> _compatibleUnitTypes;
@@ -4147,6 +4422,23 @@ class _LogisticsDriverProfileEditorDialogState
     _notesController = TextEditingController(text: widget.record.notes);
     _compatibleUnitTypes = widget.record.compatibleUnitTypes.toSet();
     _planningStatus = widget.record.planningStatus;
+    _selectedCompanyIds = widget.record.assignedCompanies
+        .map((company) => company.siteId)
+        .toSet();
+    // Keep inactive assignments visible and removable without offering them as new links.
+    final options = {
+      for (final company in widget.record.assignedCompanies)
+        company.siteId: company,
+    };
+    for (final company in widget.companies) {
+      options[company.siteId] = LogisticsDriverCompany(
+        siteId: company.siteId,
+        siteName: company.siteName,
+        active: company.active,
+      );
+    }
+    _companyOptions = options.values.toList()
+      ..sort((a, b) => compareMayoreoAlpha(a.siteName, b.siteName));
   }
 
   @override
@@ -4181,6 +4473,41 @@ class _LogisticsDriverProfileEditorDialogState
     );
   }
 
+  Future<void> _pickCompanies() async {
+    final result = await showLogisticsContractDialog<GridFilterState>(
+      context: context,
+      builder: (_) => AreaThemeScope(
+        tokens: logisticsAreaTokens,
+        child: GridFilterDialog(
+          title: 'Empresas asignadas al chofer',
+          keyboardNavigation: true,
+          initialState: GridFilterState(
+            options: _companyOptions
+                .map(
+                  (company) => GridFilterOption(
+                    value: company.siteId,
+                    label:
+                        '${company.siteName}${company.active ? '' : ' (inactiva)'}',
+                    selected: _selectedCompanyIds.contains(company.siteId),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedCompanyIds
+        ..clear()
+        ..addAll(result.selectedValues);
+    });
+  }
+
+  List<LogisticsDriverCompany> get _selectedCompanies => _companyOptions
+      .where((company) => _selectedCompanyIds.contains(company.siteId))
+      .toList();
+
   void _toggleUnitType(String value) {
     setState(() {
       if (_compatibleUnitTypes.contains(value)) {
@@ -4199,7 +4526,8 @@ class _LogisticsDriverProfileEditorDialogState
             .where(_compatibleUnitTypes.contains)
             .toList(growable: false),
         planningStatus: _planningStatus,
-        coverageNote: _coverageController.text.trim(),
+        coverageNote: _coverageController.text,
+        assignedCompanies: _selectedCompanies,
         notes: _notesController.text.trim(),
       ),
     );
@@ -4287,13 +4615,49 @@ class _LogisticsDriverProfileEditorDialogState
                       .toList(growable: false),
                 ),
                 const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  key: const ValueKey('logistics-driver-companies-picker'),
+                  onPressed: _pickCompanies,
+                  icon: const Icon(Icons.business_outlined),
+                  label: Text(
+                    'Seleccionar empresas (${_selectedCompanyIds.length})',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kLogisticsSilverTextPrimary,
+                    side: const BorderSide(color: kLogisticsSilverBorder),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _driverAssignedCompaniesLabel(_selectedCompanies),
+                  key: const ValueKey('logistics-driver-selected-companies'),
+                  style: const TextStyle(
+                    color: kLogisticsSilverTextSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (widget.record.coverageImportPending.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Revisar texto sin coincidencia automática: ${widget.record.coverageImportPending.join(', ')}',
+                    style: const TextStyle(
+                      color: kLogisticsSilverTextSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
                 TextField(
                   controller: _coverageController,
                   maxLines: 2,
                   decoration: _decoration(
                     'Cobertura base',
                     helperText:
-                        'Ejemplo: solo mañanas, apoyo eventual, no sábados, licencia especial.',
+                        'Se conserva el texto capturado; las empresas se asignan en el selector.',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -4351,6 +4715,9 @@ class _LogisticsVehicleProfileEditorDialog extends StatefulWidget {
 
 class _LogisticsVehicleProfileEditorDialogState
     extends State<_LogisticsVehicleProfileEditorDialog> {
+  late final TextEditingController _yearController;
+  late final TextEditingController _modelController;
+  String? _yearError;
   late final TextEditingController _capacityController;
   late final TextEditingController _tankController;
   String? _tankError;
@@ -4363,6 +4730,10 @@ class _LogisticsVehicleProfileEditorDialogState
   @override
   void initState() {
     super.initState();
+    _yearController = TextEditingController(
+      text: widget.record.modelYear?.toString() ?? '',
+    );
+    _modelController = TextEditingController(text: widget.record.modelName);
     _capacityController = TextEditingController(
       text: widget.record.capacityNote,
     );
@@ -4378,6 +4749,8 @@ class _LogisticsVehicleProfileEditorDialogState
 
   @override
   void dispose() {
+    _yearController.dispose();
+    _modelController.dispose();
     _capacityController.dispose();
     _tankController.dispose();
     _notesController.dispose();
@@ -4455,6 +4828,13 @@ class _LogisticsVehicleProfileEditorDialogState
   }
 
   void _submit() {
+    int? year;
+    try {
+      year = parseLogisticsModelYear(_yearController.text);
+    } on FormatException catch (error) {
+      setState(() => _yearError = error.message);
+      return;
+    }
     double? tank;
     try {
       tank = parseLogisticsTankCapacity(_tankController.text);
@@ -4464,6 +4844,8 @@ class _LogisticsVehicleProfileEditorDialogState
     }
     Navigator.of(context).pop(
       widget.record.copyWith(
+        modelYear: year,
+        modelName: _modelController.text.trim(),
         logisticsUnitType: _logisticsUnitType,
         compatibleLoadTypes: kLogisticsLoadTypeOptions
             .where(_compatibleLoadTypes.contains)
@@ -4556,6 +4938,36 @@ class _LogisticsVehicleProfileEditorDialogState
                   spacing: 12,
                   runSpacing: 12,
                   children: [
+                    SizedBox(
+                      width: 240,
+                      child: TextField(
+                        key: const ValueKey('logistics-vehicle-year-input'),
+                        controller: _yearController,
+                        keyboardType: TextInputType.number,
+                        decoration: _decoration('Año').copyWith(
+                          hintText: 'Ej. 2020',
+                          errorText: _yearError,
+                          errorMaxLines: 2,
+                        ),
+                        onChanged: (_) {
+                          if (_yearError != null) {
+                            setState(() => _yearError = null);
+                          }
+                        },
+                        onSubmitted: (_) => _submit(),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 480,
+                      child: TextField(
+                        key: const ValueKey('logistics-vehicle-model-input'),
+                        controller: _modelController,
+                        decoration: _decoration(
+                          'Modelo',
+                        ).copyWith(hintText: 'Ej. Kenworth T680'),
+                        onSubmitted: (_) => _submit(),
+                      ),
+                    ),
                     SizedBox(
                       width: 240,
                       child: DropdownButtonFormField<String>(
@@ -5043,6 +5455,7 @@ class _LogisticsContainerEditorDialogState
                     SizedBox(
                       width: 280,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _selectedOperatorEmployeeId.isEmpty
                             ? ''
                             : _selectedOperatorEmployeeId,
@@ -5121,6 +5534,7 @@ class _LogisticsContainerEditorDialogState
                     SizedBox(
                       width: 320,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _selectedSiteId.isEmpty
                             ? ''
                             : _selectedSiteId,
@@ -5561,13 +5975,24 @@ class _CatalogStatusMetricChip extends StatelessWidget {
   }
 }
 
+String _assignedCompanyContainersLabel(
+  List<LogisticsContainerRecord> containers,
+) {
+  if (containers.isEmpty) return 'Sin contenedores activos asignados.';
+  final count = containers.length;
+  final quantity = count == 1 ? '1 contenedor' : '$count contenedores';
+  return '$quantity · ${containers.map((row) => row.containerLabel).join(', ')}';
+}
+
 class _LogisticsCompanyProfileEditorDialog extends StatefulWidget {
   final LogisticsCompanyProfileRecord record;
   final List<LogisticsZoneRecord> zones;
+  final List<LogisticsContainerRecord> assignedContainers;
 
   const _LogisticsCompanyProfileEditorDialog({
     required this.record,
     required this.zones,
+    required this.assignedContainers,
   });
 
   @override
@@ -5585,7 +6010,6 @@ class _LogisticsCompanyProfileEditorDialogState
   late final TextEditingController _longitudeController;
   late final TextEditingController _zoneNotesController;
   late final TextEditingController _pickupWindowController;
-  late final TextEditingController _containerCountController;
   late final TextEditingController _containerCapacityController;
   late final TextEditingController _notesController;
 
@@ -5594,7 +6018,6 @@ class _LogisticsCompanyProfileEditorDialogState
   late String _collectionUrgency;
   late String _volumePressure;
   late bool _earlyPickupRequired;
-  late bool _hasContainers;
   bool _geocoding = false;
   String? _validationMessage;
 
@@ -5614,9 +6037,6 @@ class _LogisticsCompanyProfileEditorDialogState
     );
     _zoneNotesController = TextEditingController(text: record.zoneNotes);
     _pickupWindowController = TextEditingController(text: record.pickupWindow);
-    _containerCountController = TextEditingController(
-      text: record.hasContainers ? record.containerCount.toString() : '',
-    );
     _containerCapacityController = TextEditingController(
       text: record.containerCapacityNote,
     );
@@ -5626,7 +6046,6 @@ class _LogisticsCompanyProfileEditorDialogState
     _collectionUrgency = record.collectionUrgency;
     _volumePressure = record.volumePressure;
     _earlyPickupRequired = record.earlyPickupRequired;
-    _hasContainers = record.hasContainers;
   }
 
   @override
@@ -5639,7 +6058,6 @@ class _LogisticsCompanyProfileEditorDialogState
     _longitudeController.dispose();
     _zoneNotesController.dispose();
     _pickupWindowController.dispose();
-    _containerCountController.dispose();
     _containerCapacityController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -5790,8 +6208,6 @@ class _LogisticsCompanyProfileEditorDialogState
   }
 
   void _submit() {
-    final parsedContainerCount =
-        int.tryParse(_containerCountController.text.trim()) ?? 0;
     final latitudeRaw = _latitudeController.text.trim();
     final longitudeRaw = _longitudeController.text.trim();
     final parsedLatitude = latitudeRaw.isEmpty
@@ -5853,8 +6269,8 @@ class _LogisticsCompanyProfileEditorDialogState
         pickupWindow: _pickupWindowController.text.trim(),
         scheduleFlexibility: _scheduleFlexibility,
         earlyPickupRequired: _earlyPickupRequired,
-        hasContainers: _hasContainers,
-        containerCount: _hasContainers ? parsedContainerCount : 0,
+        hasContainers: widget.assignedContainers.isNotEmpty,
+        containerCount: widget.assignedContainers.length,
         containerCapacityNote: _containerCapacityController.text.trim(),
         collectionUrgency: _collectionUrgency,
         volumePressure: _volumePressure,
@@ -6253,6 +6669,7 @@ class _LogisticsCompanyProfileEditorDialogState
                     SizedBox(
                       width: 220,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _scheduleFlexibility,
                         decoration: _decoration('Flexibilidad'),
                         items: kLogisticsScheduleFlexibilityOptions
@@ -6298,54 +6715,27 @@ class _LogisticsCompanyProfileEditorDialogState
                   ),
                 ),
                 const SizedBox(height: 6),
-                SwitchListTile.adaptive(
-                  value: _hasContainers,
-                  onChanged: (value) {
-                    setState(() => _hasContainers = value);
-                  },
-                  contentPadding: EdgeInsets.zero,
-                  activeThumbColor: kLogisticsSilverTextPrimary,
-                  title: const Text(
-                    'Tiene contenedores',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: kLogisticsSilverTextPrimary,
-                    ),
+                InputDecorator(
+                  key: const ValueKey('logistics-company-assigned-containers'),
+                  decoration: _decoration(
+                    'Contenedores asignados',
+                    helperText:
+                        'Se actualizan desde el catálogo de Contenedores.',
                   ),
-                  subtitle: const Text(
-                    'Activa la lectura de cantidad y capacidad para priorización.',
-                    style: TextStyle(
-                      fontSize: 12.2,
+                  child: Text(
+                    _assignedCompanyContainersLabel(widget.assignedContainers),
+                    style: const TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: kLogisticsSilverTextSecondary,
+                      color: kLogisticsSilverTextPrimary,
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: 180,
-                      child: TextField(
-                        controller: _containerCountController,
-                        enabled: _hasContainers,
-                        keyboardType: TextInputType.number,
-                        decoration: _decoration('Cantidad de contenedores'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 360,
-                      child: TextField(
-                        controller: _containerCapacityController,
-                        enabled: _hasContainers,
-                        decoration: _decoration(
-                          'Capacidad o nota del contenedor',
-                        ),
-                      ),
-                    ),
-                  ],
+                TextField(
+                  controller: _containerCapacityController,
+                  decoration: _decoration(
+                    'Capacidad o nota de los contenedores',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -6376,6 +6766,7 @@ class _LogisticsCompanyProfileEditorDialogState
                     SizedBox(
                       width: 220,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: _volumePressure,
                         decoration: _decoration('Presión de volumen'),
                         items: kLogisticsVolumePressureOptions

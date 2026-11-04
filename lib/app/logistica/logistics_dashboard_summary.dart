@@ -248,8 +248,8 @@ class LogisticsDashboardSnapshot {
           final key =
               keys[_text(r['vehicle_id'])] ??
               logisticsVehicleKey(_text(r['vehicle_label']));
-          if (key.isEmpty) return;
-          final bucket = '${_db(_date(r['entry_date'])!)}|$key';
+          final bucket =
+              '${_db(_date(r['entry_date'])!)}|${key.isEmpty ? 'SIN_UNIDAD' : key}';
           fuel[bucket] = (fuel[bucket] ?? 0) + _number(r[field]);
         }
 
@@ -259,18 +259,15 @@ class LogisticsDashboardSnapshot {
         for (final r in gasoline) {
           addFuel(r, 'liters_loaded');
         }
-        double pairedKm = 0, pairedLiters = 0;
-        var missing = 0;
-        for (final r in mileage) {
-          final bucket = '${_db(_date(r['entry_date'])!)}|${r['vehicle_key']}';
-          final liters = fuel[bucket] ?? 0;
-          if (liters <= 0) {
-            missing++;
-            continue;
-          }
-          pairedKm += _number(r['kilometers']);
-          pairedLiters += liters;
-        }
+        final readingKeys = {
+          for (final r in mileage)
+            '${_db(_date(r['entry_date'])!)}|${r['vehicle_key']}',
+        };
+        final missing = fuel.entries
+            .where((e) => e.value > 0 && !readingKeys.contains(e.key))
+            .length;
+        final loaded =
+            _sum(diesel, 'liters_requested') + _sum(gasoline, 'liters_loaded');
         return LogisticsDashboardSummary(
           value: '${_numberText(_sum(mileage, 'kilometers'))} km',
           label: 'kilometraje registrado',
@@ -280,15 +277,10 @@ class LogisticsDashboardSnapshot {
               'Unidades con lectura',
               '${mileage.map((r) => _text(r['vehicle_key'])).where((s) => s.isNotEmpty).toSet().length}',
             ),
-            (
-              'Rendimiento con carga',
-              pairedLiters > 0
-                  ? '${(pairedKm / pairedLiters).toStringAsFixed(2)} km/L'
-                  : 'Sin datos',
-            ),
-            ('Lecturas sin carga vinculada', '$missing'),
+            ('Litros cargados', '${_numberText(loaded)} L'),
+            ('Días con carga sin kilometraje', '$missing'),
           ],
-          note: 'km/L: misma unidad y día con carga',
+          note: 'Consulta el km/L estimado por unidad y periodo',
         );
       },
     );

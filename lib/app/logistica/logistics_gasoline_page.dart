@@ -29,6 +29,7 @@ import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_store.dart';
 import 'logistics_fuel_load_origin.dart';
 import 'logistics_performance_page.dart';
+import 'logistics_performance_store.dart';
 import 'logistics_savings_page.dart';
 import 'logistics_theme.dart';
 
@@ -157,7 +158,17 @@ _GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
 class LogisticsGasolinePage extends StatefulWidget {
   final DateTimeRange? initialDateRange;
 
-  const LogisticsGasolinePage({super.key, this.initialDateRange});
+  final String? initialVehicleId;
+  final String? initialVehicleLabel;
+  final String? initialRecordId;
+
+  const LogisticsGasolinePage({
+    super.key,
+    this.initialDateRange,
+    this.initialVehicleId,
+    this.initialVehicleLabel,
+    this.initialRecordId,
+  });
 
   @override
   State<LogisticsGasolinePage> createState() => _LogisticsGasolinePageState();
@@ -178,6 +189,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
   bool _saving = false;
   bool _exportingCsv = false;
   bool _bulkDeleting = false;
+  bool _pickingOperator = false;
   String? _loadError;
 
   List<LogisticsGasolineControlRecord> _entries =
@@ -249,7 +261,39 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
         _loadEntries(),
       ]);
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        if (widget.initialVehicleId != null ||
+            widget.initialVehicleLabel != null) {
+          final matches = _entries.where(
+            (row) => widget.initialVehicleId != null
+                ? row.vehicleId == widget.initialVehicleId ||
+                      (row.vehicleId == null &&
+                          logisticsVehicleKey(row.vehicleLabel) ==
+                              logisticsVehicleKey(
+                                widget.initialVehicleLabel ?? '',
+                              ))
+                : logisticsVehicleKey(row.vehicleLabel) ==
+                      logisticsVehicleKey(widget.initialVehicleLabel ?? ''),
+          );
+          _columnValueFilters['unidad'] = matches.isEmpty
+              ? {widget.initialVehicleLabel ?? '—'}
+              : matches.map((r) => _columnFilterValue(r, 'unidad')).toSet();
+          _draftDate = widget.initialDateRange?.start ?? _draftDate;
+          _draftVehicleId =
+              _vehicles.any((v) => v.id == widget.initialVehicleId)
+              ? widget.initialVehicleId
+              : null;
+        }
+        final index = _filteredEntries.indexWhere(
+          (r) => r.id == widget.initialRecordId && r.id != null,
+        );
+        if (index >= 0) {
+          _currentPage = index ~/ _pageSize;
+          _primarySelectedId = widget.initialRecordId;
+          _selectedIds.add(widget.initialRecordId!);
+        }
+        _loading = false;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -602,20 +646,37 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
   }
 
   Future<void> _pickDraftOperator() async {
-    if (_operators.isEmpty) {
-      _showPhaseSnack('Todavía no hay operadores disponibles.');
-      return;
+    if (_pickingOperator) return;
+    _pickingOperator = true;
+    try {
+      final operators = await _loadOperators();
+      if (!mounted) return;
+      setState(() => _operators = operators);
+      if (operators.isEmpty) {
+        _showPhaseSnack('Todavía no hay operadores disponibles.');
+        return;
+      }
+      final selected = await _showSearchablePickerDialog<String>(
+        context,
+        title: 'Operador',
+        initialValue: _draftOperatorId,
+        options: operators
+            .map(
+              (row) => _PickerOption<String>(value: row.id, label: row.label),
+            )
+            .toList(growable: false),
+      );
+      if (!mounted || selected == null) return;
+      setState(() => _draftOperatorId = selected);
+    } catch (_) {
+      if (mounted) {
+        _showPhaseSnack(
+          'No se pudo actualizar el catálogo de operadores. Intenta de nuevo.',
+        );
+      }
+    } finally {
+      _pickingOperator = false;
     }
-    final selected = await _showSearchablePickerDialog<String>(
-      context,
-      title: 'Operador',
-      initialValue: _draftOperatorId,
-      options: _operators
-          .map((row) => _PickerOption<String>(value: row.id, label: row.label))
-          .toList(growable: false),
-    );
-    if (!mounted || selected == null) return;
-    setState(() => _draftOperatorId = selected);
   }
 
   Future<void> _pickDraftVehicle() async {
@@ -1380,7 +1441,7 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
   String _buildCsvContent(List<LogisticsGasolineControlRecord> rows) {
     final buffer = StringBuffer()
       ..writeln(
-        'Fecha,Operador,Unidad o Vehiculo,Origen,Litros Cargados,Comentario',
+        'Fecha,Operador,Unidad o Vehiculo,Origen,Litros Cargados,Comentario,Litros Estimados,Importe Original',
       );
     for (final row in rows) {
       buffer.writeln(
@@ -1391,6 +1452,8 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
           _csvCell(logisticsFuelLoadOriginLabel(row.loadOrigin)),
           _csvCell(_fmtLiters(row.litersLoaded)),
           _csvCell(row.notes),
+          _csvCell(row.litersEstimated ? 'Sí' : 'No'),
+          _csvCell(row.importSource.totalAmount?.toStringAsFixed(2) ?? ''),
         ].join(','),
       );
     }
@@ -2362,6 +2425,18 @@ class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
           sideMenuWidth: kLogisticsSideMenuWidth,
           topContent: Column(
             children: [
+              if ((widget.initialVehicleId != null ||
+                      widget.initialVehicleLabel != null) &&
+                  Navigator.of(context).canPop())
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    style: _actionOutlinedButtonStyle(context),
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Volver a Rendimiento'),
+                  ),
+                ),
               _buildSummaryStrip(),
               const SizedBox(height: 10),
               Padding(
@@ -2634,7 +2709,7 @@ class _DieselDataRowState extends State<_DieselDataRow> {
                           layout.originWidth,
                         ),
                         _DieselValueCell(
-                          '${_fmtLiters(widget.record.litersLoaded)} L',
+                          '${widget.record.litersEstimated ? '≈ ' : ''}${_fmtLiters(widget.record.litersLoaded)} L',
                           layout.litersWidth,
                         ),
                         _DieselValueCell(

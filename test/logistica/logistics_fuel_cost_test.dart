@@ -286,11 +286,15 @@ void main() {
       expect(writes.single['diesel_price_per_liter'], 25.5);
       expect(writes.single['gasoline_price_per_liter'], 24.1);
       expect(find.text(r'$2,791.00'), findsNWidgets(2));
-      expect(find.text(r'$25.50'), findsOneWidget);
-      expect(find.text(r'$24.10'), findsOneWidget);
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(r'$25.50/L'), findsOneWidget);
+      expect(find.textContaining(r'$24.10/L'), findsOneWidget);
       // 400 L tank and 5000 L diesel purchase must not affect charged volume.
-      expect(find.text('400 L'), findsOneWidget);
-      expect(find.text('2.73 km/L'), findsWidgets);
+      expect(find.textContaining('Tanque: 400 L'), findsOneWidget);
+      expect(find.textContaining('Combustibles mezclados'), findsWidgets);
+      await tester.tap(find.byTooltip('Cerrar detalle'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await _screenshot(tester, 'fuel-performance');
       await _openImport(tester);
@@ -316,6 +320,8 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: LogisticsPerformancePage()),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Este mes'));
       await tester.pumpAndSettle();
       expect(find.text(r'$2,841.00'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
@@ -355,6 +361,8 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: LogisticsPerformancePage()),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Este mes'));
     await tester.pumpAndSettle();
     expect(find.text(r'$2,550.00 (parcial)'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
@@ -411,7 +419,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('T-01').last);
     await tester.pumpAndSettle();
-    expect(find.text(r'$5,200.00'), findsOneWidget);
+    expect(find.text(r'$5,200.00'), findsNWidgets(2));
     expect(find.text('T-02'), findsNothing);
     final dir = Platform.environment['DICSA_LOGISTICS_QA_DIR'];
     if (dir != null) {
@@ -420,11 +428,7 @@ void main() {
         final file = File(picker.savePath!);
         if (await file.exists()) await file.delete();
       });
-      await tester.tap(find.text('Generar reporte'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Mensual'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Generar PDF'));
+      await tester.tap(find.text('Descargar PDF'));
       await tester.pumpAndSettle();
       var saved = false;
       for (var i = 0; i < 100 && !saved; i++) {
@@ -454,6 +458,8 @@ Future<void> _openPage(WidgetTester tester, {double width = 1440}) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(const MaterialApp(home: LogisticsPerformancePage()));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Este mes'));
   await tester.pumpAndSettle();
 }
 

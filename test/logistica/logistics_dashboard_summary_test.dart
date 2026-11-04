@@ -162,13 +162,13 @@ void main() {
     expect(s[LogisticsDashboardModule.gasoline]!.value, '35 L');
   });
   test(
-    'performance weights matched daily fuel, excluding purchases and unpaired kilometers',
+    'performance shows all period fuel and mileage, without a daily or mixed-fleet ratio',
     () {
       final card =
           fixtureSnapshot().summaries[LogisticsDashboardModule.performance]!;
       expect(card.value, '1,190 km');
-      expect(metric(card, 'Rendimiento con carga'), '3.90 km/L');
-      expect(metric(card, 'Lecturas sin carga vinculada'), '1');
+      expect(metric(card, 'Litros cargados'), '105 L');
+      expect(metric(card, 'Días con carga sin kilometraje'), '1');
     },
   );
   test(
@@ -200,11 +200,8 @@ void main() {
       expect(s[LogisticsDashboardModule.diesel]!.value, '—');
       expect(s[LogisticsDashboardModule.diesel]!.attention, isFalse);
       expect(
-        metric(
-          s[LogisticsDashboardModule.performance]!,
-          'Rendimiento con carga',
-        ),
-        'Sin datos',
+        metric(s[LogisticsDashboardModule.performance]!, 'Litros cargados'),
+        '0 L',
       );
     },
   );

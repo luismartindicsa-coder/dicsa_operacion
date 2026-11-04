@@ -33,6 +33,11 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/page_routes.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
+
+class _ServiceUpdateCancelled implements Exception {
+  const _ServiceUpdateCancelled();
+}
 
 const double _kServiceDateColW = 90;
 const double _kServiceCompanyColW = 190;
@@ -1227,6 +1232,7 @@ class _ServicesPageState extends State<ServicesPage>
   _LogisticsPlanningView _logisticsPlanningView = _LogisticsPlanningView.all;
   bool _marqueeActive = false;
   bool _servicesScheduledTimeColumnAvailable = true;
+  DateTime? _lastRecurringSync;
   Offset? _marqueeStartLocal;
   Offset? _marqueePointerLocal;
   Offset? _marqueeStartContent;
@@ -1305,10 +1311,35 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Future<void> _bootstrap() async {
+    await _ensureRecurringServices();
     await Future.wait<void>([_loadCatalogs(), _loadRows()]);
     if (!mounted) return;
     _initDraftDefaults();
     _setupAutoRefresh();
+  }
+
+  Future<void> _ensureRecurringServices() async {
+    if (!widget.logisticsSilverMode) return;
+    if (_lastRecurringSync != null &&
+        DateTime.now().difference(_lastRecurringSync!) <
+            const Duration(minutes: 5)) {
+      return;
+    }
+    try {
+      await LogisticsFixedServicesStore.ensureUpcoming();
+      _lastRecurringSync = DateTime.now();
+    } catch (error, stack) {
+      AppErrorReporter.report(
+        error,
+        stack,
+        fallbackMessage: 'No se pudo actualizar la programación semanal.',
+      );
+      if (mounted) {
+        _toast(
+          'No se pudo actualizar la programación semanal. Se volverá a intentar automáticamente.',
+        );
+      }
+    }
   }
 
   void _setupAutoRefresh() {
@@ -1398,7 +1429,7 @@ class _ServicesPageState extends State<ServicesPage>
 
     final today = DateUtils.dateOnly(DateTime.now());
     final tomorrow = today.add(const Duration(days: 1));
-    final planningHorizonEnd = today.add(const Duration(days: 4));
+    final planningHorizonEnd = today.add(const Duration(days: 7));
     final planningDate = _planningDateForRow(row);
     final status = _statusForRow(row);
     final isClosed = _isClosedStatus(status);
@@ -1519,6 +1550,7 @@ class _ServicesPageState extends State<ServicesPage>
     }
     _refreshingRows = true;
     try {
+      await _ensureRecurringServices();
       await _loadRows(showLoader: false, onlyApplyIfChanged: true);
       _lastBackgroundRefreshAt = DateTime.now();
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
@@ -1767,15 +1799,19 @@ class _ServicesPageState extends State<ServicesPage>
 
     late final List data;
     try {
-      data = await supa
-          .from('services')
-          .select(
-            _servicesScheduledTimeColumnAvailable
-                ? 'id,service_date,due_date,scheduled_time,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at'
-                : 'id,service_date,due_date,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
-          )
-          .order('service_date', ascending: false)
-          .order('created_at', ascending: false);
+      data = await fetchAllSupabaseRows(
+        (from, to) => supa
+            .from('services')
+            .select(
+              _servicesScheduledTimeColumnAvailable
+                  ? 'id,service_date,due_date,scheduled_time,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at,recurrence_date,recurrence_visit,recurrence_exception,recurrence_auto_cancelled'
+                  : 'id,service_date,due_date,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at,recurrence_date,recurrence_visit,recurrence_exception,recurrence_auto_cancelled',
+            )
+            .order('service_date', ascending: false)
+            .order('created_at', ascending: false)
+            .order('id', ascending: true)
+            .range(from, to),
+      );
     } on PostgrestException catch (e) {
       final details = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'
           .toLowerCase();
@@ -3248,6 +3284,8 @@ class _ServicesPageState extends State<ServicesPage>
         MapEntry('save', 'ACTUALIZAR'),
         MapEntry('cancel', 'CANCELAR'),
       ],
+      if (widget.logisticsSilverMode && !anyEditing)
+        const MapEntry('extra', 'AGREGAR VUELTA'),
       const MapEntry('delete', 'ELIMINAR'),
     ];
   }
@@ -3331,6 +3369,10 @@ class _ServicesPageState extends State<ServicesPage>
           state.cancelEditingFromKeyboard();
         }
         _rowsFocusNode.requestFocus();
+        return;
+      case 'extra':
+        final row = _rows.where((r) => r['id'] == _selectedRowId).firstOrNull;
+        if (row != null) await _addExtraVisit(row);
         return;
       case 'delete':
         _handleDeleteOnSelectedRow();
@@ -3463,15 +3505,87 @@ class _ServicesPageState extends State<ServicesPage>
     await _loadRows();
   }
 
-  Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
-    await supa.from('services').update(patch).eq('id', id);
-    // refresco rápido: actualiza local si puedes
-    final idx = _rows.indexWhere((r) => r['id'] == id);
-    if (idx != -1) {
-      setState(() => _rows[idx] = {..._rows[idx], ...patch});
-    } else {
-      await _loadRows();
+  Future<void> _addExtraVisit(Map<String, dynamic> row) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final date = await _showGlassDatePickerDialog(
+      context,
+      initialDate: today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+    try {
+      await LogisticsFixedServicesStore.addExtraVisit(row, date);
+      await _loadRows(showLoader: false);
+      if (mounted) _toast('Vuelta adicional programada');
+    } catch (error) {
+      if (mounted) _toast('No se pudo agregar la vuelta: $error');
     }
+  }
+
+  Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
+    final row = _rows.where((r) => r['id'] == id).firstOrNull;
+    final changes = <String, dynamic>{
+      for (final entry in patch.entries)
+        if (row == null || row[entry.key] != entry.value)
+          entry.key: entry.value,
+    };
+    if (changes.isEmpty) return;
+    const recurringFields = {
+      'client_id',
+      'client_name',
+      'material_type',
+      'scheduled_time',
+      'direction',
+      'driver_employee_id',
+      'vehicle_id',
+      'notes',
+    };
+    final recurringDate = DateTime.tryParse('${row?['recurrence_date'] ?? ''}');
+    final canChangeFollowing =
+        row?['fixed_service_id'] != null &&
+        recurringDate != null &&
+        !recurringDate.isBefore(DateUtils.dateOnly(DateTime.now())) &&
+        row?['status'] == 'programado' &&
+        changes.keys.every(recurringFields.contains) &&
+        !_hasExplicitMultiSelection;
+    var following = false;
+    if (canChangeFollowing) {
+      final scope = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: ServicesVisualPalette.of(context).surfaceBase,
+          title: const Text('Aplicar cambio'),
+          content: const Text(
+            'Las visitas que ya tienen cambios individuales se conservarán.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'cancel'),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'one'),
+              child: const Text('Solo este servicio'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, 'following'),
+              child: const Text('Este y los siguientes'),
+            ),
+          ],
+        ),
+      );
+      if (scope == null || scope == 'cancel') {
+        throw const _ServiceUpdateCancelled();
+      }
+      following = scope == 'following';
+    }
+    if (following) {
+      await LogisticsFixedServicesStore.changeFromVisit(id, changes);
+    } else {
+      await supa.from('services').update(changes).eq('id', id);
+    }
+    await _loadRows(showLoader: false);
   }
 
   void _toast(String msg) {
@@ -4356,7 +4470,7 @@ class _ServicesPageState extends State<ServicesPage>
                     style: _actionOutlinedButtonStyle(context),
                     onPressed: _loadingCats ? null : _openFixedServicesManager,
                     icon: const Icon(Icons.repeat_rounded),
-                    label: const Text('Servicios fijos'),
+                    label: const Text('Programación semanal'),
                   ),
                 ],
                 if (widget.logisticsSilverMode &&
@@ -4506,23 +4620,43 @@ class _ServicesPageState extends State<ServicesPage>
   Future<void> _openFixedServicesManager() async {
     if (_loadingCats) return;
     final today = DateUtils.dateOnly(DateTime.now());
-    final initialScheduleDate =
-        _logisticsPlanningView == _LogisticsPlanningView.planned
-        ? today.add(const Duration(days: 1))
-        : today;
     final changed = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
       barrierColor: Colors.black.withValues(alpha: 0.28),
-      builder: (dialogContext) => _FixedServicesManagerDialog(
-        clients: _clients,
-        materials: _materials,
-        drivers: _drivers,
-        vehicles: _vehicles,
-        initialScheduleDate: initialScheduleDate,
-        onScheduledRowsChanged: () async {
-          await _loadRows(showLoader: false, onlyApplyIfChanged: false);
-        },
+      builder: (dialogContext) => ServicesVisualModeScope(
+        logisticsSilverMode: widget.logisticsSilverMode,
+        child: _FixedServicesManagerDialog(
+          clients: _clients,
+          materials: _materials,
+          drivers: _drivers,
+          vehicles: _vehicles,
+          initialScheduleDate: today,
+          history: _rows,
+          onOpenVisit: (id) {
+            Navigator.of(dialogContext).pop(true);
+            setState(() {
+              _logisticsPlanningView = _LogisticsPlanningView.all;
+              _columnValueFilters.clear();
+              _columnDateRangeFilters.clear();
+              final index = _rows.indexWhere((r) => r['id'] == id);
+              if (index >= 0) _currentPage = index ~/ _pageSize;
+              _selectedRowId = id;
+              _bulkSelectedRowIds.clear();
+            });
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _selectRow(
+                id,
+                allowToggle: false,
+                additive: false,
+                ensureVisible: true,
+              ),
+            );
+          },
+          onScheduledRowsChanged: () async {
+            await _loadRows(showLoader: false, onlyApplyIfChanged: false);
+          },
+        ),
       ),
     );
     if (!mounted || changed != true) return;
@@ -6078,7 +6212,8 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     final status = _status.trim().toLowerCase();
     final hasDriver = _hasAssignedDriverForPending();
     final hasVehicle = _hasAssignedVehicleForPending();
-    final hasScheduledTime = _scheduledTime != null;
+    final hasScheduledTime =
+        _scheduledTime != null || widget.row['recurrence_date'] != null;
     final planningDate = _dueDate == null
         ? null
         : DateUtils.dateOnly(_dueDate!);
@@ -6449,8 +6584,12 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
           _labelOf(widget.materials, _materialId) ?? 'SIN_MATERIAL',
     };
 
-    await widget.onUpdate(id, patch);
-    _setEditing(keepEditing);
+    try {
+      await widget.onUpdate(id, patch);
+      _setEditing(keepEditing);
+    } on _ServiceUpdateCancelled {
+      return;
+    }
   }
 
   String? _labelOf(List<_Opt> list, String? id) {
@@ -7832,7 +7971,9 @@ class _FixedServicesManagerDialog extends StatefulWidget {
   final List<_Opt> materials;
   final List<_Opt> drivers;
   final List<_Opt> vehicles;
+  final List<Map<String, dynamic>> history;
   final DateTime initialScheduleDate;
+  final ValueChanged<String> onOpenVisit;
   final Future<void> Function()? onScheduledRowsChanged;
 
   const _FixedServicesManagerDialog({
@@ -7841,6 +7982,8 @@ class _FixedServicesManagerDialog extends StatefulWidget {
     required this.drivers,
     required this.vehicles,
     required this.initialScheduleDate,
+    required this.history,
+    required this.onOpenVisit,
     this.onScheduledRowsChanged,
   });
 
@@ -7851,265 +7994,461 @@ class _FixedServicesManagerDialog extends StatefulWidget {
 
 class _FixedServicesManagerDialogState
     extends State<_FixedServicesManagerDialog> {
-  final ScrollController _scrollController = ScrollController();
   bool _loading = true;
   bool _working = false;
   bool _changedRows = false;
-  List<LogisticsFixedServiceRecord> _records = <LogisticsFixedServiceRecord>[];
+  String? _error;
+  int _tab = 0;
+  bool _byUnit = false;
+  List<LogisticsFixedServiceRecord> _records = [];
+  List<Map<String, dynamic>> _visits = [];
   late DateTime _targetDate;
 
   @override
   void initState() {
     super.initState();
     _targetDate = DateUtils.dateOnly(widget.initialScheduleDate);
-    unawaited(_loadRecords());
+    unawaited(_load());
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
+  String _date(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  String _dbDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _label(List<_Opt> values, dynamic id, String missing) =>
+      values.where((v) => v.id == id).firstOrNull?.label ?? missing;
+  void _toast(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
-  Future<void> _loadRecords() async {
-    setState(() => _loading = true);
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final rows = await LogisticsFixedServicesStore.loadRecords();
+      final records = await LogisticsFixedServicesStore.loadRecords();
+      final visits = await LogisticsFixedServicesStore.loadWeek(_targetDate);
       if (!mounted) return;
       setState(() {
-        _records = rows;
-        _loading = false;
+        _records = records;
+        _visits = visits;
       });
-    } catch (e) {
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = 'No se pudo cargar la semana: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save(LogisticsFixedServiceRecord record) async {
+    setState(() => _working = true);
+    try {
+      await LogisticsFixedServicesStore.saveRecord(
+        record,
+        fromDate: record.effectiveFrom,
+      );
+      _changedRows = true;
+      await widget.onScheduledRowsChanged?.call();
       if (!mounted) return;
-      setState(() => _loading = false);
-      _toast('No se pudieron cargar los servicios fijos: $e');
+      await _load();
+      if (mounted) {
+        _toast(
+          'Programación guardada. Las próximas visitas ya están en Control Diario.',
+        );
+      }
+    } catch (error) {
+      if (mounted) _toast('No se pudo guardar: $error');
+    } finally {
+      if (mounted) setState(() => _working = false);
     }
-  }
-
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
-
-  String _labelOf(List<_Opt> list, String? id) {
-    if (id == null || id.trim().isEmpty) return '—';
-    for (final item in list) {
-      if (item.id == id) return item.label;
-    }
-    return '—';
-  }
-
-  Future<void> _pickTargetDate() async {
-    final picked = await _showGlassDatePickerDialog(
-      context,
-      initialDate: _targetDate,
-      firstDate: DateTime(2024, 1, 1),
-      lastDate: DateTime(2035, 12, 31),
-    );
-    if (!mounted || picked == null) return;
-    setState(() => _targetDate = DateUtils.dateOnly(picked));
   }
 
   Future<void> _openEditor({LogisticsFixedServiceRecord? record}) async {
     final result = await showDialog<LogisticsFixedServiceRecord>(
       context: context,
-      barrierDismissible: true,
       barrierColor: Colors.black.withValues(alpha: 0.28),
-      builder: (dialogContext) => _FixedServiceEditorDialog(
-        record: record,
-        clients: widget.clients,
-        materials: widget.materials,
-        drivers: widget.drivers,
-        vehicles: widget.vehicles,
+      builder: (_) => ServicesVisualModeScope(
+        logisticsSilverMode: true,
+        child: _FixedServiceEditorDialog(
+          record: record,
+          clients: widget.clients,
+          materials: widget.materials,
+          drivers: widget.drivers,
+          vehicles: widget.vehicles,
+        ),
       ),
     );
-    if (!mounted || result == null) return;
-
-    setState(() => _working = true);
-    try {
-      await LogisticsFixedServicesStore.saveRecord(result);
-      _changedRows = true;
-      await _loadRecords();
-      if (!mounted) return;
-      _toast(
-        record == null ? 'Servicio fijo guardado' : 'Servicio fijo actualizado',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _toast('No se pudo guardar el servicio fijo: $e');
-      setState(() => _working = false);
-    } finally {
-      if (mounted) {
-        setState(() => _working = false);
-      }
-    }
+    if (result != null && mounted) await _save(result);
   }
 
-  Future<void> _toggleActive(
-    LogisticsFixedServiceRecord record,
-    bool active,
-  ) async {
-    setState(() => _working = true);
-    try {
-      await LogisticsFixedServicesStore.saveRecord(
-        record.copyWith(isActive: active),
-      );
-      _changedRows = true;
-      await _loadRecords();
-      if (!mounted) return;
-      _toast(active ? 'Servicio fijo reactivado' : 'Servicio fijo pausado');
-    } catch (e) {
-      if (!mounted) return;
-      _toast('No se pudo actualizar el estatus del fijo: $e');
-      setState(() => _working = false);
-    } finally {
-      if (mounted) {
-        setState(() => _working = false);
-      }
-    }
+  Future<void> _moveWeek(int days) async {
+    setState(() => _targetDate = _targetDate.add(Duration(days: days)));
+    await _load();
   }
 
-  Future<void> _deleteRecord(LogisticsFixedServiceRecord record) async {
-    if (record.id == null || record.id!.trim().isEmpty) return;
-    final ok = await _showGlassConfirmDialog(
+  Future<void> _extra(Map<String, dynamic> row) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final sourceDate = DateTime.parse(row['service_date'] as String);
+    final date = await _showGlassDatePickerDialog(
       context,
-      title: 'Eliminar servicio fijo',
-      content:
-          '¿Seguro que quieres eliminar el fijo de ${record.siteName} a las ${logisticsFormatFixedServiceTimeUi(record.scheduledTime)}?',
-      confirmText: 'Eliminar',
+      initialDate: sourceDate.isBefore(today) ? today : sourceDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
     );
-    if (ok != true || !mounted) return;
-
+    if (date == null || !mounted) return;
     setState(() => _working = true);
     try {
-      await LogisticsFixedServicesStore.deleteRecord(record.id!);
+      await LogisticsFixedServicesStore.addExtraVisit(row, date);
       _changedRows = true;
-      await _loadRecords();
+      await widget.onScheduledRowsChanged?.call();
       if (!mounted) return;
-      _toast('Servicio fijo eliminado');
-    } catch (e) {
-      if (!mounted) return;
-      _toast('No se pudo eliminar el servicio fijo: $e');
-      setState(() => _working = false);
+      await _load();
+      if (mounted) _toast('Vuelta adicional programada');
+    } catch (error) {
+      if (mounted) _toast('No se pudo agregar la vuelta: $error');
     } finally {
-      if (mounted) {
-        setState(() => _working = false);
-      }
+      if (mounted) setState(() => _working = false);
     }
   }
 
-  Future<void> _scheduleRecords(
-    List<LogisticsFixedServiceRecord> records,
-  ) async {
-    if (records.isEmpty) {
-      _toast('No hay servicios fijos para agendar con esa selección.');
-      return;
-    }
-    setState(() => _working = true);
-    try {
-      final result = await LogisticsFixedServicesStore.scheduleForDate(
-        _targetDate,
-        records: records,
+  Widget _weeklyView() {
+    final palette = ServicesVisualPalette.of(context);
+    final visits = _visits
+        .where((r) => r['recurrence_auto_cancelled'] != true)
+        .toList();
+    String group(Map<String, dynamic> row) => _byUnit
+        ? _label(widget.vehicles, row['vehicle_id'], 'Sin unidad')
+        : '${row['client_name'] ?? 'Sin empresa'}';
+    final groups = visits.map(group).toSet().toList()..sort();
+    final days = List.generate(7, (i) => _targetDate.add(Duration(days: i)));
+    if (groups.isEmpty) {
+      return Center(
+        child: Text(
+          'No hay servicios en estas fechas.',
+          style: TextStyle(color: palette.textSecondary),
+        ),
       );
-      if (!mounted) return;
-      if (result.inserted > 0) {
-        _changedRows = true;
-        await widget.onScheduledRowsChanged?.call();
-        if (!mounted) return;
-      }
-      _toast(_scheduleSummary(result, _targetDate));
-    } catch (e) {
-      if (!mounted) return;
-      _toast('No se pudo alimentar Control Diario con los fijos: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _working = false);
-      }
     }
+    return SingleChildScrollView(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStatePropertyAll(palette.fieldFillStrong),
+          headingTextStyle: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+          dataRowMinHeight: 70,
+          dataRowMaxHeight: double.infinity,
+          columnSpacing: 12,
+          horizontalMargin: 12,
+          columns: [
+            DataColumn(
+              label: SizedBox(
+                width: 150,
+                child: Text(_byUnit ? 'UNIDAD' : 'EMPRESA'),
+              ),
+            ),
+            for (final day in days)
+              DataColumn(
+                label: SizedBox(
+                  width: 160,
+                  child: Text(
+                    '${logisticsWeekdayShortLabel(day.weekday)} ${_date(day)}',
+                  ),
+                ),
+              ),
+          ],
+          rows: [
+            for (final name in groups)
+              DataRow(
+                cells: [
+                  DataCell(
+                    SizedBox(
+                      width: 150,
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  for (final day in days)
+                    DataCell(
+                      SizedBox(
+                        width: 160,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (final row in visits.where(
+                                (r) =>
+                                    group(r) == name &&
+                                    r['service_date'] == _dbDate(day),
+                              ))
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: palette.fieldFillStrong,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: palette.border),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      TextButton(
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.all(4),
+                                          foregroundColor: palette.textPrimary,
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        onPressed: _working
+                                            ? null
+                                            : () => widget.onOpenVisit(
+                                                row['id'] as String,
+                                              ),
+                                        child: Text(
+                                          '${row['recurrence_visit'] == null ? '' : 'Vuelta ${row['recurrence_visit']} · '}${logisticsFormatFixedServiceTimeUi('${row['scheduled_time'] ?? ''}')}\n'
+                                          '${_byUnit ? row['client_name'] : _label(widget.vehicles, row['vehicle_id'], 'Sin unidad')}\n'
+                                          '${_label(widget.drivers, row['driver_employee_id'], 'Sin chofer')}\n'
+                                          '${logisticsFixedServiceMovementLabel('${row['direction']}')} · ${row['status']}'
+                                          '${row['recurrence_exception'] == true ? '\nCambio individual' : ''}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: IconButton(
+                                          tooltip: 'Agregar vuelta',
+                                          onPressed: _working
+                                              ? null
+                                              : () => _extra(row),
+                                          icon: Icon(
+                                            Icons.add_road,
+                                            color: palette.icon,
+                                            size: 19,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
-  String _scheduleSummary(
-    LogisticsFixedServiceScheduleResult result,
-    DateTime targetDate,
-  ) {
-    final parts = <String>[];
-    if (result.inserted > 0) {
-      parts.add(
-        '${result.inserted} agendado(s) para ${_fmtDateLabel(targetDate)}',
+  Widget _recurrencesView() {
+    final palette = ServicesVisualPalette.of(context);
+    if (_records.isEmpty) {
+      return Center(
+        child: Text(
+          'Agrega una repetición para preparar los próximos siete días.',
+          style: TextStyle(color: palette.textSecondary),
+        ),
       );
     }
-    if (result.skippedExisting > 0) {
-      parts.add('${result.skippedExisting} ya existían');
-    }
-    if (result.skippedWeekday > 0) {
-      parts.add('${result.skippedWeekday} no aplican ese día');
-    }
-    if (result.skippedInactive > 0) {
-      parts.add('${result.skippedInactive} están pausados');
-    }
-    if (parts.isEmpty) {
-      return 'No hubo servicios fijos aplicables para ${_fmtDateLabel(targetDate)}.';
-    }
-    return parts.join(' · ');
+    return ListView.separated(
+      itemCount: _records.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (_, i) {
+        final record = _records[i];
+        final today = DateUtils.dateOnly(DateTime.now());
+        final starts =
+            record.effectiveFrom != null && record.effectiveFrom!.isAfter(today)
+            ? record.effectiveFrom!
+            : today;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: palette.glassCardGradient,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: palette.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.siteName,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${logisticsWeekdayListLabel(record.weekdays)} · ${record.visitsPerDay} visita(s) por día · ${logisticsFormatFixedServiceTimeUi(record.scheduledTime)}',
+                      style: TextStyle(color: palette.textPrimary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${logisticsFixedServiceMovementLabel(record.movement)} · ${record.materialName == 'SIN_MATERIAL' ? 'Material pendiente' : record.materialName}\n'
+                      '${_label(widget.vehicles, record.defaultVehicleId, 'Sin unidad habitual')} · ${_label(widget.drivers, record.defaultDriverEmployeeId, 'Chofer de la unidad')}\n'
+                      'Vigente desde ${record.effectiveFrom == null ? 'hoy' : _date(record.effectiveFrom!)}',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: record.isActive,
+                activeTrackColor: palette.filterAccent,
+                onChanged: _working
+                    ? null
+                    : (active) => _save(
+                        record.copyWith(
+                          isActive: active,
+                          effectiveFrom: starts,
+                        ),
+                      ),
+              ),
+              _InlineMetaChip(label: record.isActive ? 'Activa' : 'Pausada'),
+              const SizedBox(width: 14),
+              OutlinedButton.icon(
+                style: _actionOutlinedButtonStyle(context),
+                onPressed: _working ? null : () => _openEditor(record: record),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Editar repetición'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _suggestionsView() {
+    final palette = ServicesVisualPalette.of(context);
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month - 1);
+    final suggestions = logisticsRecurrenceSuggestions(
+      widget.history,
+      _records,
+      month,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Días observados en al menos tres semanas de ${month.month}/${month.year}. Revisa la propuesta antes de guardarla; las entradas repetidas de geocercas no determinan las vueltas diarias.',
+          style: TextStyle(color: palette.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: suggestions.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No hay nuevas sugerencias con evidencia suficiente.',
+                  ),
+                )
+              : ListView.separated(
+                  itemCount: suggestions.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (_, index) {
+                    final draft = suggestions[index];
+                    return ListTile(
+                      tileColor: palette.fieldFillStrong,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      title: Text(
+                        draft.siteName,
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${logisticsWeekdayListLabel(draft.weekdays)} · ${logisticsFixedServiceMovementLabel(draft.movement)}',
+                        style: TextStyle(color: palette.textSecondary),
+                      ),
+                      trailing: OutlinedButton(
+                        onPressed: _working
+                            ? null
+                            : () => _openEditor(record: draft),
+                        child: const Text('Revisar propuesta'),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = ServicesVisualPalette.of(context);
+    final pending = _visits
+        .where(
+          (r) =>
+              r['status'] != 'cancelado' &&
+              r['status'] != 'completado' &&
+              (r['driver_employee_id'] == null || r['vehicle_id'] == null),
+        )
+        .length;
     return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: palette.surfaceElevated,
+      insetPadding: const EdgeInsets.all(24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1120, maxHeight: 760),
+        constraints: const BoxConstraints(maxWidth: 1500, maxHeight: 800),
         child: _LogisticsPlanningSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: palette.buttonGradient,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: palette.borderStrong),
-                    ),
-                    child: Icon(Icons.repeat_rounded, color: palette.icon),
-                  ),
-                  const SizedBox(width: 14),
+                  Icon(Icons.calendar_month, color: palette.icon, size: 32),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Servicios fijos de Logística',
+                          'Programación semanal',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
                             color: palette.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 4),
                         Text(
-                          'Aquí se definen los servicios repetitivos para después alimentar Control Diario con un solo click.',
-                          style: TextStyle(
-                            fontSize: 12.8,
-                            height: 1.4,
-                            fontWeight: FontWeight.w600,
-                            color: palette.textSecondary,
-                          ),
+                          'Los próximos siete días se preparan automáticamente. Abre una visita para ajustarla en Control Diario.',
+                          style: TextStyle(color: palette.textSecondary),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
                   TextButton.icon(
                     style: _actionTextButtonStyle(context),
-                    onPressed: () => Navigator.of(context).pop(_changedRows),
-                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context, _changedRows),
+                    icon: const Icon(Icons.close),
                     label: const Text('Cerrar'),
                   ),
                 ],
@@ -8120,35 +8459,96 @@ class _FixedServicesManagerDialogState
                 runSpacing: 10,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  OutlinedButton.icon(
-                    style: _actionOutlinedButtonStyle(context),
-                    onPressed: _working ? null : _pickTargetDate,
-                    icon: const Icon(Icons.calendar_today_rounded),
-                    label: Text('Agendar para ${_fmtDateLabel(_targetDate)}'),
+                  ChoiceChip(
+                    backgroundColor: palette.fieldFillStrong,
+                    side: BorderSide(color: palette.border),
+                    labelStyle: TextStyle(color: palette.textPrimary),
+                    label: const Text('Semana'),
+                    selected: _tab == 0,
+                    onSelected: (_) => setState(() => _tab = 0),
+                    selectedColor: palette.surfaceInteractive,
+                  ),
+                  ChoiceChip(
+                    backgroundColor: palette.fieldFillStrong,
+                    side: BorderSide(color: palette.border),
+                    labelStyle: TextStyle(color: palette.textPrimary),
+                    label: const Text('Repeticiones'),
+                    selected: _tab == 1,
+                    onSelected: (_) => setState(() => _tab = 1),
+                    selectedColor: palette.surfaceInteractive,
+                  ),
+                  ChoiceChip(
+                    backgroundColor: palette.fieldFillStrong,
+                    side: BorderSide(color: palette.border),
+                    labelStyle: TextStyle(color: palette.textPrimary),
+                    label: const Text('Del historial'),
+                    selected: _tab == 2,
+                    selectedColor: palette.surfaceInteractive,
+                    onSelected: (_) => setState(() => _tab = 2),
                   ),
                   FilledButton.icon(
-                    style: _actionFilledButtonStyle(context),
-                    onPressed: _working ? null : () => unawaited(_openEditor()),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Nuevo fijo'),
-                  ),
-                  FilledButton.tonalIcon(
                     style: _actionSoftFilledButtonStyle(context),
-                    onPressed: _working
-                        ? null
-                        : () => unawaited(
-                            _scheduleRecords(
-                              _records
-                                  .where((record) => record.isActive)
-                                  .toList(growable: false),
-                            ),
-                          ),
-                    icon: const Icon(Icons.playlist_add_check_rounded),
-                    label: const Text('Agendar del día'),
+                    onPressed: _working ? null : () => _openEditor(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Nueva repetición'),
                   ),
+                  if (_tab == 0) ...[
+                    IconButton(
+                      tooltip: 'Semana anterior',
+                      onPressed: _loading ? null : () => _moveWeek(-7),
+                      icon: Icon(Icons.chevron_left, color: palette.icon),
+                    ),
+                    Text(
+                      '${_date(_targetDate)} – ${_date(_targetDate.add(const Duration(days: 6)))}',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Semana siguiente',
+                      onPressed: _loading ? null : () => _moveWeek(7),
+                      icon: Icon(Icons.chevron_right, color: palette.icon),
+                    ),
+                    TextButton(
+                      style: _actionTextButtonStyle(context),
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              setState(
+                                () => _targetDate = DateUtils.dateOnly(
+                                  DateTime.now(),
+                                ),
+                              );
+                              unawaited(_load());
+                            },
+                      child: const Text('Hoy'),
+                    ),
+                    DropdownButton<bool>(
+                      value: _byUnit,
+                      dropdownColor: palette.surfaceBase,
+                      items: const [
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text('Por empresa'),
+                        ),
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text('Por unidad'),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _byUnit = v ?? false),
+                    ),
+                    Text(
+                      '$pending con recursos pendientes',
+                      style: TextStyle(color: palette.textSecondary),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 14),
+              if (_working)
+                LinearProgressIndicator(color: palette.filterAccent),
               Expanded(
                 child: _loading
                     ? Center(
@@ -8156,245 +8556,18 @@ class _FixedServicesManagerDialogState
                           color: palette.filterAccent,
                         ),
                       )
-                    : _records.isEmpty
-                    ? Container(
-                        decoration: BoxDecoration(
-                          color: palette.fieldFillStrong,
-                          gradient: palette.glassCardGradient,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: palette.border),
-                        ),
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.event_repeat_rounded,
-                              size: 42,
-                              color: palette.icon,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Todavía no hay servicios fijos capturados',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: palette.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Empieza guardando los recorridos repetitivos para que mañana solo tengas que elegir fecha y volverlos a alimentar.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 12.8,
-                                height: 1.45,
-                                fontWeight: FontWeight.w600,
-                                color: palette.textSecondary,
-                              ),
-                            ),
-                          ],
+                    : _error != null
+                    ? Center(
+                        child: Text(
+                          _error!,
+                          style: TextStyle(color: palette.textSecondary),
                         ),
                       )
-                    : Scrollbar(
-                        controller: _scrollController,
-                        thumbVisibility: true,
-                        child: ListView.separated(
-                          controller: _scrollController,
-                          itemCount: _records.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final record = _records[index];
-                            final appliesToday = record.appliesTo(_targetDate);
-                            final driverLabel = _labelOf(
-                              widget.drivers,
-                              record.defaultDriverEmployeeId,
-                            );
-                            final vehicleLabel = _labelOf(
-                              widget.vehicles,
-                              record.defaultVehicleId,
-                            );
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: palette.fieldFillStrong,
-                                gradient: palette.glassCardGradient,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: record.isActive
-                                      ? palette.borderStrong
-                                      : palette.border,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    blurRadius: 14,
-                                    color: palette.shadow.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              record.siteName,
-                                              style: TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.w900,
-                                                color: palette.textPrimary,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${record.materialName} · ${logisticsFixedServiceMovementLabel(record.movement)} · ${logisticsFormatFixedServiceTimeUi(record.scheduledTime)}',
-                                              style: TextStyle(
-                                                fontSize: 12.5,
-                                                fontWeight: FontWeight.w700,
-                                                color: palette.textSecondary,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Switch.adaptive(
-                                        value: record.isActive,
-                                        activeThumbColor: palette.surfaceBase,
-                                        activeTrackColor: palette.filterAccent,
-                                        inactiveThumbColor: palette.surfaceBase,
-                                        inactiveTrackColor:
-                                            palette.surfaceInteractive,
-                                        onChanged: _working
-                                            ? null
-                                            : (value) => unawaited(
-                                                _toggleActive(record, value),
-                                              ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      _ServicePlanningKindBadge(
-                                        text:
-                                            logisticsFixedServicePlanningKindLabel(
-                                              'FIJO',
-                                            ),
-                                      ),
-                                      for (final weekday in record.weekdays)
-                                        _InlineMetaChip(
-                                          label: logisticsWeekdayShortLabel(
-                                            weekday,
-                                          ),
-                                        ),
-                                      _InlineMetaChip(
-                                        label: driverLabel == '—'
-                                            ? 'Sin chofer base'
-                                            : 'Chofer: $driverLabel',
-                                      ),
-                                      _InlineMetaChip(
-                                        label: vehicleLabel == '—'
-                                            ? 'Sin unidad base'
-                                            : 'Unidad: $vehicleLabel',
-                                      ),
-                                    ],
-                                  ),
-                                  if (record.notes.trim().isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      record.notes.trim(),
-                                      style: TextStyle(
-                                        fontSize: 12.3,
-                                        height: 1.4,
-                                        fontWeight: FontWeight.w600,
-                                        color: palette.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          appliesToday
-                                              ? 'Sí aplica para ${logisticsWeekdayLongLabel(_targetDate.weekday)} ${_fmtDateLabel(_targetDate)}.'
-                                              : 'No toca en ${logisticsWeekdayLongLabel(_targetDate.weekday)} ${_fmtDateLabel(_targetDate)}.',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: appliesToday
-                                                ? palette.textPrimary
-                                                : palette.textMuted,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      OutlinedButton.icon(
-                                        style: _actionOutlinedButtonStyle(
-                                          context,
-                                        ),
-                                        onPressed: _working
-                                            ? null
-                                            : () => unawaited(
-                                                _openEditor(record: record),
-                                              ),
-                                        icon: const Icon(Icons.edit_outlined),
-                                        label: const Text('Editar'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      FilledButton.tonalIcon(
-                                        style: _actionSoftFilledButtonStyle(
-                                          context,
-                                        ),
-                                        onPressed:
-                                            _working ||
-                                                !record.isActive ||
-                                                !appliesToday
-                                            ? null
-                                            : () => unawaited(
-                                                _scheduleRecords(
-                                                  <LogisticsFixedServiceRecord>[
-                                                    record,
-                                                  ],
-                                                ),
-                                              ),
-                                        icon: const Icon(
-                                          Icons.playlist_add_rounded,
-                                        ),
-                                        label: const Text('Agendar'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      TextButton.icon(
-                                        style: _actionTextButtonStyle(context),
-                                        onPressed: _working
-                                            ? null
-                                            : () => unawaited(
-                                                _deleteRecord(record),
-                                              ),
-                                        icon: const Icon(Icons.delete_outline),
-                                        label: const Text('Eliminar'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    : _tab == 0
+                    ? _weeklyView()
+                    : _tab == 1
+                    ? _recurrencesView()
+                    : _suggestionsView(),
               ),
             ],
           ),
@@ -8436,6 +8609,8 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
   bool _isActive = true;
   TimeOfDay? _scheduledTime;
   Set<int> _weekdays = <int>{};
+  int _visitsPerDay = 1;
+  late DateTime _effectiveFrom;
 
   @override
   void initState() {
@@ -8447,9 +8622,13 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
     _vehicleId = record?.defaultVehicleId;
     _movement = record?.movement ?? 'recoleccion';
     _isActive = record?.isActive ?? true;
-    _scheduledTime =
-        logisticsParseFixedServiceTime(record?.scheduledTime) ??
-        const TimeOfDay(hour: 8, minute: 0);
+    _scheduledTime = logisticsParseFixedServiceTime(record?.scheduledTime);
+    _visitsPerDay = record?.visitsPerDay ?? 1;
+    final today = DateUtils.dateOnly(DateTime.now());
+    _effectiveFrom =
+        record?.effectiveFrom != null && record!.effectiveFrom!.isAfter(today)
+        ? record.effectiveFrom!
+        : today;
     _weekdays = (record?.weekdays ?? const <int>[]).toSet();
     _notesController.text = record?.notes ?? '';
   }
@@ -8488,14 +8667,18 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
       context,
       title: 'Material',
       initialValue: _materialId,
-      options: widget.materials
-          .map(
-            (item) => _PickerOption<String>(value: item.id, label: item.label),
-          )
-          .toList(growable: false),
+      options: [
+        const _PickerOption<String>(
+          value: _kNoneValue,
+          label: 'Material pendiente',
+        ),
+        ...widget.materials.map(
+          (item) => _PickerOption<String>(value: item.id, label: item.label),
+        ),
+      ],
     );
     if (!mounted || selected == null) return;
-    setState(() => _materialId = selected);
+    setState(() => _materialId = selected == _kNoneValue ? null : selected);
   }
 
   Future<void> _pickDriver() async {
@@ -8506,7 +8689,7 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
       options: <_PickerOption<String>>[
         const _PickerOption<String>(
           value: _kNoneValue,
-          label: 'Sin chofer base',
+          label: 'Usar chofer asignado a la unidad',
         ),
         ...widget.drivers.map(
           (item) => _PickerOption<String>(value: item.id, label: item.label),
@@ -8552,18 +8735,6 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
       );
       return;
     }
-    if (_materialId == null || _materialId!.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona el material del fijo.')),
-      );
-      return;
-    }
-    if (_scheduledTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona la hora del fijo.')),
-      );
-      return;
-    }
     if (_weekdays.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Marca al menos un día de la semana.')),
@@ -8576,9 +8747,15 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
       siteId: _clientId!,
       siteName: _labelOf(widget.clients, _clientId),
       materialId: _materialId,
-      materialName: _labelOf(widget.materials, _materialId),
+      materialName: _materialId == null
+          ? 'SIN_MATERIAL'
+          : _labelOf(widget.materials, _materialId),
       movement: _movement,
-      scheduledTime: logisticsFormatFixedServiceTimeDb(_scheduledTime!),
+      scheduledTime: _scheduledTime == null
+          ? ''
+          : logisticsFormatFixedServiceTimeDb(_scheduledTime!),
+      visitsPerDay: _visitsPerDay,
+      effectiveFrom: _effectiveFrom,
       weekdays: (_weekdays.toList()..sort((a, b) => a.compareTo(b))),
       defaultDriverEmployeeId: _driverId,
       defaultVehicleId: _vehicleId,
@@ -8595,7 +8772,7 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
   Widget build(BuildContext context) {
     final palette = ServicesVisualPalette.of(context);
     return Dialog(
-      backgroundColor: Colors.transparent,
+      backgroundColor: palette.surfaceElevated,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760, maxHeight: 760),
@@ -8606,8 +8783,8 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
               children: [
                 Text(
                   widget.record == null
-                      ? 'Nuevo servicio fijo'
-                      : 'Editar servicio fijo',
+                      ? 'Nueva repetición'
+                      : 'Editar repetición',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -8634,7 +8811,9 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
                 const SizedBox(height: 12),
                 _FixedServicePickerField(
                   label: 'Material',
-                  value: _labelOf(widget.materials, _materialId),
+                  value: _materialId == null
+                      ? 'Material pendiente'
+                      : _labelOf(widget.materials, _materialId),
                   icon: Icons.inventory_2_outlined,
                   onTap: _pickMaterial,
                 ),
@@ -8675,12 +8854,71 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _FixedServicePickerField(
-                        label: 'Hora',
+                        label: 'Hora aproximada (opcional)',
                         value: _scheduledTime == null
-                            ? 'Seleccionar'
+                            ? 'Sin horario fijo'
                             : _fmtServicesUiTimeOfDay(_scheduledTime!),
                         icon: Icons.schedule_rounded,
                         onTap: _pickTime,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (_scheduledTime != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => setState(() => _scheduledTime = null),
+                      child: const Text('Quitar horario fijo'),
+                    ),
+                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _visitsPerDay,
+                        dropdownColor: palette.surfaceBase,
+                        decoration: _glassFieldDecoration(
+                          context,
+                          labelText: 'Visitas por día',
+                          fillColor: palette.fieldFillStrong,
+                        ),
+                        items: List.generate(
+                          20,
+                          (i) => DropdownMenuItem(
+                            value: i + 1,
+                            child: Text('${i + 1}'),
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _visitsPerDay = value ?? 1),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _FixedServicePickerField(
+                        label: 'Aplicar desde',
+                        value:
+                            '${_effectiveFrom.day}/${_effectiveFrom.month}/${_effectiveFrom.year}',
+                        icon: Icons.event,
+                        onTap: () async {
+                          final today = DateUtils.dateOnly(DateTime.now());
+                          final minimum =
+                              widget.record?.effectiveFrom != null &&
+                                  widget.record!.effectiveFrom!.isAfter(today)
+                              ? widget.record!.effectiveFrom!
+                              : today;
+                          final date = await _showGlassDatePickerDialog(
+                            context,
+                            initialDate: _effectiveFrom,
+                            firstDate: minimum,
+                            lastDate: today.add(const Duration(days: 730)),
+                          );
+                          if (mounted && date != null) {
+                            setState(() => _effectiveFrom = date);
+                          }
+                        },
                       ),
                     ),
                   ],
@@ -8742,7 +8980,7 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
                 _FixedServicePickerField(
                   label: 'Chofer base',
                   value: _driverId == null
-                      ? 'Sin chofer base'
+                      ? 'Usar chofer asignado a la unidad'
                       : _labelOf(widget.drivers, _driverId),
                   icon: Icons.badge_outlined,
                   onTap: _pickDriver,
@@ -8773,7 +9011,7 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
                     ),
                   ),
                   subtitle: Text(
-                    'Si lo apagas, el fijo se conserva pero deja de alimentar el control.',
+                    'Al pausar, se cancelan las visitas futuras sin cambios individuales. Las visitas atendidas se conservan.',
                     style: TextStyle(
                       color: palette.textSecondary,
                       fontWeight: FontWeight.w600,
@@ -8815,7 +9053,7 @@ class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
                       style: _actionFilledButtonStyle(context),
                       onPressed: _submit,
                       icon: const Icon(Icons.save_outlined),
-                      label: const Text('Guardar fijo'),
+                      label: const Text('Guardar programación'),
                     ),
                   ],
                 ),

@@ -132,7 +132,7 @@ void main() {
     tables['logistics_vehicle_mileage'] = [
       {
         'id': 'm1',
-        'entry_date': '2026-10-13',
+        'entry_date': DateTime.now().toIso8601String().substring(0, 10),
         'vehicle_id': 'v1',
         'vehicle_key': 'T1',
         'vehicle_label': 'T-01',
@@ -142,7 +142,7 @@ void main() {
     tables['logistics_diesel_consumption'] = [
       {
         'id': 'd1',
-        'entry_date': '2026-10-13',
+        'entry_date': DateTime.now().toIso8601String().substring(0, 10),
         'vehicle_id': 'v1',
         'vehicle_label': 'T-01',
         'liters_requested': 100,
@@ -190,9 +190,11 @@ void main() {
     'master-data resync cannot clear capacity when the profile read fails',
     () async {
       failProfiles = true;
-      await LogisticsVehicleProfileStore.loadProfiles();
-      expect(writes, hasLength(1));
-      expect(writes.single.containsKey('tank_capacity_liters'), isFalse);
+      await expectLater(
+        LogisticsVehicleProfileStore.loadProfiles(),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(writes, isEmpty);
       expect(
         tables['logistics_vehicle_profiles']!.single['tank_capacity_liters'],
         400,
@@ -268,8 +270,9 @@ void main() {
         const MaterialApp(home: LogisticsPerformancePage()),
       );
       await tester.pumpAndSettle();
-      expect(find.text('TANQUE (L)'), findsOneWidget);
-      expect(find.text('450.75 L'), findsOneWidget);
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Tanque: 450.75 L'), findsOneWidget);
       // Tank size is descriptive; it must not replace actual liters in km/L.
       expect(find.text('3.00 km/L'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -290,7 +293,9 @@ void main() {
       const MaterialApp(home: LogisticsPerformancePage()),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Sin capturar'), findsOneWidget);
+    await tester.tap(find.text('T-01'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Tanque: Sin capturar'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

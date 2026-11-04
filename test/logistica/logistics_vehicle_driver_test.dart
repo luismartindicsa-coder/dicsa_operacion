@@ -205,9 +205,11 @@ void main() {
     () async {
       profile()['assigned_driver_employee_id'] = 'e1';
       failRead = true;
-      await LogisticsVehicleProfileStore.loadProfiles();
-      expect(writes, hasLength(1));
-      expect(writes.single.containsKey('assigned_driver_employee_id'), isFalse);
+      await expectLater(
+        LogisticsVehicleProfileStore.loadProfiles(),
+        throwsA(isA<PostgrestException>()),
+      );
+      expect(writes, isEmpty);
       expect(profile()['assigned_driver_employee_id'], 'e1');
     },
   );

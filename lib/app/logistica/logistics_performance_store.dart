@@ -67,6 +67,28 @@ class LogisticsVehicleMileageRecord {
 }
 
 class LogisticsVehicleMileageStore {
+  /// Price-only correction; never creates a synthetic zero-kilometer reading.
+  static Future<void> updatePrices(
+    LogisticsVehicleMileageRecord record, {
+    double? diesel,
+    double? gasoline,
+  }) async {
+    final patch = <String, dynamic>{
+      'diesel_price_per_liter': ?diesel,
+      'gasoline_price_per_liter': ?gasoline,
+    };
+    if (patch.isEmpty) return;
+    final rows = await Supabase.instance.client
+        .from(_kMileageTable)
+        .update(patch)
+        .eq('entry_date', _formatDbDate(record.entryDate))
+        .eq('vehicle_key', record.vehicleKey)
+        .select('id');
+    if (rows.isEmpty) {
+      throw StateError('La lectura ya no existe. Vuelve a abrir el detalle.');
+    }
+  }
+
   static Future<List<LogisticsVehicleMileageRecord>> loadEntries() async {
     final rows = await fetchAllSupabaseRows(
       (from, to) => Supabase.instance.client

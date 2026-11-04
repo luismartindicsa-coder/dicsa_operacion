@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 
 const String _kLogisticsFixedServicesTable = 'logistics_fixed_services';
 
@@ -93,7 +94,7 @@ TimeOfDay? logisticsParseFixedServiceTime(String? raw) {
 
 String logisticsFormatFixedServiceTimeUi(String raw) {
   final time = logisticsParseFixedServiceTime(raw);
-  if (time == null) return raw.trim();
+  if (time == null) return raw.trim().isEmpty ? 'Sin horario fijo' : raw.trim();
   final hh = time.hour.toString().padLeft(2, '0');
   final mm = time.minute.toString().padLeft(2, '0');
   return '$hh:$mm';
@@ -118,6 +119,8 @@ class LogisticsFixedServiceRecord {
   final String? defaultVehicleId;
   final bool isActive;
   final String notes;
+  final int visitsPerDay;
+  final DateTime? effectiveFrom;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -134,12 +137,16 @@ class LogisticsFixedServiceRecord {
     required this.defaultVehicleId,
     required this.isActive,
     required this.notes,
+    this.visitsPerDay = 1,
+    this.effectiveFrom,
     required this.createdAt,
     required this.updatedAt,
   });
 
   bool appliesTo(DateTime date) {
-    return weekdays.contains(DateUtils.dateOnly(date).weekday);
+    return (effectiveFrom == null ||
+            !DateUtils.dateOnly(date).isBefore(effectiveFrom!)) &&
+        weekdays.contains(DateUtils.dateOnly(date).weekday);
   }
 
   LogisticsFixedServiceRecord copyWith({
@@ -155,6 +162,8 @@ class LogisticsFixedServiceRecord {
     Object? defaultVehicleId = _unset,
     bool? isActive,
     String? notes,
+    int? visitsPerDay,
+    DateTime? effectiveFrom,
     Object? createdAt = _unset,
     Object? updatedAt = _unset,
   }) {
@@ -177,6 +186,8 @@ class LogisticsFixedServiceRecord {
           : defaultVehicleId as String?,
       isActive: isActive ?? this.isActive,
       notes: notes ?? this.notes,
+      visitsPerDay: visitsPerDay ?? this.visitsPerDay,
+      effectiveFrom: effectiveFrom ?? this.effectiveFrom,
       createdAt: createdAt == _unset ? this.createdAt : createdAt as DateTime?,
       updatedAt: updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
     );
@@ -190,7 +201,8 @@ class LogisticsFixedServiceRecord {
       'material_id': materialId,
       'material_name': materialName.trim(),
       'movement': movement.trim().toLowerCase(),
-      'scheduled_time': scheduledTime,
+      'scheduled_time': scheduledTime.trim().isEmpty ? null : scheduledTime,
+      'visits_per_day': visitsPerDay,
       'weekdays': weekdays,
       'default_driver_employee_id': defaultDriverEmployeeId,
       'default_vehicle_id': defaultVehicleId,
@@ -213,6 +225,8 @@ class LogisticsFixedServiceRecord {
       defaultVehicleId: row['default_vehicle_id']?.toString(),
       isActive: row['is_active'] as bool? ?? true,
       notes: (row['notes'] ?? '').toString(),
+      visitsPerDay: (row['visits_per_day'] as num?)?.toInt() ?? 1,
+      effectiveFrom: _tryParseDateTime(row['effective_from']?.toString()),
       createdAt: _tryParseDateTime(row['created_at']?.toString()),
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
     );
@@ -221,129 +235,88 @@ class LogisticsFixedServiceRecord {
   static const Object _unset = Object();
 }
 
-class LogisticsFixedServiceScheduleResult {
-  final int inserted;
-  final int skippedExisting;
-  final int skippedInactive;
-  final int skippedWeekday;
-
-  const LogisticsFixedServiceScheduleResult({
-    required this.inserted,
-    required this.skippedExisting,
-    required this.skippedInactive,
-    required this.skippedWeekday,
-  });
-}
-
 class LogisticsFixedServicesStore {
+  static Future<void> ensureUpcoming() async {
+    await Supabase.instance.client.rpc('sync_logistics_recurring_services');
+  }
+
   static Future<List<LogisticsFixedServiceRecord>> loadRecords() async {
-    final rows = await Supabase.instance.client
-        .from(_kLogisticsFixedServicesTable)
-        .select()
-        .order('site_name')
-        .order('scheduled_time');
-    return (rows as List)
-        .map(
-          (row) => LogisticsFixedServiceRecord.fromRemoteRow(
-            Map<String, dynamic>.from(row as Map),
-          ),
-        )
-        .toList(growable: false);
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kLogisticsFixedServicesTable)
+          .select()
+          .isFilter('effective_until', null)
+          .order('site_name', ascending: true)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
+    return rows.map(LogisticsFixedServiceRecord.fromRemoteRow).toList();
   }
 
   static Future<LogisticsFixedServiceRecord> saveRecord(
-    LogisticsFixedServiceRecord record,
-  ) async {
-    final row = await Supabase.instance.client
-        .from(_kLogisticsFixedServicesTable)
-        .upsert(record.toUpsertJson())
-        .select()
-        .single();
-    return LogisticsFixedServiceRecord.fromRemoteRow(
-      Map<String, dynamic>.from(row),
-    );
-  }
-
-  static Future<void> deleteRecord(String id) async {
-    await Supabase.instance.client
-        .from(_kLogisticsFixedServicesTable)
-        .delete()
-        .eq('id', id);
-  }
-
-  static Future<LogisticsFixedServiceScheduleResult> scheduleForDate(
-    DateTime date, {
-    required List<LogisticsFixedServiceRecord> records,
+    LogisticsFixedServiceRecord record, {
+    DateTime? fromDate,
   }) async {
-    final serviceDate = DateUtils.dateOnly(date);
-    final active = records.where((record) => record.isActive).toList();
-    final applicable = active
-        .where((record) => record.appliesTo(serviceDate))
-        .toList();
-    final skippedInactive = records.length - active.length;
-    final skippedWeekday = active.length - applicable.length;
-    final templateIds = applicable
-        .map((record) => record.id)
-        .whereType<String>()
-        .where((id) => id.trim().isNotEmpty)
-        .toList(growable: false);
-
-    if (templateIds.isEmpty) {
-      return LogisticsFixedServiceScheduleResult(
-        inserted: 0,
-        skippedExisting: 0,
-        skippedInactive: skippedInactive,
-        skippedWeekday: skippedWeekday,
-      );
-    }
-
-    final existingRows = await Supabase.instance.client
-        .from('services')
-        .select('fixed_service_id')
-        .eq('area', 'LOGISTICA')
-        .eq('service_date', _fmtDbDate(serviceDate))
-        .inFilter('fixed_service_id', templateIds);
-
-    final existingIds = (existingRows as List)
-        .map((row) => (row as Map)['fixed_service_id']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    final inserts = <Map<String, dynamic>>[];
-    for (final record in applicable) {
-      final fixedId = record.id;
-      if (fixedId == null || fixedId.trim().isEmpty) continue;
-      if (existingIds.contains(fixedId)) continue;
-      inserts.add(<String, dynamic>{
-        'service_date': _fmtDbDate(serviceDate),
-        'due_date': _fmtDbDate(serviceDate),
-        'scheduled_time': record.scheduledTime,
-        'direction': record.movement,
-        'status': 'programado',
-        'planning_kind': 'FIJO',
-        'fixed_service_id': fixedId,
-        'client_id': record.siteId,
-        'client_name': record.siteName,
-        // services mantiene una FK legacy distinta al catálogo comercial.
-        'material_id': null,
-        'material_type': record.materialName,
-        'driver_employee_id': record.defaultDriverEmployeeId,
-        'vehicle_id': record.defaultVehicleId,
-        'area': 'LOGISTICA',
-        'notes': record.notes.trim().isEmpty ? null : record.notes.trim(),
-      });
-    }
-
-    if (inserts.isNotEmpty) {
-      await Supabase.instance.client.from('services').insert(inserts);
-    }
-
-    return LogisticsFixedServiceScheduleResult(
-      inserted: inserts.length,
-      skippedExisting: applicable.length - inserts.length,
-      skippedInactive: skippedInactive,
-      skippedWeekday: skippedWeekday,
+    final row = await Supabase.instance.client.rpc(
+      'save_logistics_recurrence',
+      params: {
+        'p_record': record.toUpsertJson(),
+        if (fromDate != null) 'p_from': _fmtDbDate(fromDate),
+      },
     );
+    return LogisticsFixedServiceRecord.fromRemoteRow(
+      Map<String, dynamic>.from(row as Map),
+    );
+  }
+
+  static Future<void> changeFromVisit(
+    String id,
+    Map<String, dynamic> patch,
+  ) async {
+    await Supabase.instance.client.rpc(
+      'change_logistics_recurrence_from_visit',
+      params: {'p_service_id': id, 'p_patch': patch},
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> loadWeek(DateTime start) {
+    return fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from('services')
+          .select()
+          .eq('area', 'LOGISTICA')
+          .gte('service_date', _fmtDbDate(start))
+          .lt('service_date', _fmtDbDate(start.add(const Duration(days: 7))))
+          .order('service_date', ascending: true)
+          .order('scheduled_time', ascending: true, nullsFirst: false)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
+  }
+
+  static Future<void> addExtraVisit(
+    Map<String, dynamic> source,
+    DateTime date,
+  ) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (DateUtils.dateOnly(date).isBefore(today)) {
+      throw const FormatException('Selecciona hoy o una fecha futura.');
+    }
+    await Supabase.instance.client.from('services').insert({
+      'service_date': _fmtDbDate(date),
+      'due_date': _fmtDbDate(date),
+      'client_id': source['client_id'],
+      'client_name': source['client_name'],
+      'direction': source['direction'],
+      'material_type': source['material_type'] ?? 'SIN_MATERIAL',
+      'material_id': null,
+      'driver_employee_id': source['driver_employee_id'],
+      'vehicle_id': source['vehicle_id'],
+      'status': 'programado',
+      'planning_kind': 'VARIANTE',
+      'area': 'LOGISTICA',
+      'notes': 'Vuelta adicional de ${source['client_name']}.',
+    });
   }
 }
 
@@ -373,4 +346,83 @@ String _fmtDbDate(DateTime d) {
 DateTime? _tryParseDateTime(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   return DateTime.tryParse(raw);
+}
+
+/// One observation per company, movement and date; repeated geofence entries
+/// never increase the proposed daily visit count.
+List<LogisticsFixedServiceRecord> logisticsRecurrenceSuggestions(
+  List<Map<String, dynamic>> history,
+  List<LogisticsFixedServiceRecord> records,
+  DateTime month,
+) {
+  final groups = <String, List<Map<String, dynamic>>>{};
+  for (final row in history) {
+    final date = DateTime.tryParse('${row['service_date']}');
+    if (date == null ||
+        date.year != month.year ||
+        date.month != month.month ||
+        row['area'] != 'LOGISTICA' ||
+        row['status'] != 'completado' ||
+        row['client_id'] == null) {
+      continue;
+    }
+    final key = '${row['client_id']}|${row['direction']}';
+    groups.putIfAbsent(key, () => []).add(row);
+  }
+  final suggestions = <LogisticsFixedServiceRecord>[];
+  for (final rows in groups.values) {
+    final dates = rows.map((r) => '${r['service_date']}').toSet();
+    final weekdays = <int, int>{};
+    for (final date in dates) {
+      final day = DateTime.parse(date).weekday;
+      weekdays[day] = (weekdays[day] ?? 0) + 1;
+    }
+    final days =
+        weekdays.entries.where((e) => e.value >= 3).map((e) => e.key).toList()
+          ..sort();
+    if (days.isEmpty) continue;
+    final row = rows.first;
+    final matches = records
+        .where(
+          (r) => r.siteId == row['client_id'] && r.movement == row['direction'],
+        )
+        .toList();
+    if (matches.length > 1) continue;
+    final existing = matches.firstOrNull;
+    if (existing != null &&
+        existing.isActive &&
+        existing.weekdays.length == days.length &&
+        existing.weekdays.toSet().containsAll(days)) {
+      continue;
+    }
+    final draft =
+        existing ??
+        LogisticsFixedServiceRecord(
+          id: null,
+          siteId: '${row['client_id']}',
+          siteName: '${row['client_name']}',
+          materialId: null,
+          materialName: 'SIN_MATERIAL',
+          movement: '${row['direction']}',
+          scheduledTime: '',
+          weekdays: days,
+          defaultDriverEmployeeId: null,
+          defaultVehicleId: null,
+          isActive: true,
+          notes: '',
+          createdAt: null,
+          updatedAt: null,
+        );
+    suggestions.add(
+      draft.copyWith(
+        weekdays: days,
+        isActive: true,
+        notes:
+            'Días sugeridos desde ${month.month}/${month.year}: ${dates.length} fechas distintas. Revisar frecuencia y vueltas. ${draft.notes}'
+                .trim(),
+      ),
+    );
+  }
+  suggestions.sort((a, b) => a.siteName.compareTo(b.siteName));
+  return suggestions;
 }
