@@ -21,9 +21,9 @@ void main() {
   final writes = <Map<String, dynamic>>[];
   final requests = <Uri>[];
   final today = DateUtils.dateOnly(DateTime.now());
-  final monday = today.subtract(Duration(days: today.weekday - 1));
+  final periodStart = today.subtract(const Duration(days: 7));
   String date(int day) =>
-      monday.add(Duration(days: day)).toIso8601String().substring(0, 10);
+      periodStart.add(Duration(days: day)).toIso8601String().substring(0, 10);
   Map<String, dynamic> reading(
     int day,
     double km, {
@@ -97,7 +97,10 @@ void main() {
             )
             .toList();
         if (r.method == 'PATCH') {
-          expectSync(table, 'logistics_vehicle_mileage');
+          expectSync(
+            table,
+            anyOf('logistics_vehicle_mileage', 'logistics_gps_daily_mileage'),
+          );
           final patch = Map<String, dynamic>.from(jsonDecode(r.body) as Map);
           writes.add(patch);
           for (final row in rows) {
@@ -197,7 +200,7 @@ void main() {
   );
 
   test(
-    'orphan fuel/services remain visible; partial km never yields a fabricated ratio or full cost',
+    'missing km retain every delivery and show a partial reference without claiming a complete ratio or cost',
     () async {
       tables['logistics_diesel_consumption']!.add({
         'id': 'orphan',
@@ -215,12 +218,18 @@ void main() {
       expect(t.fuel.total, 150);
       expect(t.kilometerLabel, '500.0 km (parcial)');
       expect(t.performance, isNull);
+      expect(t.recordedPerformance, closeTo(500 / 150, .000001));
+      expect(t.hasPartialPerformance, isTrue);
+      expect(t.performanceLabel, '3.33 km/L (parcial)');
+      expect(t.mileageCoverageLabel, '3 días con km · 1 sin km');
+      expect(t.days.first.mileage, isNull);
       expect(t.cost.label, r'$2,500.00 (parcial)');
       expect(
         t.warnings,
         containsAll(['Falta kilometraje (1 día)', 'Falta precio']),
       );
       expect(units.first.mileageDays, 0);
+      expect(units.first.performanceLabel, 'Sin estimación');
       expect(units.first.trips, 1);
       expect(units.first.warnings, contains('Sin carga registrada'));
     },
@@ -235,6 +244,8 @@ void main() {
         await LogisticsPerformanceData.load(),
       ).single;
       expect(zero.performance, 0);
+      expect(zero.hasPartialPerformance, isFalse);
+      expect(zero.performanceLabel, '0.00 km/L');
       expect(zero.missingMileageDays, 0);
       tables['logistics_gasoline_control'] = [
         {
@@ -249,6 +260,9 @@ void main() {
       ).single;
       expect(mixed.fuel.total, 120);
       expect(mixed.performance, isNull);
+      expect(mixed.recordedPerformance, isNull);
+      expect(mixed.hasPartialPerformance, isFalse);
+      expect(mixed.performanceLabel, 'Sin estimación');
       expect(mixed.warnings, contains('Combustibles mezclados'));
     },
   );
@@ -292,6 +306,101 @@ void main() {
     },
   );
 
+  Map<String, dynamic> gpsReading(
+    int day,
+    double? km, {
+    String status = 'ok',
+  }) => {
+    'entry_date': date(day),
+    'vehicle_id': 'v1',
+    'vehicle_label': 'OLD GPS LABEL',
+    'status': status,
+    'kilometers': km,
+    'diesel_price_per_liter': 26,
+  };
+
+  test(
+    'EPCOM fills missing daily km, never adds to imported mileage and routes price edits to its source',
+    () async {
+      tables['logistics_vehicle_mileage']!.removeLast();
+      tables['logistics_gps_daily_mileage'] = [
+        gpsReading(1, 999),
+        gpsReading(2, 250),
+      ];
+      var unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(unit.kilometers, 550);
+      expect(unit.performance, 5.5);
+      final automatic = unit.days.first;
+      expect(automatic.mileage!.fromEpcom, true);
+      expect(automatic.mileageSourceLabel, 'EPCOM · recorridos del día');
+      expect(unit.days[1].mileage!.fromEpcom, false);
+      expect(unit.days[1].mileageSourceLabel, 'Lecturas.xlsx');
+      await LogisticsVehicleMileageStore.updatePrices(
+        automatic.mileage!,
+        diesel: 28,
+      );
+      expect(requests.last.path, endsWith('/logistics_gps_daily_mileage'));
+      expect(requests.last.queryParameters['vehicle_id'], 'eq.v1');
+      expect(writes.single, {'diesel_price_per_liter': 28.0});
+      unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(unit.days.first.dieselPrice, 28);
+      expect(
+        tables['logistics_vehicle_mileage']![1]['diesel_price_per_liter'],
+        25,
+      );
+    },
+  );
+
+  test(
+    'GPS gaps and access failures keep partial labels and source warnings; measured zero completes the period',
+    () async {
+      tables['logistics_vehicle_mileage']!.removeLast();
+      tables['logistics_gps_daily_mileage'] = [
+        gpsReading(2, null, status: 'no_data'),
+      ];
+      var unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(unit.performance, isNull);
+      expect(unit.performanceLabel, '3.00 km/L (parcial)');
+      expect(unit.warnings, contains('Hay días sin mensajes GPS'));
+      tables['logistics_gps_daily_mileage'] = [
+        {...gpsReading(2, 250, status: 'error'), 'error_code': 'authorization'},
+      ];
+      unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(unit.kilometers, 300);
+      expect(unit.performance, isNull);
+      expect(unit.performanceLabel, '3.00 km/L (parcial)');
+      expect(unit.warnings, contains('Falta autorizar historial EPCOM'));
+      tables['logistics_gps_daily_mileage'] = [gpsReading(2, 0)];
+      unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(unit.performance, 3);
+      expect(unit.performanceLabel, '3.00 km/L');
+      expect(unit.hasPartialPerformance, isFalse);
+      tables['logistics_gps_daily_mileage']!.add({
+        ...gpsReading(3, 999),
+        'vehicle_id': 'deleted-vehicle',
+        'vehicle_label': 'T-01',
+      });
+      unit = groupPerformanceUnits(
+        await LogisticsPerformanceData.load(),
+      ).single;
+      expect(
+        unit.kilometers,
+        300,
+        reason: 'GPS must never fuzzy-link a missing vehicle',
+      );
+    },
+  );
+
   Future<void> open(WidgetTester tester, {double width = 1440}) async {
     tester.view.physicalSize = Size(width, 1000);
     tester.view.devicePixelRatio = 1;
@@ -318,6 +427,164 @@ void main() {
     });
   }
 
+  testWidgets(
+    'default and load followup use 30 days while short cuts explain partial-load distortion',
+    (tester) async {
+      tables['services'] = [];
+      tables['logistics_vehicle_mileage'] = [
+        reading(-2, 2171.255),
+        reading(5, 518.137),
+      ];
+      tables['logistics_diesel_consumption'] = [
+        {
+          'id': 'earlier-load',
+          'entry_date': date(-2),
+          'vehicle_id': 'v1',
+          'vehicle_label': 'T-01',
+          'liters_requested': 750.94,
+        },
+        {
+          'id': 'recent-load',
+          'entry_date': date(5),
+          'vehicle_id': 'v1',
+          'vehicle_label': 'T-01',
+          'liters_requested': 55.44,
+        },
+      ];
+      await open(tester, width: 1100);
+      expect(
+        tester
+            .widget<ChoiceChip>(
+              find.widgetWithText(ChoiceChip, 'Últimos 30 días'),
+            )
+            .selected,
+        isTrue,
+      );
+      expect(find.text('3.34 km/L'), findsOneWidget);
+      expect(find.text('9.35 km/L'), findsNothing);
+      expect(find.textContaining('no consumo medido'), findsOneWidget);
+      await tester.tap(find.text('Desde última carga'));
+      await tester.pumpAndSettle();
+      expect(find.text('3.34 km/L'), findsOneWidget);
+      expect(find.text('KM/L CARGADO · 30 DÍAS'), findsOneWidget);
+      await tester.tap(find.text('Últimos 7 días'));
+      await tester.pumpAndSettle();
+      expect(find.text('9.35 km/L'), findsOneWidget);
+      expect(find.textContaining('cargas fuera del corte'), findsOneWidget);
+      expect(writes, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'date-only loads stay usable without time capture in the followup',
+    (tester) async {
+      tables['logistics_diesel_consumption']!.add({
+        'id': 'today-load',
+        'entry_date': today.toIso8601String().substring(0, 10),
+        'vehicle_id': 'v1',
+        'vehicle_label': 'T-01',
+        'liters_requested': 150,
+        'operator_employee_id': 'e1',
+      });
+      await open(tester, width: 1100);
+      expect(find.text('5.00 km/L'), findsOneWidget);
+      expect(find.textContaining('Corte común hasta'), findsOneWidget);
+      await tester.tap(find.text('Desde última carga'));
+      await tester.pumpAndSettle();
+      expect(find.text('150.0 L'), findsOneWidget);
+      expect(find.text('5.00 km/L'), findsOneWidget);
+      expect(find.text('KM/L CARGADO · 30 DÍAS'), findsOneWidget);
+      expect(find.text('PARA DECIDIR LA CARGA'), findsNothing);
+      expect(find.textContaining('Hora pendiente'), findsNothing);
+      expect(find.text('Falta hora de carga'), findsNothing);
+      await screenshot(tester, 'load-followup');
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('anteriores y posteriores'), findsOneWidget);
+      expect(find.textContaining('Seguimiento por fecha:'), findsOneWidget);
+      expect(find.text('Capturar hora real'), findsNothing);
+      expect(find.text('Corregir hora real'), findsNothing);
+      expect(find.textContaining('Hora real pendiente'), findsNothing);
+      expect(find.byType(TextFormField), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text('5.00 km/L'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Nivel disponible:'), findsNothing);
+      expect(find.textContaining('Recorrido pendiente:'), findsNothing);
+      expect(find.textContaining('referencias de combustible'), findsNothing);
+      expect(find.text('Antes de autorizar'), findsNothing);
+      await tester.pump(const Duration(seconds: 61));
+      expect(find.text('Abrir carga'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('Abrir carga'), findsNothing);
+      expect(find.text('150.0 L'), findsOneWidget);
+      expect(writes, isEmpty);
+      expect(
+        requests.any((r) => r.path.contains('set_logistics_fuel_load_time')),
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'EPCOM source and missing data remain clear through silent refresh',
+    (tester) async {
+      tables['logistics_vehicle_mileage']!.removeLast();
+      tables['logistics_gps_daily_mileage'] = [
+        gpsReading(2, null, status: 'pending'),
+      ];
+      await open(tester, width: 1100);
+      expect(find.text('3.00 km/L (parcial)'), findsOneWidget);
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kilometraje: EPCOM en preparación'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Desde última carga'));
+      await tester.pumpAndSettle();
+      expect(find.text('3.00 km/L (parcial)'), findsOneWidget);
+      expect(find.text('2 días con km · 1 sin km'), findsOneWidget);
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('no confirma un rendimiento bajo'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextFormField), findsNothing);
+      await screenshot(tester, 'partial-fuel-reference');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      tables['logistics_gps_daily_mileage'] = [gpsReading(2, 250)];
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pumpAndSettle();
+      expect(find.text('5.50 km/L'), findsOneWidget);
+      expect(find.text('3.00 km/L (parcial)'), findsNothing);
+      expect(find.text('2 días con km · 1 sin km'), findsNothing);
+      await tester.tap(find.text('Últimos 30 días'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('250.0 km ·'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Kilometraje: EPCOM · recorridos del día'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await screenshot(tester, 'epcom-mileage-detail');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('estimated fuel is visible in summary and original diesel row', (
     tester,
   ) async {
@@ -332,7 +599,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: LogisticsDieselPage(
-          initialDateRange: DateTimeRange(start: monday, end: monday),
+          initialDateRange: DateTimeRange(start: periodStart, end: periodStart),
           initialVehicleId: 'v1',
           initialVehicleLabel: 'T-01',
         ),
@@ -358,9 +625,13 @@ void main() {
           null;
       tables['logistics_vehicle_mileage']!.add(reading(3, 100, unit: 'v2'));
       await open(tester);
+      await tester.tap(find.text('Últimos 7 días'));
+      await tester.pumpAndSettle();
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Esta semana'))
+            .widget<ChoiceChip>(
+              find.widgetWithText(ChoiceChip, 'Últimos 7 días'),
+            )
             .selected,
         true,
       );
@@ -405,7 +676,7 @@ void main() {
       );
       expect(page.initialRecordId, 'load1');
       expect(page.initialVehicleId, 'v1');
-      expect(page.initialDateRange!.start, monday);
+      expect(page.initialDateRange!.start, periodStart);
       expect(find.text('Volver a Rendimiento'), findsOneWidget);
       await tester.tap(find.text('Volver a Rendimiento'));
       await tester.pumpAndSettle();
@@ -430,8 +701,11 @@ void main() {
       tables['logistics_vehicle_mileage']!.removeAt(0);
       tables['services']!.add(service('other', 1, unit: 'v2'));
       await open(tester, width: 1100);
+      await tester.tap(find.text('Últimos 7 días'));
+      await tester.pumpAndSettle();
       expect(find.text('500.0 km (parcial)'), findsWidgets);
-      expect(find.text('Sin estimación'), findsNWidgets(2));
+      expect(find.text('Sin estimación'), findsOneWidget);
+      expect(find.text('5.00 km/L (parcial)'), findsOneWidget);
       await screenshot(tester, 'missing-data');
       await tester.tap(find.text('T-01'));
       await tester.pumpAndSettle();
@@ -440,11 +714,13 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(find.textContaining('Detalle del periodo'), findsNothing);
-      await tester.tap(find.text('Este mes'));
+      await tester.tap(find.text('Últimos 30 días'));
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Este mes'))
+            .widget<ChoiceChip>(
+              find.widgetWithText(ChoiceChip, 'Últimos 30 días'),
+            )
             .selected,
         true,
       );

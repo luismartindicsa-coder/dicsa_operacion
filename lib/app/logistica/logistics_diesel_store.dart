@@ -19,6 +19,7 @@ class LogisticsDieselConsumptionRecord {
   final String loadOrigin;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? loadedAt;
   final LogisticsFuelImportSource importSource;
 
   bool get litersEstimated => importSource.isEstimatedAt(litersRequested);
@@ -36,6 +37,7 @@ class LogisticsDieselConsumptionRecord {
     required this.loadOrigin,
     required this.createdAt,
     required this.updatedAt,
+    this.loadedAt,
     this.importSource = const LogisticsFuelImportSource(),
   });
 
@@ -71,6 +73,7 @@ class LogisticsDieselConsumptionRecord {
       loadOrigin: loadOrigin ?? this.loadOrigin,
       createdAt: createdAt == _unset ? this.createdAt : createdAt as DateTime?,
       updatedAt: updatedAt == _unset ? this.updatedAt : updatedAt as DateTime?,
+      loadedAt: loadedAt,
       importSource: importSource,
     );
   }
@@ -107,6 +110,7 @@ class LogisticsDieselConsumptionRecord {
           .toString(),
       createdAt: _tryParseDateTime(row['created_at']?.toString()),
       updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
+      loadedAt: _tryParseDateTime(row['loaded_at']?.toString()),
       importSource: LogisticsFuelImportSource.fromJson(row['source_metadata']),
     );
   }

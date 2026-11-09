@@ -26,6 +26,7 @@ import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_gps_page.dart';
 import 'logistics_performance_page.dart';
 import 'logistics_performance_store.dart';
 import 'logistics_savings_page.dart';
@@ -467,6 +468,13 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         unawaited(_openCatalogs());
         return;
       case kLogisticsNavDieselLabel:
+        return;
+      case kLogisticsNavGpsLabel:
+        unawaited(
+          Navigator.of(
+            context,
+          ).pushReplacement(appPageRoute(page: const LogisticsGpsPage())),
+        );
         return;
       case kLogisticsNavGasolineLabel:
         unawaited(_openGasoline());

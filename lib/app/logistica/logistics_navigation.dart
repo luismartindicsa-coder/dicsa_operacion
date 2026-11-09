@@ -9,6 +9,7 @@ import 'logistics_gasoline_page.dart';
 import 'logistics_performance_page.dart';
 import 'logistics_savings_page.dart';
 import 'logistics_operations_pages.dart';
+import 'logistics_gps_page.dart';
 
 Widget? logisticsPageFor(String label) => switch (label) {
   kLogisticsNavDashboardLabel => const LogisticsDashboardPage(
@@ -16,6 +17,7 @@ Widget? logisticsPageFor(String label) => switch (label) {
   ),
   kLogisticsNavControlDailyLabel => const LogisticsControlDailyPage(),
   kLogisticsNavFleetStatusLabel => const LogisticsUnitsPage(),
+  kLogisticsNavGpsLabel => const LogisticsGpsPage(),
   kLogisticsNavIncidentsLabel => const LogisticsIncidentsPage(),
   kLogisticsNavCatalogsLabel => const LogisticsCatalogPage(),
   kLogisticsNavDieselLabel => const LogisticsDieselPage(),

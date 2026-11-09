@@ -168,7 +168,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Datos no disponibles'), findsOneWidget);
-      expect(find.text('1,190 km'), findsOneWidget);
+      expect(find.text('120 km'), findsOneWidget);
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
       expect(find.text('Datos no disponibles'), findsNothing);

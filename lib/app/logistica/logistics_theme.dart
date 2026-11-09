@@ -23,6 +23,8 @@ const Color kLogisticsSilverTextSecondary = Color(0xFF555E68);
 const Color kLogisticsSilverTextMuted = Color(0xFF7A838D);
 
 const Color kLogisticsSilverIcon = Color(0xFF69727C);
+const Color kLogisticsGpsRecent = Color(0xFF286348);
+const Color kLogisticsGpsWarning = Color(0xFF986118);
 const Color kLogisticsSilverFooterTop = Color(0xFF69717B);
 const Color kLogisticsSilverFooterBottom = Color(0xFF49515B);
 

@@ -79,6 +79,7 @@ LogisticsDashboardRows dashboardFixture() => {
     {'entry_date': '2026-10-11', 'liters_loaded': 9999},
   ],
   'logistics_vehicle_mileage': [
+    {'entry_date': '2026-10-12', 'vehicle_key': 'T1', 'kilometers': 120},
     {'entry_date': '2026-10-13', 'vehicle_key': 'T1', 'kilometers': 200},
     {'entry_date': '2026-10-18', 'vehicle_key': 'T1', 'kilometers': 100},
     {'entry_date': '2026-10-13', 'vehicle_key': 'T2', 'kilometers': 90},
@@ -162,12 +163,65 @@ void main() {
     expect(s[LogisticsDashboardModule.gasoline]!.value, '35 L');
   });
   test(
-    'performance shows all period fuel and mileage, without a daily or mixed-fleet ratio',
+    'performance uses 30 closed days, excludes today and merges GPS without duplicating Excel',
     () {
-      final card =
-          fixtureSnapshot().summaries[LogisticsDashboardModule.performance]!;
-      expect(card.value, '1,190 km');
-      expect(metric(card, 'Litros cargados'), '105 L');
+      final rows = dashboardFixture();
+      rows['logistics_vehicle_mileage']!.add({
+        'entry_date': '2026-10-12',
+        'vehicle_key': 'T1',
+        'kilometers': 120,
+      });
+      // First included day is earlier than the former seven-day cut.
+      rows['logistics_vehicle_mileage']!.addAll([
+        {'entry_date': '2026-09-13', 'vehicle_key': 'T1', 'kilometers': 100},
+        {'entry_date': '2026-09-12', 'vehicle_key': 'T1', 'kilometers': 9999},
+      ]);
+      rows['logistics_diesel_consumption']!.addAll([
+        {
+          'entry_date': '2026-09-13',
+          'vehicle_id': 'v1',
+          'liters_requested': 50,
+        },
+        {
+          'entry_date': '2026-09-12',
+          'vehicle_id': 'v1',
+          'liters_requested': 9999,
+        },
+      ]);
+      rows['logistics_gps_daily_mileage'] = [
+        {
+          'entry_date': '2026-10-12',
+          'vehicle_id': 'v1',
+          'status': 'ok',
+          'kilometers': 999,
+        },
+        {
+          'entry_date': '2026-10-12',
+          'vehicle_id': 'v2',
+          'status': 'ok',
+          'kilometers': 30,
+        },
+        {
+          'entry_date': '2026-10-11',
+          'vehicle_id': 'v2',
+          'status': 'error',
+          'kilometers': 500,
+        },
+        {
+          'entry_date': '2026-10-13',
+          'vehicle_id': 'v2',
+          'status': 'ok',
+          'kilometers': 900,
+        },
+      ];
+      final card = LogisticsDashboardSnapshot.fromRows(
+        now: dashboardDate,
+        rows: rows,
+      ).summaries[LogisticsDashboardModule.performance]!;
+      expect(card.value, '250 km');
+      expect(card.period, '30 días · 13/09–12/10');
+      expect(metric(card, 'Unidades con lectura'), '2');
+      expect(metric(card, 'Litros cargados'), '20,048 L');
       expect(metric(card, 'Días con carga sin kilometraje'), '1');
     },
   );
@@ -290,7 +344,7 @@ void main() {
         (r) => r.url.pathSegments.last == 'logistics_gasoline_control',
       );
       expect(fuelRequest.url.queryParametersAll['entry_date'], [
-        'gte.2026-10-12',
+        'gte.2026-09-13',
         'lt.2026-10-19',
       ]);
       for (final table in ['logistics_zones', 'logistics_containers']) {

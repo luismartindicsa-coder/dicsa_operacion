@@ -13,6 +13,7 @@ import 'logistics_area_chrome.dart';
 import 'logistics_dashboard_summary.dart';
 import 'logistics_dashboard_missing_cards.dart';
 import 'logistics_operations_pages.dart';
+import 'logistics_gps_page.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_diesel_page.dart';
@@ -118,6 +119,12 @@ class LogisticsDashboardPage extends StatelessWidget {
       ).push(appPageRoute(page: const LogisticsUnitsPage()));
     }
 
+    Future<void> openGps() async {
+      await Navigator.of(
+        context,
+      ).push(appPageRoute(page: const LogisticsGpsPage()));
+    }
+
     Future<void> openCatalogs() async {
       await Navigator.of(context).push(
         appPageRoute(
@@ -198,6 +205,12 @@ class LogisticsDashboardPage extends StatelessWidget {
             subtitle: 'Estado manual y observaciones',
             icon: Icons.directions_bus_filled_rounded,
             onTap: openUnits,
+          ),
+          DashboardNavAction(
+            title: kLogisticsNavGpsLabel,
+            subtitle: 'Ubicaciones y última actualización',
+            icon: Icons.location_on_outlined,
+            onTap: openGps,
           ),
           DashboardNavAction(
             title: kLogisticsNavIncidentsLabel,

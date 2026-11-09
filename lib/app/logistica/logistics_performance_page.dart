@@ -27,11 +27,16 @@ import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_gps_page.dart';
 import 'logistics_savings_page.dart';
 import 'logistics_performance_store.dart';
 import 'logistics_performance_data.dart';
+import 'logistics_performance_period.dart';
+import 'logistics_fuel_followup_store.dart';
+import 'logistics_fuel_followup_widgets.dart';
 import 'logistics_fuel_load_origin.dart';
 import 'logistics_fuel_cost.dart';
+import 'logistics_fuel_price_store.dart';
 import 'logistics_resource_profile_store.dart';
 import 'logistics_theme.dart';
 
@@ -54,23 +59,18 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   bool _canReturnToDirection = false;
   String? _loadError;
   late DateTimeRange _dateRange;
-  String _period = 'week';
+  String _period = 'month';
   String? _vehicleFilterKey;
   List<PerformanceDay> _rows = const [];
+  List<LogisticsLoadMileage> _loadMileage = const [];
+  bool _editingFollowup = false;
+  bool _editingPrices = false;
   Timer? _refreshTimer;
   bool _reloading = false;
   String? _refreshError;
 
   DateTimeRange _currentPeriod(String period) {
-    final today = DateUtils.dateOnly(DateTime.now());
-    if (period == 'month') {
-      return DateTimeRange(
-        start: DateTime(today.year, today.month),
-        end: DateTime(today.year, today.month + 1, 0),
-      );
-    }
-    final start = today.subtract(Duration(days: today.weekday - 1));
-    return DateTimeRange(start: start, end: start.add(const Duration(days: 6)));
+    return logisticsClosedPeriod(period, DateTime.now());
   }
 
   @override
@@ -100,6 +100,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   void _refreshIfIdle() {
     if (!mounted ||
         _importing ||
+        _editingFollowup ||
+        _editingPrices ||
         _generatingReport ||
         !(ModalRoute.of(context)?.isCurrent ?? false) ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.paused) {
@@ -115,11 +117,13 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       final results = await Future.wait<dynamic>([
         AuthAccess.resolveCurrentProfile(),
         LogisticsPerformanceData.load(),
+        LogisticsLoadMileage.loadEntries(),
       ]);
       if (!mounted) return;
       setState(() {
         _canReturnToDirection = AuthAccess.isDirectionRole(results[0]);
         _rows = results[1] as List<PerformanceDay>;
+        _loadMileage = results[2] as List<LogisticsLoadMileage>;
         if (_period != 'custom') _dateRange = _currentPeriod(_period);
         _loading = false;
         _loadError = null;
@@ -151,11 +155,18 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
         (row) =>
             !row.date.isBefore(_dateRange.start) &&
             !row.date.isAfter(_dateRange.end) &&
+            row.date.isBefore(DateUtils.dateOnly(DateTime.now())) &&
             (_vehicleFilterKey == null || row.vehicleKey == _vehicleFilterKey),
       )
       .toList();
 
   List<PerformanceUnit> get _units => groupPerformanceUnits(_visibleRows);
+
+  String get _calculationNote =>
+      'km/L cargado = kilómetros del periodo ÷ litros entregados. '
+      'Con cargas parciales es una referencia, no consumo medido. '
+      'Un valor parcial usa los km registrados y puede aumentar al completar los días faltantes.'
+      '${_dateRange.end.difference(_dateRange.start).inDays < 29 ? ' En periodos cortos puede variar mucho por cargas fuera del corte; consulta 30 días.' : ''}';
 
   void _selectPeriod(String period) => setState(() {
     _period = period;
@@ -276,7 +287,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       context,
       bounds: DateTimeRange(
         start: DateTime(dates.first.year, 1, 1),
-        end: DateTime(dates.last.year, 12, 31),
+        end: _currentPeriod('week').end,
       ),
       initialRange: _dateRange,
     );
@@ -379,7 +390,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
             ),
             pw.SizedBox(height: 14),
             pw.Text(
-              'km/L estimado = kilómetros registrados / litros cargados del periodo. Las cargas no equivalen necesariamente al consumo. Sin estimación cuando falta kilometraje, no hay cargas o se mezclan combustibles.',
+              '$_calculationNote EPCOM aporta recorridos de días terminados; las lecturas importadas tienen prioridad. Sin estimación cuando no hay ninguna lectura de kilometraje, no hay cargas o se mezclan combustibles.',
               style: const pw.TextStyle(fontSize: 9),
             ),
             if (!cost.isComplete)
@@ -394,7 +405,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                 'SERVICIOS',
                 'KILÓMETROS',
                 'LITROS',
-                'KM/L EST.',
+                'KM/L CARGADO',
                 'GASTO',
                 'POR REVISAR',
               ],
@@ -479,6 +490,9 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
 
   void _handleNavigationAction(String label) {
     switch (label) {
+      case kLogisticsNavGpsLabel:
+        unawaited(_replace(const LogisticsGpsPage()));
+        return;
       case kLogisticsNavFleetStatusLabel:
         unawaited(
           Navigator.of(
@@ -564,6 +578,52 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   }
 
   Widget _buildContent(BuildContext context) {
+    if (_period == 'loads') {
+      final rows =
+          groupPerformanceUnits(_rows)
+              .where(
+                (u) =>
+                    _vehicleFilterKey == null ||
+                    u.vehicleKey == _vehicleFilterKey,
+              )
+              .map(
+                (u) => LogisticsFuelFollowup(
+                  u,
+                  DateTime.now(),
+                  _loadMileage
+                      .where((m) => m.vehicleId == u.days.first.vehicleId)
+                      .firstOrNull,
+                ),
+              )
+              .toList()
+            ..sort((a, b) {
+              final date = (b.day?.date ?? DateTime(1900)).compareTo(
+                a.day?.date ?? DateTime(1900),
+              );
+              return date != 0
+                  ? date
+                  : a.unit.vehicleLabel.compareTo(b.unit.vehicleLabel);
+            });
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          children: [
+            _buildActions(context),
+            if (_refreshError != null)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(_refreshError!),
+              ),
+            Expanded(
+              child: LogisticsFuelFollowupPanel(
+                rows: rows,
+                onOpen: _openFuelFollowup,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final units = _units;
     final cost = units.fold(
       const LogisticsFuelCost(),
@@ -621,7 +681,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
             child: Text(
-              '$_rangeLabel · ${units.length} unidades · Selecciona una unidad para ver su detalle.',
+              '$_rangeLabel · Corte común hasta ${_formatDate(_dateRange.end)} · ${units.length} unidades',
               style: const TextStyle(color: kLogisticsSilverTextSecondary),
             ),
           ),
@@ -631,11 +691,11 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
               child: Text(_refreshError!),
             ),
           Expanded(child: _buildTable(units)),
-          const Padding(
-            padding: EdgeInsets.only(top: 8, left: 4),
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
             child: Text(
-              'km/L estimado: kilómetros registrados ÷ litros cargados del periodo. Las cargas pueden consumirse en otros días.',
-              style: TextStyle(
+              _calculationNote,
+              style: const TextStyle(
                 fontSize: 12,
                 color: kLogisticsSilverTextSecondary,
               ),
@@ -659,12 +719,17 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         ChoiceChip(
-          label: const Text('Esta semana'),
+          label: const Text('Desde última carga'),
+          selected: _period == 'loads',
+          onSelected: (_) => _selectPeriod('loads'),
+        ),
+        ChoiceChip(
+          label: const Text('Últimos 7 días'),
           selected: _period == 'week',
           onSelected: (_) => _selectPeriod('week'),
         ),
         ChoiceChip(
-          label: const Text('Este mes'),
+          label: const Text('Últimos 30 días'),
           selected: _period == 'month',
           onSelected: (_) => _selectPeriod('month'),
         ),
@@ -700,6 +765,12 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
         ),
         OutlinedButton.icon(
           style: _performanceOutlinedButtonStyle(context),
+          onPressed: _editingPrices ? null : _editGeneralPrices,
+          icon: const Icon(Icons.local_gas_station_outlined),
+          label: const Text('Precios de combustible'),
+        ),
+        OutlinedButton.icon(
+          style: _performanceOutlinedButtonStyle(context),
           onPressed: _importing ? null : () => _importMileageXlsx(),
           icon: Icon(
             _importing
@@ -708,18 +779,19 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
           ),
           label: const Text('Importar kilometraje'),
         ),
-        FilledButton.icon(
-          style: _performanceFilledButtonStyle(context),
-          onPressed: _generatingReport || _units.isEmpty
-              ? null
-              : _generateReport,
-          icon: Icon(
-            _generatingReport
-                ? Icons.hourglass_top_rounded
-                : Icons.picture_as_pdf_rounded,
+        if (_period != 'loads')
+          FilledButton.icon(
+            style: _performanceFilledButtonStyle(context),
+            onPressed: _generatingReport || _units.isEmpty
+                ? null
+                : _generateReport,
+            icon: Icon(
+              _generatingReport
+                  ? Icons.hourglass_top_rounded
+                  : Icons.picture_as_pdf_rounded,
+            ),
+            label: const Text('Descargar PDF'),
           ),
-          label: const Text('Descargar PDF'),
-        ),
       ],
     ),
   );
@@ -772,7 +844,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                       DataColumn(numeric: true, label: Text('SERVICIOS')),
                       DataColumn(numeric: true, label: Text('KILÓMETROS')),
                       DataColumn(numeric: true, label: Text('LITROS')),
-                      DataColumn(numeric: true, label: Text('KM/L ESTIMADO')),
+                      DataColumn(numeric: true, label: Text('KM/L CARGADO')),
                       DataColumn(numeric: true, label: Text('GASTO')),
                       DataColumn(label: Text('POR REVISAR')),
                     ],
@@ -837,6 +909,26 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
           ),
   );
 
+  Future<void> _openFuelFollowup(LogisticsFuelFollowup row) async {
+    _editingFollowup = true;
+    try {
+      await showLogisticsContractDialog<void>(
+        context: context,
+        builder: (detailContext) => _PerformanceScope(
+          child: LogisticsFuelFollowupDetail(
+            row: row,
+            onSource: (day, load) async {
+              Navigator.pop(detailContext);
+              await _openFuelSource(day, diesel: load.diesel, load: load);
+            },
+          ),
+        ),
+      );
+    } finally {
+      _editingFollowup = false;
+    }
+  }
+
   Future<void> _openUnitDetail(PerformanceUnit source) async {
     await showLogisticsContractDialog<void>(
       context: context,
@@ -893,8 +985,14 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                             ),
                             Text('${unit.trips} servicios completados'),
                             Text(unit.cost.label),
-                            Text('${unit.performanceLabel} · estimado'),
+                            Text(
+                              '${unit.performanceLabel} · por litro cargado',
+                            ),
                           ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(_calculationNote),
                         ),
                         if (unit.warnings.isNotEmpty)
                           Padding(
@@ -934,11 +1032,12 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                                     16,
                                   ),
                                   children: [
-                                    if (day.mileage != null)
+                                    if (day.mileage != null ||
+                                        day.gpsMileage != null)
                                       Align(
                                         alignment: Alignment.centerLeft,
                                         child: Text(
-                                          'Kilometraje: ${day.mileage!.sourceFileName.isEmpty ? 'Lectura importada' : day.mileage!.sourceFileName}',
+                                          'Kilometraje: ${day.mileageSourceLabel}',
                                           style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
@@ -1099,6 +1198,40 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   String _priceLabel(double? price) => price == null
       ? 'Sin precio'
       : '${logisticsFuelMoney((price * 100).round())}/L';
+
+  Future<void> _editGeneralPrices() async {
+    setState(() => _editingPrices = true);
+    try {
+      final history = await LogisticsFuelPriceStore.loadEntries();
+      if (!mounted) return;
+      final saved = await showLogisticsContractDialog<_ImportFuelPrices>(
+        context: context,
+        builder: (_) => _PerformanceScope(
+          child: AreaThemeScope(
+            tokens: logisticsAreaTokens,
+            child: _ImportFuelPricesDialog(
+              rowCount: 0,
+              editing: true,
+              history: history,
+              onSave: LogisticsFuelPriceStore.save,
+              description:
+                  'Precios generales para todas las unidades. Se aplican desde la fecha elegida hasta el siguiente cambio. Los precios individuales tienen prioridad.',
+            ),
+          ),
+        ),
+      );
+      if (saved != null && mounted) {
+        await _reload(silent: true);
+        if (mounted) _toast('Precios de combustible guardados');
+      }
+    } catch (_) {
+      if (mounted) {
+        _toast('No se pudieron consultar los precios. Intenta de nuevo.');
+      }
+    } finally {
+      if (mounted) setState(() => _editingPrices = false);
+    }
+  }
 
   Future<void> _editDayPrices(PerformanceDay day) async {
     final prices = await showLogisticsContractDialog<_ImportFuelPrices>(
@@ -1270,12 +1403,16 @@ class _ImportFuelPricesDialog extends StatefulWidget {
   final String? description;
   final double? initialDiesel;
   final double? initialGasoline;
+  final List<LogisticsFuelPrices> history;
+  final Future<void> Function(LogisticsFuelPrices)? onSave;
   const _ImportFuelPricesDialog({
     required this.rowCount,
     this.editing = false,
     this.description,
     this.initialDiesel,
     this.initialGasoline,
+    this.history = const [],
+    this.onSave,
   });
 
   @override
@@ -1288,12 +1425,49 @@ class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
   final _gasoline = TextEditingController();
   final _form = GlobalKey<FormState>();
   String? _error;
+  bool _saving = false;
+  late DateTime _effectiveDate;
+  bool get _general => widget.onSave != null;
+
+  String _dateLabel(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  void _setDate(DateTime date) {
+    _effectiveDate = DateUtils.dateOnly(date);
+    final entry = widget.history
+        .where((p) => DateUtils.isSameDay(p.effectiveDate, date))
+        .firstOrNull;
+    _diesel.text = entry?.diesel?.toStringAsFixed(2) ?? '';
+    _gasoline.text = entry?.gasoline?.toStringAsFixed(2) ?? '';
+    _error = null;
+  }
+
+  Future<void> _pickDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _effectiveDate,
+      firstDate: DateTime(2000),
+      lastDate: DateUtils.dateOnly(DateTime.now()),
+      helpText: 'Vigente desde',
+    );
+    if (date != null && mounted) {
+      setState(() {
+        if (_diesel.text.isEmpty && _gasoline.text.isEmpty) {
+          _setDate(date);
+        } else {
+          _effectiveDate = date;
+          _error = null;
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _diesel.text = widget.initialDiesel?.toStringAsFixed(2) ?? '';
     _gasoline.text = widget.initialGasoline?.toStringAsFixed(2) ?? '';
+    if (_general) _setDate(DateTime.now());
   }
 
   @override
@@ -1303,7 +1477,8 @@ class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_saving) return;
     if (!_form.currentState!.validate()) return;
     final diesel = parseLogisticsFuelPrice(_diesel.text);
     final gasoline = parseLogisticsFuelPrice(_gasoline.text);
@@ -1311,7 +1486,31 @@ class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
       setState(() => _error = 'Captura al menos un precio de combustible.');
       return;
     }
-    Navigator.of(context).pop(_ImportFuelPrices(diesel, gasoline));
+    if (_general) {
+      setState(() {
+        _saving = true;
+        _error = null;
+      });
+      try {
+        await widget.onSave!(
+          LogisticsFuelPrices(
+            effectiveDate: _effectiveDate,
+            diesel: diesel,
+            gasoline: gasoline,
+          ),
+        );
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _saving = false;
+            _error =
+                'No se pudieron guardar los precios. Reintenta; tus datos siguen aquí.';
+          });
+        }
+        return;
+      }
+    }
+    if (mounted) Navigator.of(context).pop(_ImportFuelPrices(diesel, gasoline));
   }
 
   Widget _priceField(
@@ -1321,6 +1520,7 @@ class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
   }) => TextFormField(
     controller: controller,
     autofocus: autofocus,
+    enabled: !_saving,
     cursorColor: kLogisticsSilverTextPrimary,
     autovalidateMode: AutovalidateMode.onUserInteraction,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1344,71 +1544,111 @@ class _ImportFuelPricesDialogState extends State<_ImportFuelPricesDialog> {
   );
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: kLogisticsSilverSurfaceElevated,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: _performanceDialogDecoration(context),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _form,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Precios de combustible',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: ServicesVisualPalette.of(context).textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.description ??
-                      '${widget.rowCount} ${widget.rowCount == 1 ? 'lectura' : 'lecturas'} por importar. El monto se calcula con los litros registrados para cada unidad y día.',
-                ),
-                const SizedBox(height: 18),
-                _priceField('Precio de diésel', _diesel, autofocus: true),
-                const SizedBox(height: 14),
-                _priceField('Precio de gasolina', _gasoline),
-                const SizedBox(height: 12),
-                const Text(
-                  'Deja vacío el combustible que no aplique. Al reimportar, un campo vacío conserva su precio anterior.',
-                ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: Dialog(
+      backgroundColor: kLogisticsSilverSurfaceElevated,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: _performanceDialogDecoration(context),
+          child: SingleChildScrollView(
+            child: Form(
+              key: _form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Precios de combustible',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: ServicesVisualPalette.of(context).textPrimary,
                     ),
                   ),
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.description ??
+                        '${widget.rowCount} ${widget.rowCount == 1 ? 'lectura' : 'lecturas'} por importar. El monto se calcula con los litros registrados para cada unidad y día.',
+                  ),
+                  const SizedBox(height: 18),
+                  if (_general) ...[
+                    OutlinedButton.icon(
                       style: _performanceOutlinedButtonStyle(context),
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      style: _performanceFilledButtonStyle(context),
-                      onPressed: _submit,
-                      child: Text(
-                        widget.editing ? 'Guardar precios' : 'Importar',
+                      onPressed: _saving ? null : _pickDate,
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text(
+                        'Vigente desde: ${_dateLabel(_effectiveDate)}',
                       ),
                     ),
+                    if (widget.history.isNotEmpty)
+                      PopupMenuButton<LogisticsFuelPrices>(
+                        enabled: !_saving,
+                        color: kLogisticsSilverSurfaceElevated,
+                        onSelected: (entry) =>
+                            setState(() => _setDate(entry.effectiveDate)),
+                        itemBuilder: (_) => [
+                          for (final entry in widget.history)
+                            PopupMenuItem(
+                              value: entry,
+                              child: Text(_dateLabel(entry.effectiveDate)),
+                            ),
+                        ],
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Text('Consultar precios anteriores'),
+                        ),
+                      ),
+                    const SizedBox(height: 14),
                   ],
-                ),
-              ],
+                  _priceField('Precio de diésel', _diesel, autofocus: true),
+                  const SizedBox(height: 14),
+                  _priceField('Precio de gasolina', _gasoline),
+                  const SizedBox(height: 12),
+                  Text(
+                    _general || widget.editing
+                        ? 'Deja vacío el combustible que no cambie; conservará su precio anterior.'
+                        : 'Deja vacío el combustible que no aplique. Al reimportar, un campo vacío conserva su precio anterior.',
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        style: _performanceOutlinedButtonStyle(context),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        style: _performanceFilledButtonStyle(context),
+                        onPressed: _saving ? null : _submit,
+                        child: Text(
+                          _saving
+                              ? 'Guardando…'
+                              : widget.editing
+                              ? 'Guardar precios'
+                              : 'Importar',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

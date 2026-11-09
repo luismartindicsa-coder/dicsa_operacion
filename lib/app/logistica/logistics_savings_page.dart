@@ -17,6 +17,7 @@ import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_gasoline_page.dart';
+import 'logistics_gps_page.dart';
 import 'logistics_performance_page.dart';
 import 'logistics_company_profile_store.dart';
 import 'logistics_theme.dart';
@@ -97,6 +98,9 @@ class _LogisticsSavingsPageState extends State<LogisticsSavingsPage> {
 
   void _navigate(String label) {
     switch (label) {
+      case kLogisticsNavGpsLabel:
+        unawaited(_go(const LogisticsGpsPage()));
+        return;
       case kLogisticsNavFleetStatusLabel:
         unawaited(
           Navigator.of(

@@ -231,18 +231,49 @@ class LogisticsDashboardSnapshot {
       LogisticsDashboardModule.performance,
       [
         'logistics_vehicle_mileage',
+        'logistics_gps_daily_mileage',
         'logistics_diesel_consumption',
         'logistics_gasoline_control',
         'vehicles',
       ],
       () {
-        final mileage = source(
-          'logistics_vehicle_mileage',
-        ).where((r) => _within(r['entry_date'], week, weekEnd)).toList();
+        final start = today.subtract(const Duration(days: 30));
+        final periodDiesel = source(
+          'logistics_diesel_consumption',
+        ).where((r) => _within(r['entry_date'], start, today)).toList();
+        final periodGasoline = source(
+          'logistics_gasoline_control',
+        ).where((r) => _within(r['entry_date'], start, today)).toList();
         final keys = {
           for (final v in source('vehicles'))
             _text(v['id']): logisticsVehicleKey(_text(v['code'])),
         };
+        String readingKey(Map<String, dynamic> r) {
+          final unit =
+              keys[_text(r['vehicle_id'])] ??
+              logisticsVehicleKey(
+                _text(r['vehicle_key']).isNotEmpty
+                    ? _text(r['vehicle_key'])
+                    : _text(r['vehicle_label']),
+              );
+          return '${_db(_date(r['entry_date'])!)}|$unit';
+        }
+
+        final readings = <String, Map<String, dynamic>>{};
+        for (final r in source('logistics_gps_daily_mileage')) {
+          if (_within(r['entry_date'], start, today) &&
+              r['status'] == 'ok' &&
+              r['kilometers'] != null) {
+            readings[readingKey(r)] = r;
+          }
+        }
+        // Same priority as Rendimiento: one reading per vehicle/day, Excel first.
+        for (final r in source('logistics_vehicle_mileage')) {
+          if (_within(r['entry_date'], start, today)) {
+            readings[readingKey(r)] = r;
+          }
+        }
+        final mileage = readings.values;
         final fuel = <String, double>{};
         void addFuel(Map<String, dynamic> r, String field) {
           final key =
@@ -253,34 +284,35 @@ class LogisticsDashboardSnapshot {
           fuel[bucket] = (fuel[bucket] ?? 0) + _number(r[field]);
         }
 
-        for (final r in diesel) {
+        for (final r in periodDiesel) {
           addFuel(r, 'liters_requested');
         }
-        for (final r in gasoline) {
+        for (final r in periodGasoline) {
           addFuel(r, 'liters_loaded');
         }
-        final readingKeys = {
-          for (final r in mileage)
-            '${_db(_date(r['entry_date'])!)}|${r['vehicle_key']}',
-        };
+        final readingKeys = readings.keys.toSet();
         final missing = fuel.entries
             .where((e) => e.value > 0 && !readingKeys.contains(e.key))
             .length;
         final loaded =
-            _sum(diesel, 'liters_requested') + _sum(gasoline, 'liters_loaded');
+            _sum(periodDiesel, 'liters_requested') +
+            _sum(periodGasoline, 'liters_loaded');
         return LogisticsDashboardSummary(
-          value: '${_numberText(_sum(mileage, 'kilometers'))} km',
-          label: 'kilometraje registrado',
-          period: 'Semana · $weekLabel',
+          value: mileage.isEmpty
+              ? '—'
+              : '${_numberText(_sum(mileage, 'kilometers'))} km',
+          label: 'kilómetros disponibles',
+          period:
+              '30 días · ${_short(start)}–${_short(today.subtract(const Duration(days: 1)))}',
           details: [
             (
               'Unidades con lectura',
-              '${mileage.map((r) => _text(r['vehicle_key'])).where((s) => s.isNotEmpty).toSet().length}',
+              '${readingKeys.map((k) => k.split('|').last).where((s) => s.isNotEmpty).toSet().length}',
             ),
             ('Litros cargados', '${_numberText(loaded)} L'),
             ('Días con carga sin kilometraje', '$missing'),
           ],
-          note: 'Consulta el km/L estimado por unidad y periodo',
+          note: 'Corte hasta ayer. Revisa el detalle por unidad.',
         );
       },
     );
@@ -402,12 +434,12 @@ class LogisticsDashboardStore {
           (from, to) =>
               db.from(table).select(columns).order('id').range(from, to),
         );
-    Future<List<Map<String, dynamic>>> weekly(String table, String columns) =>
+    Future<List<Map<String, dynamic>>> recent(String table, String columns) =>
         fetchAllSupabaseRows(
           (from, to) => db
               .from(table)
               .select(columns)
-              .gte('entry_date', _db(week))
+              .gte('entry_date', _db(today.subtract(const Duration(days: 30))))
               .lt('entry_date', _db(weekEnd))
               .order('id')
               .range(from, to),
@@ -452,7 +484,7 @@ class LogisticsDashboardStore {
       ),
       read(
         'logistics_diesel_consumption',
-        () => weekly(
+        () => recent(
           'logistics_diesel_consumption',
           'id,entry_date,vehicle_id,vehicle_label,liters_purchased,liters_requested',
         ),
@@ -469,16 +501,29 @@ class LogisticsDashboardStore {
       ),
       read(
         'logistics_gasoline_control',
-        () => weekly(
+        () => recent(
           'logistics_gasoline_control',
           'id,entry_date,vehicle_id,vehicle_label,liters_loaded',
         ),
       ),
       read(
         'logistics_vehicle_mileage',
-        () => weekly(
+        () => recent(
           'logistics_vehicle_mileage',
           'id,entry_date,vehicle_key,kilometers',
+        ),
+      ),
+      read(
+        'logistics_gps_daily_mileage',
+        () => fetchAllSupabaseRows(
+          (from, to) => db
+              .from('logistics_gps_daily_mileage')
+              .select('entry_date,vehicle_id,vehicle_label,status,kilometers')
+              .gte('entry_date', _db(today.subtract(const Duration(days: 30))))
+              .lt('entry_date', _db(today))
+              .order('entry_date')
+              .order('vehicle_id')
+              .range(from, to),
         ),
       ),
       read('sites', () => all('sites', 'id,name,type,is_active')),

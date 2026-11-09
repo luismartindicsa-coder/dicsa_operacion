@@ -19,6 +19,7 @@ class LogisticsVehicleMileageRecord {
   final String vehicleKey;
   final double kilometers;
   final String sourceFileName;
+  final bool fromEpcom;
   final double? dieselPricePerLiter;
   final double? gasolinePricePerLiter;
 
@@ -30,9 +31,16 @@ class LogisticsVehicleMileageRecord {
     required this.vehicleKey,
     required this.kilometers,
     required this.sourceFileName,
+    this.fromEpcom = false,
     this.dieselPricePerLiter,
     this.gasolinePricePerLiter,
   });
+
+  String get sourceLabel => fromEpcom
+      ? 'EPCOM · recorridos del día'
+      : sourceFileName.isEmpty
+      ? 'Lectura importada'
+      : sourceFileName;
 
   Map<String, dynamic> toUpsertJson() => <String, dynamic>{
     if (id != null && id!.trim().isNotEmpty) 'id': id,
@@ -78,12 +86,15 @@ class LogisticsVehicleMileageStore {
       'gasoline_price_per_liter': ?gasoline,
     };
     if (patch.isEmpty) return;
-    final rows = await Supabase.instance.client
-        .from(_kMileageTable)
+    final query = Supabase.instance.client
+        .from(record.fromEpcom ? 'logistics_gps_daily_mileage' : _kMileageTable)
         .update(patch)
-        .eq('entry_date', _formatDbDate(record.entryDate))
-        .eq('vehicle_key', record.vehicleKey)
-        .select('id');
+        .eq('entry_date', _formatDbDate(record.entryDate));
+    final rows =
+        await (record.fromEpcom
+                ? query.eq('vehicle_id', record.vehicleId!)
+                : query.eq('vehicle_key', record.vehicleKey))
+            .select('entry_date');
     if (rows.isEmpty) {
       throw StateError('La lectura ya no existe. Vuelve a abrir el detalle.');
     }
@@ -121,6 +132,64 @@ class LogisticsVehicleMileageStore {
           .from(_kMileageTable)
           .upsert(batch, onConflict: 'entry_date,vehicle_key');
     }
+  }
+}
+
+class LogisticsGpsDailyMileage {
+  final DateTime date;
+  final String vehicleId, vehicleLabel, status;
+  final String? errorCode;
+  final double? kilometers, dieselPrice, gasolinePrice;
+  final DateTime? fetchedAt;
+
+  LogisticsGpsDailyMileage.fromRow(Map<String, dynamic> row)
+    : date = DateTime.parse(row['entry_date'].toString()),
+      vehicleId = row['vehicle_id'].toString(),
+      vehicleLabel = row['vehicle_label'].toString(),
+      status = row['status'].toString(),
+      errorCode = row['error_code']?.toString(),
+      kilometers = _nullableDouble(row['kilometers']),
+      dieselPrice = _nullableDouble(row['diesel_price_per_liter']),
+      gasolinePrice = _nullableDouble(row['gasoline_price_per_liter']),
+      fetchedAt = DateTime.tryParse(row['fetched_at']?.toString() ?? '');
+
+  LogisticsVehicleMileageRecord? get reading =>
+      status != 'ok' || kilometers == null
+      ? null
+      : LogisticsVehicleMileageRecord(
+          id: null,
+          entryDate: date,
+          vehicleId: vehicleId,
+          vehicleLabel: vehicleLabel,
+          vehicleKey: logisticsVehicleKey(vehicleLabel),
+          kilometers: kilometers!,
+          sourceFileName: '',
+          fromEpcom: true,
+          dieselPricePerLiter: dieselPrice,
+          gasolinePricePerLiter: gasolinePrice,
+        );
+
+  String get statusLabel => switch (status) {
+    'ok' => 'EPCOM · recorridos del día',
+    'no_data' => 'EPCOM sin mensajes para este día',
+    'error' when errorCode == 'authorization' =>
+      'Falta autorizar historial EPCOM',
+    'error' => 'EPCOM pendiente de consulta',
+    _ => 'EPCOM en preparación',
+  };
+
+  static Future<List<LogisticsGpsDailyMileage>> loadEntries() async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from('logistics_gps_daily_mileage')
+          .select(
+            'entry_date,vehicle_id,vehicle_label,status,error_code,kilometers,fetched_at,diesel_price_per_liter,gasoline_price_per_liter',
+          )
+          .order('entry_date', ascending: false)
+          .order('vehicle_id')
+          .range(from, to),
+    );
+    return rows.map(LogisticsGpsDailyMileage.fromRow).toList(growable: false);
   }
 }
 

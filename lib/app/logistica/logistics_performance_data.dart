@@ -4,6 +4,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'logistics_diesel_store.dart';
 import 'logistics_gasoline_store.dart';
 import 'logistics_fuel_cost.dart';
+import 'logistics_fuel_price_store.dart';
 import 'logistics_performance_store.dart';
 import 'logistics_resource_profile_store.dart';
 
@@ -36,6 +37,7 @@ class PerformanceLoad {
   final String driver;
   final String origin;
   final bool litersEstimated;
+  final DateTime? loadedAt;
   const PerformanceLoad({
     required this.id,
     required this.vehicleId,
@@ -45,6 +47,7 @@ class PerformanceLoad {
     required this.driver,
     required this.origin,
     this.litersEstimated = false,
+    this.loadedAt,
   });
 }
 
@@ -54,7 +57,9 @@ class PerformanceDay {
   final String vehicleLabel;
   final String? vehicleId;
   final double? tankCapacityLiters;
+  final LogisticsFuelPrices? generalPrices;
   LogisticsVehicleMileageRecord? mileage;
+  LogisticsGpsDailyMileage? gpsMileage;
   final List<PerformanceService> services = [];
   final List<PerformanceLoad> loads = [];
 
@@ -64,11 +69,18 @@ class PerformanceDay {
     required this.vehicleLabel,
     required this.vehicleId,
     required this.tankCapacityLiters,
+    this.generalPrices,
   });
 
   double get kilometers => mileage?.kilometers ?? 0;
-  double? get dieselPrice => mileage?.dieselPricePerLiter;
-  double? get gasolinePrice => mileage?.gasolinePricePerLiter;
+  double? get dieselPrice =>
+      mileage?.dieselPricePerLiter ??
+      gpsMileage?.dieselPrice ??
+      generalPrices?.diesel;
+  double? get gasolinePrice =>
+      mileage?.gasolinePricePerLiter ??
+      gpsMileage?.gasolinePrice ??
+      generalPrices?.gasoline;
   int get trips => services.length;
   PerformanceFuel get fuel => loads.fold(
     const PerformanceFuel(),
@@ -86,7 +98,10 @@ class PerformanceDay {
     gasolinePrice: gasolinePrice,
   );
   bool get missingMileage =>
-      mileage == null && (loads.isNotEmpty || services.isNotEmpty);
+      mileage == null &&
+      (loads.isNotEmpty || services.isNotEmpty || gpsMileage != null);
+  String get mileageSourceLabel =>
+      mileage?.sourceLabel ?? gpsMileage?.statusLabel ?? 'Falta kilometraje';
 }
 
 /// One unit over the entire selected period. No daily fuel matching is required.
@@ -105,25 +120,38 @@ class PerformanceUnit {
       days.fold(const PerformanceFuel(), (sum, day) => sum + day.fuel);
   LogisticsFuelCost get cost =>
       days.fold(const LogisticsFuelCost(), (sum, day) => sum + day.cost);
-  double? get performance =>
-      mileageDays == 0 ||
-          missingMileageDays > 0 ||
-          fuel.total <= 0 ||
-          fuel.mixed
+  // Keep every delivery in the denominator, including days with missing km.
+  // The available ratio is useful as a partial reference, but is never exposed
+  // as a complete period. No missing reading is replaced or extrapolated.
+  double? get recordedPerformance =>
+      mileageDays == 0 || fuel.total <= 0 || fuel.mixed
       ? null
       : kilometers / fuel.total;
+  double? get performance =>
+      missingMileageDays > 0 ? null : recordedPerformance;
+  bool get hasPartialPerformance =>
+      recordedPerformance != null && missingMileageDays > 0;
+  String get mileageCoverageLabel =>
+      '$mileageDays ${mileageDays == 1 ? 'día' : 'días'} con km · '
+      '$missingMileageDays sin km';
   String get kilometerLabel => mileageDays == 0
       ? 'Sin kilometraje'
       : '${kilometers.toStringAsFixed(1)} km${missingMileageDays > 0 ? ' (parcial)' : ''}';
-  String get performanceLabel => performance == null
+  String get performanceLabel => recordedPerformance == null
       ? 'Sin estimación'
-      : '${performance!.toStringAsFixed(2)} km/L';
+      : '${recordedPerformance!.toStringAsFixed(2)} km/L${hasPartialPerformance ? ' (parcial)' : ''}';
   List<String> get warnings => [
     if (days.any((d) => d.loads.any((l) => l.litersEstimated)))
       'Incluye litros estimados',
     if (days.any((d) => d.vehicleId == null)) 'Unidad sin vincular',
     if (missingMileageDays > 0)
       'Falta kilometraje ($missingMileageDays ${missingMileageDays == 1 ? 'día' : 'días'})',
+    if (days.any(
+      (d) => d.mileage == null && d.gpsMileage?.errorCode == 'authorization',
+    ))
+      'Falta autorizar historial EPCOM',
+    if (days.any((d) => d.mileage == null && d.gpsMileage?.status == 'no_data'))
+      'Hay días sin mensajes GPS',
     if (fuel.total == 0 && (kilometers > 0 || trips > 0))
       'Sin carga registrada',
     if (!cost.isComplete) 'Falta precio',
@@ -181,6 +209,8 @@ class LogisticsPerformanceData {
             .order('id')
             .range(from, to),
       ),
+      LogisticsGpsDailyMileage.loadEntries(),
+      LogisticsFuelPriceStore.loadEntries(),
     ]);
     return consolidate(
       mileage: results[0] as List<LogisticsVehicleMileageRecord>,
@@ -191,6 +221,8 @@ class LogisticsPerformanceData {
       sites: results[5] as List<Map<String, dynamic>>,
       tanks: results[6] as Map<String, double?>,
       employees: results[7] as List<Map<String, dynamic>>,
+      gpsMileage: results[8] as List<LogisticsGpsDailyMileage>,
+      fuelPrices: results[9] as List<LogisticsFuelPrices>,
     );
   }
 
@@ -203,6 +235,8 @@ class LogisticsPerformanceData {
     required List<Map<String, dynamic>> sites,
     required Map<String, double?> tanks,
     required List<Map<String, dynamic>> employees,
+    List<LogisticsGpsDailyMileage> gpsMileage = const [],
+    List<LogisticsFuelPrices> fuelPrices = const [],
   }) {
     final vehiclesById = {for (final v in vehicles) v['id'].toString(): v};
     final vehiclesByKey = {
@@ -235,6 +269,7 @@ class LogisticsPerformanceData {
           vehicleLabel: display,
           vehicleId: vehicle?['id']?.toString(),
           tankCapacityLiters: tanks[vehicle?['id']],
+          generalPrices: LogisticsFuelPrices.forDate(fuelPrices, dateOnly),
         ),
       );
     }
@@ -247,6 +282,14 @@ class LogisticsPerformanceData {
     for (final reading in mileage) {
       day(reading.entryDate, reading.vehicleId, reading.vehicleLabel).mileage =
           reading;
+    }
+    for (final reading in gpsMileage) {
+      // Provider association is explicit. Never reassign GPS history by a
+      // similar vehicle label, and never add it to an imported daily reading.
+      if (!vehiclesById.containsKey(reading.vehicleId)) continue;
+      final target = day(reading.date, reading.vehicleId, reading.vehicleLabel);
+      target.gpsMileage = reading;
+      target.mileage ??= reading.reading;
     }
     for (final load in diesel) {
       // Bulk tank purchases are not fuel loaded into a unit.
@@ -261,6 +304,7 @@ class LogisticsPerformanceData {
           driver: driver(load.operatorEmployeeId, load.operatorName),
           origin: load.loadOrigin,
           litersEstimated: load.litersEstimated,
+          loadedAt: load.loadedAt,
         ),
       );
     }
@@ -276,6 +320,7 @@ class LogisticsPerformanceData {
           driver: driver(load.operatorEmployeeId, load.operatorName),
           origin: load.loadOrigin,
           litersEstimated: load.litersEstimated,
+          loadedAt: load.loadedAt,
         ),
       );
     }

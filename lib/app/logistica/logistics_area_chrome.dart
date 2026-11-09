@@ -9,6 +9,7 @@ const double kLogisticsSideMenuWidth = 332.0;
 const String kLogisticsNavDashboardLabel = 'Dashboard Logística';
 const String kLogisticsNavControlDailyLabel = 'Control Diario';
 const String kLogisticsNavFleetStatusLabel = 'Estado de Unidades';
+const String kLogisticsNavGpsLabel = 'Ubicación GPS';
 const String kLogisticsNavIncidentsLabel = 'Incidencias';
 const String kLogisticsNavCatalogsLabel = 'Catálogos Operativos';
 const String kLogisticsNavDieselLabel = 'Consumo de Diesel';
@@ -95,6 +96,11 @@ List<LogisticsAreaNavSection> _buildLogisticsAreaSections({
           icon: Icons.directions_bus_filled_rounded,
           title: kLogisticsNavFleetStatusLabel,
           subtitle: 'Estado manual y observaciones',
+        ),
+        buildEntry(
+          icon: Icons.location_on_outlined,
+          title: kLogisticsNavGpsLabel,
+          subtitle: 'Ubicaciones y última actualización',
         ),
         buildEntry(
           icon: Icons.report_problem_outlined,
@@ -219,6 +225,7 @@ List<LogisticsAreaNavSection> _buildDashboardSections({
     areaItems,
     kLogisticsNavIncidentsLabel,
   );
+  final gps = _entryFromDashboardAction(areaItems, kLogisticsNavGpsLabel);
   final catalogs = _entryFromDashboardAction(
     areaItems,
     kLogisticsNavCatalogsLabel,
@@ -245,7 +252,7 @@ List<LogisticsAreaNavSection> _buildDashboardSections({
     LogisticsAreaNavSection(
       icon: Icons.route_rounded,
       title: 'Ejecución',
-      children: [?controlDaily, ?fleetStatus, ?incidents],
+      children: [?controlDaily, ?fleetStatus, ?gps, ?incidents],
     ),
     LogisticsAreaNavSection(
       icon: Icons.tune_rounded,

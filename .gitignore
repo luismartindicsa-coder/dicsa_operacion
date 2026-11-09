@@ -46,3 +46,7 @@ app.*.map.json
 
 # Local Flutter VM service endpoint (runtime-generated)
 vmservice.txt
+
+# Credentials used only by local Supabase function tooling
+/supabase/functions/.env*
+!/supabase/functions/.env.example

@@ -1,0 +1,12 @@
+project_id = "dicsa_operacion"
+
+[functions.logistics-gps-sync]
+# The worker validates its dedicated cron secret; no user endpoint is exposed.
+verify_jwt = false
+
+[functions.logistics-geofences-sync]
+verify_jwt = false
+
+[functions.logistics-mileage-sync]
+# Same dedicated server key; no client invocation or provider writes.
+verify_jwt = false

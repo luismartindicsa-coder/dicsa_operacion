@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_fuel_cost.dart';
+import 'package:dicsa_operacion/app/logistica/logistics_fuel_price_store.dart';
+import 'package:dicsa_operacion/app/logistica/logistics_performance_data.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_performance_page.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_performance_store.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +23,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final tables = <String, List<Map<String, dynamic>>>{};
   final writes = <Map<String, dynamic>>[];
+  final priceWrites = <Map<String, dynamic>>[];
+  bool failPriceSave = false;
+  Completer<void>? priceSaveGate;
   final picker = _FuelImportPicker();
   setUpAll(() async {
     final fontDir = Platform.environment['DICSA_LOGISTICS_QA_FONTS'];
@@ -48,6 +54,38 @@ void main() {
         final table = r.url.pathSegments.last;
         final data = tables.putIfAbsent(table, () => []);
         if (r.method == 'POST') {
+          if (table == 'set_logistics_fuel_prices') {
+            if (priceSaveGate != null) await priceSaveGate!.future;
+            if (failPriceSave) {
+              return http.Response(
+                '{"message":"Test failure"}',
+                400,
+                request: r,
+              );
+            }
+            final patch = Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+            priceWrites.add(patch);
+            final prices = tables.putIfAbsent(
+              'logistics_fuel_prices',
+              () => [],
+            );
+            final row = prices
+                .where((p) => p['effective_date'] == patch['p_effective_date'])
+                .firstOrNull;
+            final updated = <String, dynamic>{
+              'effective_date': patch['p_effective_date'],
+              if (patch['p_diesel'] != null)
+                'diesel_price_per_liter': patch['p_diesel'],
+              if (patch['p_gasoline'] != null)
+                'gasoline_price_per_liter': patch['p_gasoline'],
+            };
+            if (row == null) {
+              prices.add(updated);
+            } else {
+              row.addAll(updated);
+            }
+            return http.Response('', 204, request: r);
+          }
           expectSync(table, 'logistics_vehicle_mileage');
           expectSync(
             r.url.queryParameters['on_conflict'],
@@ -107,6 +145,9 @@ void main() {
     FilePicker.platform = picker;
     picker.bytes = _mileageWorkbook();
     writes.clear();
+    priceWrites.clear();
+    failPriceSave = false;
+    priceSaveGate = null;
     tables.clear();
     tables['vehicles'] = [
       {
@@ -314,14 +355,14 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(writes, hasLength(2));
-      expect(find.text('Precios de combustible'), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       await tester.pumpWidget(
         const MaterialApp(home: LogisticsPerformancePage()),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Este mes'));
+      await tester.tap(find.text('Últimos 30 días'));
       await tester.pumpAndSettle();
       expect(find.text(r'$2,841.00'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
@@ -362,12 +403,169 @@ void main() {
       const MaterialApp(home: LogisticsPerformancePage()),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Este mes'));
+    await tester.tap(find.text('Últimos 30 días'));
     await tester.pumpAndSettle();
     expect(find.text(r'$2,550.00 (parcial)'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  test(
+    'general prices respect dates, fuels and individual overrides without mileage',
+    () async {
+      tables['logistics_fuel_prices'] = [
+        {
+          'effective_date': _date(1),
+          'diesel_price_per_liter': 25,
+          'gasoline_price_per_liter': 24,
+        },
+        {'effective_date': _date(2), 'diesel_price_per_liter': 26},
+        {'effective_date': _date(3), 'gasoline_price_per_liter': 24.5},
+      ];
+      final history = await LogisticsFuelPriceStore.loadEntries();
+      final day1 = DateTime.parse(_date(1));
+      expect(
+        LogisticsFuelPrices.forDate(
+          history,
+          day1.subtract(const Duration(days: 1)),
+        ).diesel,
+        isNull,
+      );
+      expect(LogisticsFuelPrices.forDate(history, day1).diesel, 25);
+      final day3 = LogisticsFuelPrices.forDate(
+        history,
+        DateTime.parse(_date(3)),
+      );
+      expect(day3.diesel, 26);
+      expect(day3.gasoline, 24.5);
+      final day = (await LogisticsPerformanceData.load()).single;
+      expect(day.mileage, isNull);
+      expect(day.missingMileage, true);
+      expect(day.cost.label, r'$2,500.00');
+      day.mileage = LogisticsVehicleMileageRecord.fromRemoteRow({
+        'entry_date': _date(1),
+        'diesel_price_per_liter': 27,
+        'kilometers': 100,
+      });
+      expect(day.cost.label, r'$2,700.00');
+      expect(day.gasolinePrice, 24);
+      expect(writes, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'standalone prices save from followup without import; errors retain input and saves block dismissal',
+    (tester) async {
+      await _openPage(tester, width: 1100);
+      await tester.tap(find.text('Desde última carga'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Precios de combustible'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Precios generales para todas'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText).first)
+            .focusNode
+            .hasFocus,
+        true,
+      );
+      await tester.tap(find.text('Guardar precios'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Captura al menos un precio de combustible.'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byType(TextFormField).first, '25.50');
+      failPriceSave = true;
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('tus datos siguen aquí'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField).first)
+            .controller!
+            .text,
+        '25.50',
+      );
+      failPriceSave = false;
+      priceSaveGate = Completer<void>();
+      await tester.tap(find.text('Guardar precios'));
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(find.text('Guardando…'), findsOneWidget);
+      priceSaveGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(
+        priceWrites.single['p_effective_date'],
+        DateTime.now().toIso8601String().substring(0, 10),
+      );
+      expect(priceWrites.single['p_diesel'], 25.5);
+      expect(priceWrites.single['p_gasoline'], isNull);
+      expect(writes, isEmpty);
+      expect(tables['logistics_vehicle_mileage'], isEmpty);
+      await tester.tap(find.text('Precios de combustible'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField).first)
+            .controller!
+            .text,
+        '25.50',
+      );
+      await tester.enterText(find.byType(TextFormField).first, '99');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(priceWrites, hasLength(1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'saved price dates can be corrected, recalculating loads without GPS and preserving blank fuel',
+    (tester) async {
+      tables['logistics_fuel_prices'] = [
+        {'effective_date': _date(1), 'gasoline_price_per_liter': 24.1},
+      ];
+      await _openPage(tester);
+      await tester.tap(find.text('Precios de combustible'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Consultar precios anteriores'));
+      await tester.pumpAndSettle();
+      final date = DateTime.parse(_date(1));
+      final label = '01/${date.month.toString().padLeft(2, '0')}/${date.year}';
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField).last)
+            .controller!
+            .text,
+        '24.10',
+      );
+      await tester.enterText(find.byType(TextFormField).last, '');
+      await tester.enterText(find.byType(TextFormField).first, '25,50');
+      await tester.pumpAndSettle();
+      await _screenshot(tester, 'fuel-general-prices');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(priceWrites.single['p_effective_date'], _date(1));
+      expect(
+        tables['logistics_fuel_prices']!.single['gasoline_price_per_liter'],
+        24.1,
+      );
+      expect(find.text(r'$2,550.00'), findsNWidgets(2));
+      expect(writes, isEmpty);
+      expect(tables['logistics_vehicle_mileage'], isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('PDF totals use each day price, and honor unit filters', (
     tester,
@@ -459,7 +657,7 @@ Future<void> _openPage(WidgetTester tester, {double width = 1440}) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(const MaterialApp(home: LogisticsPerformancePage()));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Este mes'));
+  await tester.tap(find.text('Últimos 30 días'));
   await tester.pumpAndSettle();
 }
 
@@ -469,7 +667,7 @@ Future<void> _openImport(WidgetTester tester) async {
   final context = tester.element(find.byType(DatePickerDialog));
   await tester.tap(find.text(MaterialLocalizations.of(context).okButtonLabel));
   await tester.pumpAndSettle();
-  expect(find.text('Precios de combustible'), findsOneWidget);
+  expect(find.text('Precios de combustible'), findsNWidgets(2));
 }
 
 Future<void> _screenshot(WidgetTester tester, String name) async {

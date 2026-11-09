@@ -30,7 +30,7 @@ class LogisticsIncidentsPage extends StatelessWidget {
       _OperationsWorkspace(fleet: false, vehicleId: vehicleId);
 }
 
-ThemeData _theme(ThemeData base) => base.copyWith(
+ThemeData logisticsWorkspaceTheme(ThemeData base) => base.copyWith(
   canvasColor: kLogisticsSilverSurfaceTop,
   colorScheme: ColorScheme.fromSeed(
     seedColor: logisticsAreaTokens.primary,
@@ -175,7 +175,7 @@ class _OperationsWorkspaceState extends State<_OperationsWorkspace>
       builder: (_) => AreaThemeScope(
         tokens: logisticsAreaTokens,
         child: Theme(
-          data: _theme(Theme.of(context)),
+          data: logisticsWorkspaceTheme(Theme.of(context)),
           child: _IncidentDialog(
             bundle: sources,
             initial: incident,
@@ -218,7 +218,7 @@ class _OperationsWorkspaceState extends State<_OperationsWorkspace>
     child: AreaThemeScope(
       tokens: logisticsAreaTokens,
       child: Theme(
-        data: _theme(Theme.of(context)),
+        data: logisticsWorkspaceTheme(Theme.of(context)),
         child: ServicesShell(
           headerTitle: _label,
           servicesNavLabel: _label,
@@ -335,7 +335,7 @@ class _OperationsWorkspaceState extends State<_OperationsWorkspace>
     final saved = await showLogisticsContractDialog<bool>(
       context: context,
       builder: (_) => Theme(
-        data: _theme(Theme.of(context)),
+        data: logisticsWorkspaceTheme(Theme.of(context)),
         child: _UnitStateDialog(
           vehicle: vehicle,
           initial: _bundle!.unitStates[vehicle.vehicleId],
