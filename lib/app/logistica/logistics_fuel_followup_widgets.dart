@@ -175,7 +175,7 @@ class LogisticsFuelFollowupPanel extends StatelessWidget {
 
 class LogisticsFuelFollowupDetail extends StatelessWidget {
   final LogisticsFuelFollowup row;
-  final Future<void> Function(PerformanceDay, PerformanceLoad) onSource;
+  final Future<void> Function(PerformanceDay, PerformanceLoad)? onSource;
   const LogisticsFuelFollowupDetail({
     super.key,
     required this.row,
@@ -291,16 +291,17 @@ class LogisticsFuelFollowupDetail extends StatelessWidget {
                             Text(
                               '${load.diesel ? 'Diésel' : 'Gasolina'} · ${load.litersEstimated ? '≈ ' : ''}${load.liters.toStringAsFixed(1)} L · ${load.driver}',
                             ),
-                            Wrap(
-                              spacing: 10,
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed: () => onSource(row.day!, load),
-                                  icon: const Icon(Icons.open_in_new_rounded),
-                                  label: const Text('Abrir carga'),
-                                ),
-                              ],
-                            ),
+                            if (onSource != null)
+                              Wrap(
+                                spacing: 10,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () => onSource!(row.day!, load),
+                                    icon: const Icon(Icons.open_in_new_rounded),
+                                    label: const Text('Abrir carga'),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ),

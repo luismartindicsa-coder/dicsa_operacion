@@ -16,6 +16,10 @@ import 'package:xml/xml.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../gerencia/gerencia_dashboard_page.dart';
+import '../gerencia/gerencia_operational_viewer_side_menu.dart';
+import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../services/services_shell.dart';
 import '../services/services_visual_mode.dart';
 import '../shared/page_routes.dart';
@@ -41,7 +45,9 @@ import 'logistics_resource_profile_store.dart';
 import 'logistics_theme.dart';
 
 class LogisticsPerformancePage extends StatefulWidget {
-  const LogisticsPerformancePage({super.key});
+  final bool viewerMode;
+
+  const LogisticsPerformancePage({super.key, this.viewerMode = false});
 
   @override
   State<LogisticsPerformancePage> createState() =>
@@ -57,6 +63,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   bool _importing = false;
   bool _generatingReport = false;
   bool _canReturnToDirection = false;
+  bool _managementViewer = false;
+  bool get _isViewerMode => widget.viewerMode || _managementViewer;
   String? _loadError;
   late DateTimeRange _dateRange;
   String _period = 'month';
@@ -122,6 +130,9 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       if (!mounted) return;
       setState(() {
         _canReturnToDirection = AuthAccess.isDirectionRole(results[0]);
+        _managementViewer =
+            AuthAccess.hasManagementAccess(results[0]) &&
+            !_canReturnToDirection;
         _rows = results[1] as List<PerformanceDay>;
         _loadMileage = results[2] as List<LogisticsLoadMileage>;
         if (_period != 'custom') _dateRange = _currentPeriod(_period);
@@ -174,7 +185,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   });
 
   Future<void> _importMileageXlsx({DateTime? forDate}) async {
-    if (_importing) return;
+    if (_isViewerMode || _importing) return;
     setState(() => _importing = true);
     try {
       final picked = await FilePicker.platform.pickFiles(
@@ -478,8 +489,12 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   Future<void> _openCatalogs() => _replace(const LogisticsCatalogPage());
   Future<void> _openDiesel() => _replace(const LogisticsDieselPage());
   Future<void> _openGasoline() => _replace(const LogisticsGasolinePage());
-  Future<void> _openDirection() =>
-      _replace(const GeneralDashboardPage(instantOpen: true));
+  Future<void> _openDirection() => _isViewerMode
+      ? _returnToGerenciaDashboard()
+      : _replace(const GeneralDashboardPage(instantOpen: true));
+
+  Future<void> _returnToGerenciaDashboard() =>
+      _replace(const GerenciaDashboardPage(instantOpen: true));
 
   Future<void> _replace(Widget page) async {
     if (!mounted) return;
@@ -489,6 +504,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   }
 
   void _handleNavigationAction(String label) {
+    if (_isViewerMode) return;
     switch (label) {
       case kLogisticsNavGpsLabel:
         unawaited(_replace(const LogisticsGpsPage()));
@@ -548,17 +564,30 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       child: AreaThemeScope(
         tokens: logisticsAreaTokens,
         child: ServicesShell(
-          headerTitle: 'Rendimiento de Unidades',
+          headerTitle: _isViewerMode
+              ? 'Rendimiento de Unidades · Solo consulta'
+              : 'Rendimiento de Unidades',
           servicesNavLabel: kLogisticsNavPerformanceLabel,
           sideMenuWidth: kLogisticsSideMenuWidth,
-          customSideMenuBuilder: (context, closeMenu) => LogisticsAreaSidePanel(
-            currentLabel: kLogisticsNavPerformanceLabel,
-            canReturnToDirection: _canReturnToDirection,
-            onNavigate: (label) {
-              closeMenu();
-              _handleNavigationAction(label);
-            },
-          ),
+          customSideMenuBuilder: _isViewerMode
+              ? (context, closeMenu) => GerenciaOperationalViewerSideMenu(
+                  closeMenu: closeMenu,
+                  currentDestination: GerenciaOperationalViewerMenuDestination
+                      .logisticsPerformance,
+                  onGoToGerenciaDashboard: _returnToGerenciaDashboard,
+                  onGoToMaintenance: () =>
+                      _replace(const MaintenancePage(viewerMode: true)),
+                  onGoToPurchaseOrders: () =>
+                      _replace(const PurchaseOrdersPage(viewerMode: true)),
+                )
+              : (context, closeMenu) => LogisticsAreaSidePanel(
+                  currentLabel: kLogisticsNavPerformanceLabel,
+                  canReturnToDirection: _canReturnToDirection,
+                  onNavigate: (label) {
+                    closeMenu();
+                    _handleNavigationAction(label);
+                  },
+                ),
           activeOverlayModule: ServicesOverlayNavModule.servicios,
           onLogout: () async => signOutAndRouteToLogin(context),
           onGoToGeneralDashboard: _openDirection,
@@ -763,22 +792,24 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                 : _vehicleLabelFor(_vehicleFilterKey!),
           ),
         ),
-        OutlinedButton.icon(
-          style: _performanceOutlinedButtonStyle(context),
-          onPressed: _editingPrices ? null : _editGeneralPrices,
-          icon: const Icon(Icons.local_gas_station_outlined),
-          label: const Text('Precios de combustible'),
-        ),
-        OutlinedButton.icon(
-          style: _performanceOutlinedButtonStyle(context),
-          onPressed: _importing ? null : () => _importMileageXlsx(),
-          icon: Icon(
-            _importing
-                ? Icons.hourglass_top_rounded
-                : Icons.upload_file_rounded,
+        if (!_isViewerMode)
+          OutlinedButton.icon(
+            style: _performanceOutlinedButtonStyle(context),
+            onPressed: _editingPrices ? null : _editGeneralPrices,
+            icon: const Icon(Icons.local_gas_station_outlined),
+            label: const Text('Precios de combustible'),
           ),
-          label: const Text('Importar kilometraje'),
-        ),
+        if (!_isViewerMode)
+          OutlinedButton.icon(
+            style: _performanceOutlinedButtonStyle(context),
+            onPressed: _importing ? null : () => _importMileageXlsx(),
+            icon: Icon(
+              _importing
+                  ? Icons.hourglass_top_rounded
+                  : Icons.upload_file_rounded,
+            ),
+            label: const Text('Importar kilometraje'),
+          ),
         if (_period != 'loads')
           FilledButton.icon(
             style: _performanceFilledButtonStyle(context),
@@ -917,10 +948,12 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
         builder: (detailContext) => _PerformanceScope(
           child: LogisticsFuelFollowupDetail(
             row: row,
-            onSource: (day, load) async {
-              Navigator.pop(detailContext);
-              await _openFuelSource(day, diesel: load.diesel, load: load);
-            },
+            onSource: _isViewerMode
+                ? null
+                : (day, load) async {
+                    Navigator.pop(detailContext);
+                    await _openFuelSource(day, diesel: load.diesel, load: load);
+                  },
           ),
         ),
       );
@@ -1045,7 +1078,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                                       spacing: 8,
                                       runSpacing: 6,
                                       children: [
-                                        if (day.missingMileage)
+                                        if (!_isViewerMode &&
+                                            day.missingMileage)
                                           OutlinedButton.icon(
                                             style:
                                                 _performanceOutlinedButtonStyle(
@@ -1066,7 +1100,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                                               'Importar kilometraje faltante',
                                             ),
                                           ),
-                                        if (day.mileage != null &&
+                                        if (!_isViewerMode &&
+                                            day.mileage != null &&
                                             day.fuel.total > 0)
                                           OutlinedButton.icon(
                                             style:
@@ -1088,7 +1123,8 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                                                   : 'Capturar precio',
                                             ),
                                           ),
-                                        if (day.fuel.total == 0)
+                                        if (!_isViewerMode &&
+                                            day.fuel.total == 0)
                                           OutlinedButton.icon(
                                             style:
                                                 _performanceOutlinedButtonStyle(
@@ -1135,23 +1171,27 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
                                           subtitle: Text(
                                             '${load.driver} · ${_priceLabel(load.diesel ? day.dieselPrice : day.gasolinePrice)}',
                                           ),
-                                          trailing: IconButton(
-                                            tooltip: 'Abrir carga',
-                                            icon: const Icon(
-                                              Icons.open_in_new_rounded,
-                                              size: 19,
-                                            ),
-                                            onPressed: () {
-                                              Navigator.pop(dialogContext);
-                                              unawaited(
-                                                _openFuelSource(
-                                                  day,
-                                                  diesel: load.diesel,
-                                                  load: load,
+                                          trailing: _isViewerMode
+                                              ? null
+                                              : IconButton(
+                                                  tooltip: 'Abrir carga',
+                                                  icon: const Icon(
+                                                    Icons.open_in_new_rounded,
+                                                    size: 19,
+                                                  ),
+                                                  onPressed: () {
+                                                    Navigator.pop(
+                                                      dialogContext,
+                                                    );
+                                                    unawaited(
+                                                      _openFuelSource(
+                                                        day,
+                                                        diesel: load.diesel,
+                                                        load: load,
+                                                      ),
+                                                    );
+                                                  },
                                                 ),
-                                              );
-                                            },
-                                          ),
                                         ),
                                       ),
                                     ],
@@ -1200,6 +1240,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
       : '${logisticsFuelMoney((price * 100).round())}/L';
 
   Future<void> _editGeneralPrices() async {
+    if (_isViewerMode) return;
     setState(() => _editingPrices = true);
     try {
       final history = await LogisticsFuelPriceStore.loadEntries();
@@ -1234,6 +1275,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
   }
 
   Future<void> _editDayPrices(PerformanceDay day) async {
+    if (_isViewerMode) return;
     final prices = await showLogisticsContractDialog<_ImportFuelPrices>(
       context: context,
       builder: (_) => _PerformanceScope(
@@ -1286,6 +1328,7 @@ class _LogisticsPerformancePageState extends State<LogisticsPerformancePage>
     required bool diesel,
     PerformanceLoad? load,
   }) async {
+    if (_isViewerMode) return;
     final range = DateTimeRange(start: day.date, end: day.date);
     await Navigator.of(context).push(
       appPageRoute(

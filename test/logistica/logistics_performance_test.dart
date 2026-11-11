@@ -6,6 +6,9 @@ import 'package:dicsa_operacion/app/logistica/logistics_performance_data.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_performance_page.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_performance_store.dart';
 import 'package:dicsa_operacion/app/logistica/logistics_diesel_page.dart';
+import 'package:dicsa_operacion/app/gerencia/gerencia_operational_viewer_side_menu.dart';
+import 'package:dicsa_operacion/app/maintenance/maintenance_page.dart';
+import 'package:dicsa_operacion/app/services/services_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -401,7 +404,11 @@ void main() {
     },
   );
 
-  Future<void> open(WidgetTester tester, {double width = 1440}) async {
+  Future<void> open(
+    WidgetTester tester, {
+    double width = 1440,
+    bool viewerMode = false,
+  }) async {
     tester.view.physicalSize = Size(width, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -409,7 +416,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(fontFamily: 'Roboto'),
-        home: const LogisticsPerformancePage(),
+        home: LogisticsPerformancePage(viewerMode: viewerMode),
       ),
     );
     await tester.pumpAndSettle();
@@ -426,6 +433,95 @@ void main() {
       image.dispose();
     });
   }
+
+  testWidgets(
+    'Gerencia can consult performance without editing or leaving its viewer routes',
+    (tester) async {
+      tables['logistics_vehicle_mileage']!.removeAt(0);
+      await open(tester, viewerMode: true);
+      expect(
+        find.text('Rendimiento de Unidades · Solo consulta'),
+        findsOneWidget,
+      );
+      expect(find.text('Importar kilometraje'), findsNothing);
+      expect(find.text('Precios de combustible'), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.ancestor(
+                of: find.text('Descargar PDF'),
+                matching: find.byWidgetPredicate(
+                  (widget) => widget is FilledButton,
+                ),
+              ),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.tap(find.text('Últimos 7 días'));
+      await tester.pumpAndSettle();
+      expect(find.text('5.00 km/L (parcial)'), findsOneWidget);
+      await screenshot(tester, 'gerencia-performance');
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cargas registradas'), findsOneWidget);
+      expect(find.text('Importar kilometraje faltante'), findsNothing);
+      expect(find.text('Capturar precio'), findsNothing);
+      expect(find.text('Editar precios'), findsNothing);
+      expect(find.text('Revisar cargas'), findsNothing);
+      expect(find.byTooltip('Abrir carga'), findsNothing);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Desde última carga'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('T-01'));
+      await tester.pumpAndSettle();
+      expect(find.text('T-01 · Desde última carga'), findsOneWidget);
+      expect(find.text('Abrir carga'), findsNothing);
+      await tester.tap(find.byTooltip('Cerrar detalle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.menu_rounded));
+      await tester.pumpAndSettle();
+      final menu = tester.widget<GerenciaOperationalViewerSideMenu>(
+        find.byType(GerenciaOperationalViewerSideMenu),
+      );
+      expect(
+        menu.currentDestination,
+        GerenciaOperationalViewerMenuDestination.logisticsPerformance,
+      );
+      expect(menu.onGoToGerenciaDashboard, isNotNull);
+      expect(find.text('Dashboard Gerencia'), findsOneWidget);
+      expect(find.text('GPS'), findsNothing);
+      await screenshot(tester, 'gerencia-performance-menu');
+      await tester.tap(find.text('Ordenes de trabajo'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<MaintenancePage>(find.byType(MaintenancePage)).viewerMode,
+        isTrue,
+      );
+      final shell = tester.widget<ServicesShell>(find.byType(ServicesShell));
+      final maintenanceMenu =
+          shell.customSideMenuBuilder!(
+                tester.element(find.byType(ServicesShell)),
+                () {},
+              )
+              as GerenciaOperationalViewerSideMenu;
+      maintenanceMenu.onGoToLogisticsPerformance!();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<LogisticsPerformancePage>(
+              find.byType(LogisticsPerformancePage),
+            )
+            .viewerMode,
+        isTrue,
+      );
+      expect(find.text('Importar kilometraje'), findsNothing);
+      expect(writes, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'default and load followup use 30 days while short cuts explain partial-load distortion',

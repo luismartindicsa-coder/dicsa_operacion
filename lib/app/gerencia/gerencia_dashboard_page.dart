@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/general_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
+import '../logistica/logistics_performance_page.dart';
 import '../management_reports/management_supervision_page.dart';
 import '../management_reports/management_reports_registry.dart';
 import '../management_reports/management_reports_widgets.dart';
@@ -314,6 +315,12 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     );
   }
 
+  Future<void> _openLogisticsPerformanceViewer() async {
+    await Navigator.of(context).push(
+      appPageRoute(page: const LogisticsPerformancePage(viewerMode: true)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return EmptyAreaDashboardPage(
@@ -339,6 +346,12 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
             icon: Icons.fact_check_rounded,
             onTap: _openManagementSupervision,
           ),
+          DashboardNavAction(
+            title: 'Rendimiento de Logística',
+            subtitle: 'Consulta por unidad, combustible y periodo',
+            icon: Icons.speed_rounded,
+            onTap: _openLogisticsPerformanceViewer,
+          ),
         ],
         workspaceBuilder: (context, config, width) => _GerenciaWorkspace(
           width: width,
@@ -355,6 +368,7 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
           onOpenMaintenanceViewer: _openMaintenanceViewer,
           onOpenPurchaseOrdersViewer: _openPurchaseOrdersViewer,
           onOpenManagementSupervision: _openManagementSupervision,
+          onOpenLogisticsPerformanceViewer: _openLogisticsPerformanceViewer,
         ),
       ),
     );
@@ -391,6 +405,7 @@ class _GerenciaWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenMaintenanceViewer;
   final Future<void> Function() onOpenPurchaseOrdersViewer;
   final Future<void> Function() onOpenManagementSupervision;
+  final Future<void> Function() onOpenLogisticsPerformanceViewer;
 
   const _GerenciaWorkspace({
     required this.width,
@@ -407,6 +422,7 @@ class _GerenciaWorkspace extends StatelessWidget {
     required this.onOpenMaintenanceViewer,
     required this.onOpenPurchaseOrdersViewer,
     required this.onOpenManagementSupervision,
+    required this.onOpenLogisticsPerformanceViewer,
   });
 
   @override
@@ -547,6 +563,17 @@ class _GerenciaWorkspace extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const LogisticsManagementExecutiveSection(),
+            const SizedBox(height: 12),
+            _OperationsViewerAccessCard(
+              icon: Icons.speed_rounded,
+              title: 'Rendimiento de Logística',
+              subtitle: 'Consulta por unidad',
+              body:
+                  'Kilómetros, combustible, costos y servicios por periodo, con detalle y reporte PDF.',
+              accent: tokens.primary,
+              ctaLabel: 'Abrir Rendimiento',
+              onTap: onOpenLogisticsPerformanceViewer,
+            ),
             const SizedBox(height: 18),
             ManagementAreaReportPanel(
               areaKey: ManagementAreaKey.gerencia,

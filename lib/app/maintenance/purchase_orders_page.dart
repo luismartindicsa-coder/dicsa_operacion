@@ -12,6 +12,7 @@ import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../gerencia/gerencia_operational_viewer_side_menu.dart';
+import '../logistica/logistics_performance_page.dart';
 import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
 import '../services/services_page.dart';
@@ -2321,6 +2322,13 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                   GerenciaOperationalViewerMenuDestination.purchaseOrders,
               onGoToGerenciaDashboard: _returnToGerenciaDashboard,
               onGoToMaintenance: _goToMaintenance,
+              onGoToLogisticsPerformance: () async {
+                await Navigator.of(context).pushReplacement(
+                  appPageRoute(
+                    page: const LogisticsPerformancePage(viewerMode: true),
+                  ),
+                );
+              },
             )
           : null,
       onLogout: _logout,

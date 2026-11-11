@@ -21,6 +21,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../gerencia/gerencia_operational_viewer_side_menu.dart';
+import '../logistica/logistics_performance_page.dart';
 import '../maintenance/maintenance_ot_purchase_link_service.dart';
 import '../maintenance/maintenance_statuses.dart';
 import 'maintenance_order_persistence.dart';
@@ -4466,6 +4467,13 @@ class _MaintenancePageState extends State<MaintenancePage>
                   GerenciaOperationalViewerMenuDestination.maintenance,
               onGoToGerenciaDashboard: _returnToGerenciaDashboard,
               onGoToPurchaseOrders: _goToPurchaseOrders,
+              onGoToLogisticsPerformance: () async {
+                await Navigator.of(context).pushReplacement(
+                  appPageRoute(
+                    page: const LogisticsPerformancePage(viewerMode: true),
+                  ),
+                );
+              },
             )
           : null,
       onHeaderGuide: _showOtFlowGuide,

@@ -8,6 +8,7 @@ enum GerenciaOperationalViewerMenuDestination {
   dashboard,
   maintenance,
   purchaseOrders,
+  logisticsPerformance,
 }
 
 class GerenciaOperationalViewerSideMenu extends StatelessWidget {
@@ -16,6 +17,7 @@ class GerenciaOperationalViewerSideMenu extends StatelessWidget {
   final Future<void> Function() onGoToGerenciaDashboard;
   final Future<void> Function()? onGoToMaintenance;
   final Future<void> Function()? onGoToPurchaseOrders;
+  final Future<void> Function()? onGoToLogisticsPerformance;
 
   const GerenciaOperationalViewerSideMenu({
     super.key,
@@ -24,6 +26,7 @@ class GerenciaOperationalViewerSideMenu extends StatelessWidget {
     required this.onGoToGerenciaDashboard,
     this.onGoToMaintenance,
     this.onGoToPurchaseOrders,
+    this.onGoToLogisticsPerformance,
   });
 
   @override
@@ -82,7 +85,7 @@ class GerenciaOperationalViewerSideMenu extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            'Operacion desde Gerencia',
+                            'Consulta desde Gerencia',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
@@ -91,7 +94,7 @@ class GerenciaOperationalViewerSideMenu extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Accesos de consulta para OT y compras OT',
+                            'OT, compras OT y rendimiento de Logística',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -140,6 +143,18 @@ class GerenciaOperationalViewerSideMenu extends StatelessWidget {
                             onTap: onGoToPurchaseOrders == null
                                 ? null
                                 : () => _handleTap(onGoToPurchaseOrders!),
+                          ),
+                          const SizedBox(height: 8),
+                          _GerenciaViewerMenuTile(
+                            icon: Icons.speed_rounded,
+                            title: 'Rendimiento de Logística',
+                            active:
+                                currentDestination ==
+                                GerenciaOperationalViewerMenuDestination
+                                    .logisticsPerformance,
+                            onTap: onGoToLogisticsPerformance == null
+                                ? null
+                                : () => _handleTap(onGoToLogisticsPerformance!),
                           ),
                         ],
                       ),
